@@ -1,0 +1,11 @@
+study_id,publication_year,region,age,mean_age,intervention_dose,follow_up_months,risk_of_bias,mean_treatment,sd_treatment,n_treatment,mean_control,sd_control,n_control
+S01,2012,Europe,Adult,18,High,43,Some concerns,25.5,5.2,377,28.1,6.1,107
+S02,2012,Asia,Adult,74,Low,20,Some concerns,10.2,2.1,66,11.5,2.5,65
+S03,2018,North America,Pediatric,24,High,54,Some concerns,5.8,1.5,351,6.5,1.8,192
+S04,2016,North America,Pediatric,10,Low,40,Low,30.1,4.5,102,32.0,4.8,97
+S05,2024,North America,Adult,13,High,48,Low,15.7,3.3,243,18.2,3.9,90
+S06,2017,North America,Pediatric,51,High,29,Some concerns,8.9,2.0,198,9.5,2.2,90
+S07,2024,Europe,Adult,25,Low,30,Some concerns,22.3,4.1,157,24.0,4.5,393
+S08,2006,Europe,Adult,45,Low,23,Low,12.8,3.0,377,14.2,3.5,335
+S09,2020,Other,Pediatric,23,Low,14,Low,7.5,1.8,158,8.1,2.0,340
+S10,2023,Other,Pediatric,33,High,38,Some concerns,18.0,3.8,337,19.5,4.0,325

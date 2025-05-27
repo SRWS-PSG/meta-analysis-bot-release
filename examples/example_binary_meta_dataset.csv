@@ -1,0 +1,21 @@
+study_id,publication_year,region,age,mean_age,intervention_dose,follow_up_months,risk_of_bias,events_treatment,total_treatment,events_control,total_control
+S01,2012,Europe,Adult,18,High,43,Some concerns,6,377,17,107
+S02,2012,Asia,Adult,74,Low,20,Some concerns,2,66,6,65
+S03,2018,North America,Pediatric,24,High,54,Some concerns,1,351,20,192
+S04,2016,North America,Pediatric,10,Low,40,Low,24,102,6,97
+S05,2024,North America,Adult,13,High,48,Low,70,243,18,90
+S06,2017,North America,Pediatric,51,High,29,Some concerns,29,198,6,90
+S07,2024,Europe,Adult,25,Low,30,Some concerns,17,157,18,393
+S08,2006,Europe,Adult,45,Low,23,Low,56,377,83,335
+S09,2020,Other,Pediatric,23,Low,14,Low,40,158,54,340
+S10,2023,Other,Pediatric,33,High,38,Some concerns,67,337,109,325
+S11,2010,Other,Adult,54,Low,44,Some concerns,7,96,4,74
+S12,2022,North America,Pediatric,19,Low,33,Low,2,320,14,178
+S13,2021,Europe,Adult,43,High,15,Some concerns,92,282,8,51
+S14,2024,North America,Pediatric,7,High,29,Some concerns,49,132,0,326
+S15,2007,Other,Adult,73,High,14,High,30,172,5,79
+S16,2021,Other,Adult,74,High,51,Some concerns,21,293,67,331
+S17,2019,Other,Adult,36,High,10,Some concerns,83,254,95,393
+S18,2023,Europe,Adult,14,High,20,Low,17,60,58,351
+S19,2012,North America,Pediatric,32,High,52,High,2,66,65,219
+S20,2020,Other,Adult,17,High,48,Some concerns,62,345,100,292

@@ -1,0 +1,48 @@
+# Git関連
+.git
+.gitignore
+
+# Python関連
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.pytest_cache
+.coverage
+.tox
+venv/
+env/
+.venv
+.env
+
+# IDE関連
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS関連
+.DS_Store
+Thumbs.db
+
+# ログ
+*.log
+logs/
+
+# テスト関連
+.pytest_cache/
+htmlcov/
+
+# ドキュメント
+*.md
+!README.md
+
+# 一時ファイル
+*.tmp
+tmp/
+temp/
+
+# その他
+node_modules/

@@ -1,0 +1,262 @@
+# Dockerコンテナ ログ確認・ファイル操作手順
+
+meta-analysis-bot のような Docker コンテナ内で動作するアプリケーションのデバッグ時には、コンテナのログを確認したり、コンテナ内のファイルにアクセスしたりする必要が生じることがあります。以下にその基本的な手順を示します。
+
+## 1. 実行中のコンテナIDまたは名前の確認
+
+まず、操作対象のコンテナが実行中であることを確認し、そのIDまたは名前を取得します。
+PowerShellまたはコマンドプロンプトで以下のコマンドを実行します。
+
+```powershell
+docker ps
+```
+
+出力例:
+```
+CONTAINER ID   IMAGE               COMMAND            CREATED          STATUS                    PORTS      NAMES
+c77e63da0fa6   meta-analysis-bot   "python main.py"   33 minutes ago   Up 33 minutes (healthy)   3000/tcp   nifty_goldstine
+```
+この例では、コンテナIDは `c77e63da0fa6`、名前は `nifty_goldstine` です。どちらか一方を以降のコマンドで使用します。
+
+## 2. コンテナログの表示
+
+コンテナの標準出力および標準エラー出力を確認するには、以下のコマンドを実行します。
+
+```powershell
+docker logs <container_id_or_name>
+```
+例:
+```powershell
+docker logs nifty_goldstine
+```
+または
+```powershell
+docker logs c77e63da0fa6
+```
+ログが大量にある場合は、`--tail` オプションで表示行数を制限したり、`>` を使ってファイルにリダイレクトしたりすると便利です。
+```powershell
+docker logs nifty_goldstine --tail 100
+docker logs nifty_goldstine > container_logs.txt
+```
+
+## 3. コンテナ内のファイル・ディレクトリ一覧表示
+
+コンテナ内の特定のディレクトリの内容を確認するには、`docker exec` コマンドと `ls` コマンドを組み合わせます。
+
+```powershell
+docker exec <container_id_or_name> ls -la <path_inside_container>
+```
+例: コンテナ内の `/tmp` ディレクトリの内容を表示
+```powershell
+docker exec nifty_goldstine ls -la /tmp
+```
+例: コンテナ内の `/app/mcp_storage/thread_storage/some_thread_id` ディレクトリの内容を表示
+```powershell
+docker exec nifty_goldstine ls -la /app/mcp_storage/thread_storage/some_thread_id
+```
+`<path_inside_container>` は、コンテナログなどから特定した、確認したいファイルやディレクトリのコンテナ内でのフルパスを指定します。
+
+## 4. コンテナからホストOSへファイルをコピー
+
+コンテナ内のファイルをホストOS（例: Windows）にコピーするには、`docker cp` コマンドを使用します。
+
+```powershell
+docker cp <container_id_or_name>:<full_path_to_file_in_container> <path_on_host_to_save>
+```
+例: コンテナ内の `/tmp/thread_XYZ/run_meta.R` をホストの `C:\temp\run_meta.R` にコピー
+```powershell
+docker cp nifty_goldstine:/tmp/thread_XYZ/run_meta.R C:\temp\run_meta.R
+```
+`<path_on_host_to_save>` には、ホストOS上の保存先ファイルパスを指定します。ディレクトリのみを指定すると、そのディレクトリ内に元のファイル名で保存されます。
+
+これらの手順を活用することで、Dockerコンテナ内で発生している問題の調査や、生成されたファイルの内容確認が効率的に行えます。
+
+## デバッグ中の注意
+- 原因がわかったあとは、plan_mode_respondツールを使って修正案を提示する。
+
+
+## Gemini のfunction callingの利用
+
+```python
+import os
+from google import genai
+from google.genai import types
+
+# --- 1) クライアント初期化 ---
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+# --- 2) 関数宣言（OpenAPI サブセット） ---
+schedule_meeting_function = {
+    "name": "schedule_meeting",
+    "description": "Schedules a meeting with specified attendees at a given time and date.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "attendees": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "List of people attending the meeting."
+            },
+            "date": {"type": "string", "description": "YYYY-MM-DD"},
+            "time": {"type": "string", "description": "HH:MM (24-h)"},
+            "flavor": {                      # ← 4 択を enum で強制
+                "type": "string",
+                "enum": ["vanilla", "chocolate", "strawberry", "matcha"]
+            },
+            "topic": {"type": "string", "description": "Meeting topic"}
+        },
+        "required": ["attendees", "date", "time", "flavor", "topic"]
+    }
+}
+
+tool = types.Tool(function_declarations=[schedule_meeting_function])
+
+# --- 3) 強制 Function Calling 設定 ---
+tool_cfg = types.ToolConfig(
+    function_calling_config=types.FunctionCallingConfig(
+        mode=types.FunctionCallingConfig.Mode.ANY,           # ← 必ず呼ぶ
+        allowed_function_names=["schedule_meeting"]          # ← 1 本に限定
+    )
+)
+
+# Generation パラメータと合わせてラップ
+gen_cfg = types.GenerateContentConfig(
+    tools=[tool],
+    tool_config=tool_cfg,
+    generation_config=types.GenerationConfig(temperature=0)
+)
+
+# --- 4) リクエスト送信 ---
+prompt = "Schedule a meeting with Bob and Alice for 2025-03-14 at 10:00 about Q3 planning."
+resp = client.models.generate_content(
+    model="gemini-2.0-flash",     # ※1.5 系以外だと ANY 非対応モデルもあるので注意
+    contents=prompt,
+    config=gen_cfg
+)
+
+# --- 5) レスポンス処理 ---
+part = resp.candidates[0].content.parts[0]
+if isinstance(part, types.Part) and part.function_call:
+    fc = part.function_call
+    print("Function:", fc.name)
+    print("Args:", fc.args)       # → dict で取り出せる
+else:
+    print("No function call!?  : ", resp.text)  # デバッグ用
+
+
+
+```
+
+# Rのコードスニペット
+## forest plot
+```r
+library(metafor)
+ 
+### copy BCG vaccine meta-analysis data to 'dat'
+dat <- dat.bcg
+ 
+### calculate log risk ratios and corresponding sampling variances (and use
+### the 'slab' argument to store study labels as part of the data frame)
+dat <- escalc(measure="RR", ai=tpos, bi=tneg, ci=cpos, di=cneg, 
+              data=dat, slab=paste(author, year, sep=", "))
+ 
+### fit random-effects model
+res <- rma(yi, vi, data=dat)
+ 
+### forest plot with extra annotations
+forest(res, atransf=exp, at=log(c(0.05, 0.25, 1, 4)), xlim=c(-16,6),
+       ilab=cbind(tpos, tneg, cpos, cneg), ilab.lab=c("TB+","TB-","TB+","TB-"),
+       ilab.xpos=c(-9.5,-8,-6,-4.5), cex=0.75, header="Author(s) and Year",
+       mlab="", shade=TRUE)
+text(c(-8.75,-5.25), res$k+2.8, c("Vaccinated", "Control"), cex=0.75, font=2)
+ 
+### add text with Q-value, dfs, p-value, I^2, and tau^2 estimate
+text(-16, -1, pos=4, cex=0.75, bquote(paste(
+      "RE Model (Q = ", .(fmtx(res$QE, digits=2)),
+      ", df = ", .(res$k - res$p), ", ",
+      .(fmtp2(res$QEp)), "; ",
+      I^2, " = ", .(fmtx(res$I2, digits=1)), "%, ",
+      tau^2, " = ", .(fmtx(res$tau2, digits=2)), ")")))
+```
+
+## subgroup analysis
+```r
+library(metafor)
+ 
+### copy BCG vaccine meta-analysis data into 'dat'
+dat <- dat.bcg
+ 
+### calculate log risk ratios and corresponding sampling variances (and use
+### the 'slab' argument to store study labels as part of the data frame)
+dat <- escalc(measure="RR", ai=tpos, bi=tneg, ci=cpos, di=cneg, data=dat,
+              slab=paste(author, year, sep=", "))
+ 
+### fit random-effects model
+res <- rma(yi, vi, data=dat)
+ 
+### a little helper function to add Q-test, I^2, and tau^2 estimate info
+mlabfun <- function(text, x) {
+   list(bquote(paste(.(text),
+      " (Q = ", .(fmtx(x$QE, digits=2)),
+      ", df = ", .(x$k - x$p), ", ",
+      .(fmtp2(x$QEp)), "; ",
+      I^2, " = ", .(fmtx(x$I2, digits=1)), "%, ",
+      tau^2, " = ", .(fmtx(x$tau2, digits=2)), ")")))}
+ 
+### set up forest plot (with 2x2 table counts added; the 'rows' argument is
+### used to specify in which rows the outcomes will be plotted)
+forest(res, xlim=c(-16, 4.6), at=log(c(0.05, 0.25, 1, 4)), atransf=exp,
+       ilab=cbind(tpos, tneg, cpos, cneg), ilab.lab=c("TB+","TB-","TB+","TB-"),
+       ilab.xpos=c(-9.5,-8,-6,-4.5), cex=0.75, ylim=c(-2,28), top=4, order=alloc,
+       rows=c(3:4,9:15,20:23), mlab=mlabfun("RE Model for All Studies", res),
+       psize=1, header="Author(s) and Year")
+ 
+### set font expansion factor (as in forest() above)
+op <- par(cex=0.75)
+ 
+### add additional column headings to the plot
+text(c(-8.75,-5.25), 27, c("Vaccinated", "Control"), font=2)
+ 
+### add text for the subgroups
+text(-16, c(24,16,5), pos=4, c("Systematic Allocation",
+                               "Random Allocation",
+                               "Alternate Allocation"), font=4)
+ 
+### set par back to the original settings
+par(op)
+ 
+### fit random-effects model in the three subgroups
+res.s <- rma(yi, vi, subset=(alloc=="systematic"), data=dat)
+res.r <- rma(yi, vi, subset=(alloc=="random"),     data=dat)
+res.a <- rma(yi, vi, subset=(alloc=="alternate"),  data=dat)
+ 
+### add summary polygons for the three subgroups
+addpoly(res.s, row=18.5, mlab=mlabfun("RE Model for Subgroup", res.s))
+addpoly(res.r, row= 7.5, mlab=mlabfun("RE Model for Subgroup", res.r))
+addpoly(res.a, row= 1.5, mlab=mlabfun("RE Model for Subgroup", res.a))
+ 
+### fit meta-regression model to test for subgroup differences
+res <- rma(yi, vi, mods = ~ alloc, data=dat)
+ 
+### add text for the test of subgroup differences
+text(-16, -1.8, pos=4, cex=0.75, bquote(paste("Test for Subgroup Differences: ",
+     Q[M], " = ", .(fmtx(res$QM, digits=2)),
+     ", df = ", .(res$p - 1), ", ", .(fmtp2(res$QMp)))))
+```
+
+## bubble plot
+```r
+library(metafor)
+ 
+### calculate (log) risk ratios and corresponding sampling variances
+dat <- escalc(measure="RR", ai=tpos, bi=tneg, ci=cpos, di=cneg, data=dat.bcg)
+ 
+### fit mixed-effects model with absolute latitude as predictor
+res <- rma(yi, vi, mods = ~ ablat, data=dat)
+ 
+### draw plot
+regplot(res, xlim=c(10,60), predlim=c(10,60), xlab="Absolute Latitude", refline=0,
+        atransf=exp, at=log(seq(0.2,1.6,by=0.2)), digits=1, las=1, bty="l",
+        label=c(4,7,12,13), offset=c(1.6,0.8), labsize=0.9)
+```
+

@@ -1,0 +1,77 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+# Exclude shell scripts but allow GitHub workflows
+*.sh
+
+# 仮想環境
+venv/
+ENV/
+env/
+
+# R
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# 一時ファイル
+*.tmp
+*.temp
+temp/
+tmp/
+
+# OS固有
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 環境変数
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ログ
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 依存関係ディレクトリ
+node_modules/
+jspm_packages/
+
+# 配布ディレクトリ
+dist/
+out/
