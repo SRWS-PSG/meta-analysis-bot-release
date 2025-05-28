@@ -99,7 +99,11 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:$SA_EMAIL" \
-  --role="roles/cloudbuild.builds.editor"
+  --role="roles/cloudbuild.builds.builder"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/storage.admin"
 
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:$SA_EMAIL" \
@@ -188,6 +192,28 @@ $SA_EMAIL="github-deployer@$PROJECT_ID.iam.gserviceaccount.com"
 - 長いコマンドではバックスラッシュ（`\`）の代わりにバッククォート（`` ` ``）を使用
 - 変数参照は `$変数名` の形式を使用
 - 実行時に権限エラーが出る場合は管理者権限でPowerShellを起動
+
+### ⚠️ Cloud Storage権限エラー対処法（重要）
+GitHub ActionsでCloud Runデプロイ時に以下のエラーが発生する場合：
+```
+ERROR: Permission 'storage.buckets.create' denied
+ERROR: HTTPError 403: *** does not have storage.buckets.create access
+```
+
+**原因**: Cloud Buildがソースコードをアップロードするためのストレージ権限が不足している
+
+**解決策**:
+```bash
+# Cloud Storage権限を追加（バケット作成・管理）
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/storage.admin"
+
+# Cloud Build権限を最適化
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/cloudbuild.builds.builder"
+```
 
 ### ⚠️ Artifact Registry権限エラー対処法（重要）
 GitHub ActionsでCloud Runデプロイ時に以下のエラーが発生する場合：
