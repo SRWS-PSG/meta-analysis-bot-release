@@ -57,7 +57,7 @@ class MetaAnalysisBot:
         """初期化"""
         self.app = App(
             token=os.environ.get("SLACK_BOT_TOKEN"),
-            signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
+            signing_secret=os.environ.get("SLACK_SIGNING_SECRET").strip()
         )
         
         # Bot自身のユーザーIDを取得
@@ -167,7 +167,7 @@ class MetaAnalysisBot:
             if not os.environ.get("SLACK_APP_TOKEN"):
                 logger.error("SLACK_APP_TOKEN is required for Socket Mode")
                 return
-            SocketModeHandler(self.app, os.environ.get("SLACK_APP_TOKEN")).start()
+            SocketModeHandler(self.app, os.environ.get("SLACK_APP_TOKEN").strip()).start()
         else:
             # HTTP Mode - HTTPエンドポイントでSlackと通信（Cloud Run対応）
             port = int(os.environ.get("PORT", 8080))
