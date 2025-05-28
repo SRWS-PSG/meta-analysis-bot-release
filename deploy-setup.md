@@ -146,7 +146,7 @@ echo "-----------------------------------------------"
 #   --source=. --region=$REGION \
 #   --service-account=$SA_EMAIL \
 #   --set-secrets="/secrets/.env=app-env:latest" \
-#   --add-volume="name=secret-vol,secret=app-env" \
+#   --add-volume="name=secret-vol,type=secret,secret=app-env" \
 #   --add-volume-mount="volume=secret-vol,mount-path=/secrets"
 
 echo "✅ ターミナルだけでのセットアップ完了!"
@@ -272,7 +272,7 @@ jobs:
           --source=. \
           --service-account=${{ secrets.GCP_SERVICE_ACCOUNT }} \
           --set-secrets="/secrets/.env=app-env:latest" \
-          --add-volume="name=secret-vol,secret=app-env" \
+          --add-volume="name=secret-vol,type=secret,secret=app-env" \
           --add-volume-mount="volume=secret-vol,mount-path=/secrets"
 
 ```
