@@ -353,6 +353,9 @@ jobs:
 
     - uses: google-github-actions/setup-gcloud@v2
 
+    - name: Set GCP Project
+      run: gcloud config set project ${{ secrets.GCP_PROJECT }}
+
     - name: Deploy
       run: |
         gcloud run deploy python-app \
