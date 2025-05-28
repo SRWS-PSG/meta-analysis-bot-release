@@ -14,9 +14,6 @@
 
 ## 手順
 
-
-
-
 ### 1. GCPプロジェクトのセットアップ(ユーザーが手でやる)
 1. GCP プロジェクトを作成
 ブラウザで https://console.cloud.google.com/ にログインし、右上の「プロジェクト選択」をクリック。
@@ -38,6 +35,7 @@
 
 
 # 以降はターミナルで実行可能なので、Claudeに依頼すると良い
+- ただし、Win環境でのやり方であることに注意
 
 ## ⚠️ Windows環境での注意事項
 1. **PowerShellを使用してください** (コマンドプロンプトではなく)
@@ -81,7 +79,8 @@ export PROJECT_NUMBER="$(gcloud projects describe $PROJECT_ID --format='value(pr
 gcloud services enable run.googleapis.com \
                        cloudbuild.googleapis.com \
                        secretmanager.googleapis.com \
-                       iam.googleapis.com
+                       iam.googleapis.com \
+                       artifactregistry.googleapis.com
 
 # 2. サービス アカウント作成 & 権限付与
 gcloud iam service-accounts create $SA_NAME \
@@ -101,6 +100,10 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:$SA_EMAIL" \
   --role="roles/cloudbuild.builds.editor"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/artifactregistry.writer"
 
 # 3. Secret Manager に .env を登録 (.env がカレントにある前提)
 gcloud secrets create app-env --replication-policy=automatic
@@ -185,6 +188,41 @@ $SA_EMAIL="github-deployer@$PROJECT_ID.iam.gserviceaccount.com"
 - 長いコマンドではバックスラッシュ（`\`）の代わりにバッククォート（`` ` ``）を使用
 - 変数参照は `$変数名` の形式を使用
 - 実行時に権限エラーが出る場合は管理者権限でPowerShellを起動
+
+### ⚠️ Artifact Registry権限エラー対処法（重要）
+GitHub ActionsでCloud Runデプロイ時に以下のエラーが発生する場合：
+```
+ERROR: Permission denied while accessing Artifact Registry
+ERROR: Permission 'artifactregistry.repositories.get' denied
+```
+
+**原因**: Artifact Registry への権限が不足している
+
+**解決策**:
+1. Artifact Registry API が有効になっているか確認
+```bash
+gcloud services list --enabled --filter="name:artifactregistry.googleapis.com"
+```
+
+2. APIが無効の場合は有効化
+```bash
+gcloud services enable artifactregistry.googleapis.com
+```
+
+3. サービスアカウントにArtifact Registry権限を追加
+```bash
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/artifactregistry.writer"
+```
+
+4. 権限確認
+```bash
+gcloud projects get-iam-policy $PROJECT_ID \
+  --flatten="bindings[].members" \
+  --format="table(bindings.role)" \
+  --filter="bindings.members:$SA_EMAIL"
+```
 
 ### ⚠️ Workload Identity権限エラー対処法（重要）
 GitHub ActionsでCloud Runデプロイ時に以下のエラーが発生する場合：
