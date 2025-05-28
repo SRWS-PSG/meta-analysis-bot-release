@@ -146,6 +146,10 @@ gcloud projects add-iam-policy-binding $PROJECT_ID `
   --member="serviceAccount:$SA_EMAIL" `
   --role="roles/artifactregistry.writer"
 
+gcloud projects add-iam-policy-binding $PROJECT_ID `
+  --member="serviceAccount:$SA_EMAIL" `
+  --role="roles/storage.admin"
+
 # 4. Cloud Build SA 権限設定
 gcloud projects add-iam-policy-binding $PROJECT_ID `
   --member="serviceAccount:$CLOUDBUILD_SA" `
