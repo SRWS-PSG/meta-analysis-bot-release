@@ -20,13 +20,36 @@ def initialize_gemini_client():
         return None
     
     try:
+        # 環境変数を一時的にクリアしてAPI Key認証のみを強制
+        original_google_application_credentials = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+        original_gcloud_project = os.environ.get("GCLOUD_PROJECT")
+        
+        # Google Cloud認証関連の環境変数を一時的に削除
+        if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
+            del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
+        if "GCLOUD_PROJECT" in os.environ:
+            del os.environ["GCLOUD_PROJECT"]
+        
         client = genai.Client(
             api_key=api_key,
-            http_options=HttpOptions(api_version="v1beta") # Ensure v1beta is appropriate for Function Calling
+            http_options=HttpOptions(api_version="v1beta")
         )
-        logger.info("Gemini APIクライアントが正常に初期化されました")
+        
+        # 環境変数を復元
+        if original_google_application_credentials:
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = original_google_application_credentials
+        if original_gcloud_project:
+            os.environ["GCLOUD_PROJECT"] = original_gcloud_project
+            
+        logger.info("Gemini APIクライアントが正常に初期化されました（API Key認証）")
         return client
     except Exception as e:
+        # 環境変数を復元（エラー時も確実に復元）
+        if original_google_application_credentials:
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = original_google_application_credentials
+        if original_gcloud_project:
+            os.environ["GCLOUD_PROJECT"] = original_gcloud_project
+            
         logger.error(f"Gemini APIクライアントの初期化中にエラーが発生しました: {e}")
         import traceback
         logger.error(traceback.format_exc())
