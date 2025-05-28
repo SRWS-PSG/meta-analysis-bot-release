@@ -242,37 +242,10 @@ docker run --env-file .env meta-analysis-bot
 docker-compose up --build
 ```
 
-### 4. Google Cloud Platform (GCP) へのデプロイ (例: Cloud Run)
+### 4. Google Cloud Platform (GCP) へのデプロイ
 
-DockerイメージをGCPのContainer Registry (またはArtifact Registry) にプッシュし、Cloud Runで実行する手順の概要です。
+詳細は[deploy-setup.md](deploy-setup.md)
 
-1.  **GCPプロジェクトの設定と認証**
-    *   `gcloud` CLIをインストールし、認証します。
-    *   デプロイ先のGCPプロジェクトを選択します。
-    *   必要なAPI (Container Registry API, Cloud Run APIなど) を有効にします。
-
-2.  **Dockerイメージのビルドとプッシュ**
-    ```bash
-    # イメージにGCR用のタグを付ける (例: gcr.io/YOUR_PROJECT_ID/meta-analysis-bot:latest)
-    docker build -t gcr.io/YOUR_PROJECT_ID/meta-analysis-bot:latest .
-    # Container Registryへの認証を設定 (初回のみ、または認証が必要な場合)
-    gcloud auth configure-docker
-    # イメージをGCRにプッシュ
-    docker push gcr.io/YOUR_PROJECT_ID/meta-analysis-bot:latest
-    ```
-    *   `YOUR_PROJECT_ID` は実際のGCPプロジェクトIDに置き換えてください。
-
-3.  **Cloud Runへのデプロイ**
-    ```bash
-    gcloud run deploy meta-analysis-bot \
-      --image gcr.io/YOUR_PROJECT_ID/meta-analysis-bot:latest \
-      --platform managed \
-      --region YOUR_REGION \
-      --allow-unauthenticated \ # 必要に応じて認証を設定
-      --set-env-vars "SLACK_BOT_TOKEN=your-token,SLACK_SIGNING_SECRET=your-secret,..." # 環境変数を設定
-    ```
-    *   `YOUR_REGION` はデプロイするリージョン (例: `asia-northeast1`) に置き換えてください。
-    *   `--set-env-vars` で必要な環境変数をカンマ区切りで指定します。`.env`ファイルの内容をここに設定するか、Secret Managerなどを使用して安全に管理することを推奨します。
 
 
 ## 使用方法
