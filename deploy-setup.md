@@ -47,6 +47,7 @@ GitHub Actions SA → Cloud Build SA → Cloud Run Runtime SA
 
 プロジェクト ID（例: my-app-123456）は後の GitHub Secrets で使うのでメモしておく。
 
+
 2. 課金を有効化
 左側ナビ ［お支払い］ → ［アカウント管理］。
 
