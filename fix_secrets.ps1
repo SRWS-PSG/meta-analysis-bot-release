@@ -1,4 +1,5 @@
 # Secret Manager の全Secret値から改行コードを除去するスクリプト
+#　なぜかコピペに含まれるため
 
 Write-Host "=== Starting Secret cleanup process ==="
 
