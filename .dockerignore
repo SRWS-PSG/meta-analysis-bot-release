@@ -16,6 +16,7 @@ venv/
 env/
 .venv
 .env
+# GCPへのデプロイに含めないようにする
 
 # IDE関連
 .vscode/

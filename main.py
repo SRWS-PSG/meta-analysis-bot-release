@@ -1,10 +1,14 @@
 import os
 import logging
-from dotenv import load_dotenv
 
-# Load environment variables from .env file if it exists
-# Useful for local development
-load_dotenv()
+# Load environment variables from .env file only for local development
+# Cloud Run環境では環境変数が直接設定されるため、.envファイルは不要
+if os.path.exists('.env') and not os.getenv('GOOGLE_CLOUD_PROJECT'):
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("Loaded environment variables from .env file (local development)")
+else:
+    print("Using environment variables directly (Cloud Run or production)")
 
 # Configure logging
 logging.basicConfig(

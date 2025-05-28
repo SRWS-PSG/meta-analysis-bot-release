@@ -33,9 +33,7 @@ jobs:
           --region=asia-northeast1 \
           --source=. \
           --service-account=app-runtime@${{ secrets.GCP_PROJECT }}.iam.gserviceaccount.com \
-          --set-secrets="/secrets/.env=app-env:latest" \
-          --add-volume="name=secret-vol,type=secret,secret=app-env" \
-          --add-volume-mount="volume=secret-vol,mount-path=/secrets" \
+          --set-env-vars="SLACK_BOT_TOKEN=$(gcloud secrets versions access latest --secret=slack-bot-token),SLACK_SIGNING_SECRET=$(gcloud secrets versions access latest --secret=slack-signing-secret),GEMINI_API_KEY=$(gcloud secrets versions access latest --secret=gemini-api-key),GEMINI_MODEL_NAME=$(gcloud secrets versions access latest --secret=gemini-model-name),SOCKET_MODE=$(gcloud secrets versions access latest --secret=socket-mode),STORAGE_BACKEND=$(gcloud secrets versions access latest --secret=storage-backend),LOG_LEVEL=$(gcloud secrets versions access latest --secret=log-level)" \
           --min-instances=0 \
           --max-instances=10 \
           --allow-unauthenticated
