@@ -1,4 +1,4 @@
-# Meta Analysis Bot - GCP Cloud Run デプロイ手順書
+# Meta Analysis Bot - GCP Cloud Run デプロイ手順書（3層SA設計）
 
 このドキュメントは、Meta Analysis BotをGCP Cloud Runに自動デプロイCI/CDパイプラインと共にセットアップする手順を説明します。
 
@@ -11,6 +11,27 @@
     *   Slack Signing Secret
     *   Slack App Token (Socket Mode用)
     *   Gemini API Key
+
+## アーキテクチャ概要
+
+### 3層サービスアカウント設計
+1. **GitHub Actions SA** (`github-deployer@PROJECT_ID.iam.gserviceaccount.com`)
+   - GitHub OIDC認証とCloud Run管理を担当
+   - 必要最小限の権限のみ保持
+
+2. **Cloud Build SA** (`PROJECT_NUMBER@cloudbuild.gserviceaccount.com`)
+   - ビルドとデプロイプロセスを実行
+   - ストレージとビルド関連権限を保持
+
+3. **Cloud Run Runtime SA** (`app-runtime@PROJECT_ID.iam.gserviceaccount.com`)
+   - アプリケーション実行時の権限
+   - Secret Manager等、アプリが必要とする最小権限のみ
+
+### 権限チェーン
+```
+GitHub Actions SA → Cloud Build SA → Cloud Run Runtime SA
+     (Act As)           (Act As)
+```
 
 ## 手順
 
@@ -33,7 +54,6 @@
 
 テーブルが「リンク済み」になれば完了。
 
-
 # 以降はターミナルで実行可能なので、Claudeに依頼すると良い
 - ただし、Win環境でのやり方であることに注意
 
@@ -45,130 +65,142 @@
    - 使用例: `& "C:\Users\[ユーザー名]\AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd" [コマンド]`
 3. **変数の持続性** - PowerShellセッション中に変数が失われる場合があるため、必要に応じて再設定してください
 
-```
+```powershell
 
 #
 ################################################################################
 # 0. まず一度だけ手入力する変数
-###############################################################################
+################################################################################
 # ① GCP プロジェクト ID
-export PROJECT_ID="your-project-id"
+$PROJECT_ID="your-project-id"
 
 # ② デプロイ用リージョン（例: 東京）
-export REGION="asia-northeast1"
+$REGION="asia-northeast1"
 
 # ③ GitHub リポジトリ (owner/repo)
-export REPO="SRWS-PSG/meta-analysis-bot-release"
-export REPO_OWNER="$(echo $REPO | cut -d/ -f1)"
+$REPO="SRWS-PSG/meta-analysis-bot-release"
 
 # ④ Service Account 名
-export SA_NAME="github-deployer"
+$SA_NAME="github-deployer"
+$RUNTIME_SA_NAME="app-runtime"
 
 # ⑤ Workload Identity Pool / Provider 名
-export POOL_ID="github-pool"
-export PROVIDER_ID="github"
+$POOL_ID="github-pool"
+$PROVIDER_ID="github"
 ################################################################################
 
 # プロジェクトを選択 (gcloud init 済みなら不要)
 gcloud config set project $PROJECT_ID
 
 # 数値の PROJECT_NUMBER を取得して変数に入れる
-export PROJECT_NUMBER="$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')"
+$PROJECT_NUMBER = gcloud projects describe $PROJECT_ID --format="value(projectNumber)"
 
-# 1. 必要 API をオン
-gcloud services enable run.googleapis.com \
-                       cloudbuild.googleapis.com \
-                       secretmanager.googleapis.com \
-                       iam.googleapis.com \
-                       artifactregistry.googleapis.com
+# サービスアカウントのメールアドレス設定
+$SA_EMAIL="$SA_NAME@$PROJECT_ID.iam.gserviceaccount.com"
+$RUNTIME_SA_EMAIL="$RUNTIME_SA_NAME@$PROJECT_ID.iam.gserviceaccount.com"
+$CLOUDBUILD_SA="$PROJECT_NUMBER@cloudbuild.gserviceaccount.com"
 
-# 2. サービス アカウント作成 & 権限付与
-gcloud iam service-accounts create $SA_NAME \
-    --description="GitHub Actions deployer" \
+echo "GitHub SA: $SA_EMAIL"
+echo "Runtime SA: $RUNTIME_SA_EMAIL"
+echo "Cloud Build SA: $CLOUDBUILD_SA"
+
+# 1. 必須 API を有効化
+gcloud services enable run.googleapis.com `
+                       cloudbuild.googleapis.com `
+                       artifactregistry.googleapis.com `
+                       cloudresourcemanager.googleapis.com `
+                       secretmanager.googleapis.com `
+                       iam.googleapis.com `
+                       logging.googleapis.com
+
+# 2. サービス アカウント作成
+# GitHub Actions用SA
+gcloud iam service-accounts create $SA_NAME `
+    --description="GitHub Actions deployer" `
     --display-name="GitHub Actions deployer"
 
-SA_EMAIL="$SA_NAME@$PROJECT_ID.iam.gserviceaccount.com"
+# Cloud Run Runtime用SA
+gcloud iam service-accounts create $RUNTIME_SA_NAME `
+    --description="Cloud Run runtime service account" `
+    --display-name="App Runtime SA"
 
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:$SA_EMAIL" \
+# 3. GitHub Actions SA 権限設定
+gcloud projects add-iam-policy-binding $PROJECT_ID `
+  --member="serviceAccount:$SA_EMAIL" `
   --role="roles/run.admin"
 
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:$SA_EMAIL" \
-  --role="roles/secretmanager.secretAccessor"
+gcloud projects add-iam-policy-binding $PROJECT_ID `
+  --member="serviceAccount:$SA_EMAIL" `
+  --role="roles/artifactregistry.writer"
 
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:$SA_EMAIL" \
-  --role="roles/cloudbuild.builds.builder"
+# 4. Cloud Build SA 権限設定
+gcloud projects add-iam-policy-binding $PROJECT_ID `
+  --member="serviceAccount:$CLOUDBUILD_SA" `
+  --role="roles/run.developer"
 
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:$SA_EMAIL" \
-  --role="roles/storage.admin"
+gcloud projects add-iam-policy-binding $PROJECT_ID `
+  --member="serviceAccount:$CLOUDBUILD_SA" `
+  --role="roles/artifactregistry.writer"
 
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:$SA_EMAIL" \
-  --role="roles/artifactregistry.admin"
-
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:$SA_EMAIL" \
-  --role="roles/serviceusage.serviceUsageConsumer"
-
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:$SA_EMAIL" \
-  --role="roles/compute.networkUser"
-
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:$SA_EMAIL" \
+gcloud projects add-iam-policy-binding $PROJECT_ID `
+  --member="serviceAccount:$CLOUDBUILD_SA" `
   --role="roles/logging.logWriter"
 
-# 3. Secret Manager に .env を登録 (.env がカレントにある前提)
+gcloud projects add-iam-policy-binding $PROJECT_ID `
+  --member="serviceAccount:$CLOUDBUILD_SA" `
+  --role="roles/storage.admin"
+
+# 5. Runtime SA 権限設定
+gcloud projects add-iam-policy-binding $PROJECT_ID `
+  --member="serviceAccount:$RUNTIME_SA_EMAIL" `
+  --role="roles/secretmanager.secretAccessor"
+
+# 6. Act As 権限設定（重要）
+# GitHub SA → Runtime SA
+gcloud iam service-accounts add-iam-policy-binding $RUNTIME_SA_EMAIL `
+  --member="serviceAccount:$SA_EMAIL" `
+  --role="roles/iam.serviceAccountUser"
+
+# Cloud Build SA → Runtime SA
+gcloud iam service-accounts add-iam-policy-binding $RUNTIME_SA_EMAIL `
+  --member="serviceAccount:$CLOUDBUILD_SA" `
+  --role="roles/iam.serviceAccountUser"
+
+# 7. Secret Manager に .env を登録 (.env がカレントにある前提)
 gcloud secrets create app-env --replication-policy=automatic
 gcloud secrets versions add app-env --data-file=.env
 
-# 4. Workload Identity Pool & Provider を作る
-gcloud iam workload-identity-pools create $POOL_ID \
-  --project=$PROJECT_ID --location=global \
+# 8. Workload Identity Pool & Provider を作る
+gcloud iam workload-identity-pools create $POOL_ID `
+  --project=$PROJECT_ID --location=global `
   --display-name="GitHub Actions Pool"
 
-gcloud iam workload-identity-pools providers create-oidc $PROVIDER_ID \
-  --project=$PROJECT_ID --location=global \
-  --workload-identity-pool=$POOL_ID \
-  --display-name="GitHub Provider" \
-  --issuer-uri="https://token.actions.githubusercontent.com" \
-  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_owner=assertion.repository_owner" \
+gcloud iam workload-identity-pools providers create-oidc $PROVIDER_ID `
+  --project=$PROJECT_ID --location=global `
+  --workload-identity-pool=$POOL_ID `
+  --display-name="GitHub Provider" `
+  --issuer-uri="https://token.actions.githubusercontent.com" `
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_owner=assertion.repository_owner" `
   --attribute-condition="attribute.repository=='$REPO'"
 
-# 5. Provider から SA を impersonate できるようバインド
-# 修正: 失敗しにくい構文を使用してWorkload Identity権限を設定
-gcloud iam service-accounts add-iam-policy-binding $SA_EMAIL \
-  --role="roles/iam.workloadIdentityUser" \
+# 9. Workload Identity 権限設定
+gcloud iam service-accounts add-iam-policy-binding $SA_EMAIL `
+  --role="roles/iam.workloadIdentityUser" `
   --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL_ID/attribute.repository/$REPO"
 
-# 設定確認: Workload Identity権限が正しく設定されたかチェック
-echo "⏳ Workload Identity権限設定を確認中..."
-gcloud iam service-accounts get-iam-policy $SA_EMAIL
-
-# Provider のフルリソース名を控えておく（GitHub Secrets に入れる値）
-export PROVIDER_RESOURCE="$(gcloud iam workload-identity-pools providers describe $PROVIDER_ID \
-    --project=$PROJECT_ID --location=global --workload-identity-pool=$POOL_ID \
-    --format='value(name)')"
+# 10. Provider のフルリソース名を取得
+$PROVIDER_RESOURCE = gcloud iam workload-identity-pools providers describe $PROVIDER_ID `
+    --project=$PROJECT_ID --location=global --workload-identity-pool=$POOL_ID `
+    --format='value(name)'
 
 echo "==============================================="
 echo "🔑 GCP_PROJECT: $PROJECT_ID"
-echo "🔑 workload_identity_provider: $PROVIDER_RESOURCE"
-echo "🔑 service_account: $SA_EMAIL"
+echo "🔑 GCP_WIF_PROVIDER: $PROVIDER_RESOURCE"
+echo "🔑 GCP_WIF_SERVICE_ACCOUNT: $SA_EMAIL"
 echo "これを GitHub Secrets に登録してください。"
 echo "-----------------------------------------------"
 
-# 6. (任意) Cloud Run に初回デプロイ（以降は GitHub Actions が自動実行）
-# gcloud run deploy python-app \
-#   --source=. --region=$REGION \
-#   --service-account=$SA_EMAIL \
-#   --set-secrets="/secrets/.env=app-env:latest" \
-#   --add-volume="name=secret-vol,type=secret,secret=app-env" \
-#   --add-volume-mount="volume=secret-vol,mount-path=/secrets"
-
-echo "✅ ターミナルだけでのセットアップ完了!"
+echo "✅ 3層SA構成でのセットアップ完了!"
 
 ```
 
@@ -190,105 +222,47 @@ $env:PATH += ";C:\Users\[ユーザー名]\AppData\Local\Google\Cloud SDK\google-
 ```powershell
 # 主要変数の再設定 (PowerShellの場合)
 $PROJECT_ID="your-project-id"
-$POOL_ID="github-pool"  # 注意: 実際に作成したプール名を使用（エラーが出た場合はgithub-pool-2等）
+$PROJECT_NUMBER="your-project-number"
+$POOL_ID="github-pool"
 $PROVIDER_ID="github"
 $SA_EMAIL="github-deployer@$PROJECT_ID.iam.gserviceaccount.com"
+$RUNTIME_SA_EMAIL="app-runtime@$PROJECT_ID.iam.gserviceaccount.com"
+$CLOUDBUILD_SA="$PROJECT_NUMBER@cloudbuild.gserviceaccount.com"
 ```
 
-### Workload Identity Pool作成でALREADY_EXISTSエラーが出る場合
-- 削除状態のプールが残っている可能性があります
-- 別の名前（例: `github-pool-2`, `github-pool-3`）を使用してください
-- または30日後に自動削除されるまで待つ必要があります
-
-### PowerShellでのコマンド実行時の注意
-- 長いコマンドではバックスラッシュ（`\`）の代わりにバッククォート（`` ` ``）を使用
-- 変数参照は `$変数名` の形式を使用
-- 実行時に権限エラーが出る場合は管理者権限でPowerShellを起動
-
-### ⚠️ Service Usage Consumer権限エラー対処法（重要）
+### ⚠️ iam.serviceAccounts.actAs権限エラー対処法（重要）
 GitHub ActionsでCloud Runデプロイ時に以下のエラーが発生する場合：
 ```
-ERROR: PERMISSION_DENIED: Build failed because the service account is missing required IAM permissions.
-Grant the caller the roles/serviceusage.serviceUsageConsumer role
+ERROR: PERMISSION_DENIED: User does not have permission to access service account
+ERROR: Permission 'iam.serviceAccounts.actAs' denied
 ```
 
-**原因**: Cloud BuildがGCPサービス（API）を使用するための権限が不足している
+**原因**: GitHub SAがCloud Build SAまたはRuntime SAを「Act As」する権限が不足している
 
 **解決策**:
-```bash
-# Service Usage Consumer権限を追加
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:$SA_EMAIL" \
-  --role="roles/serviceusage.serviceUsageConsumer"
+```powershell
+# GitHub SA → Runtime SA Act As権限
+gcloud iam service-accounts add-iam-policy-binding $RUNTIME_SA_EMAIL `
+  --member="serviceAccount:$SA_EMAIL" `
+  --role="roles/iam.serviceAccountUser"
 
-# 推奨: 追加の安定化権限
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:$SA_EMAIL" \
-  --role="roles/compute.networkUser"
-
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:$SA_EMAIL" \
-  --role="roles/logging.logWriter"
+# Cloud Build SA → Runtime SA Act As権限
+gcloud iam service-accounts add-iam-policy-binding $RUNTIME_SA_EMAIL `
+  --member="serviceAccount:$CLOUDBUILD_SA" `
+  --role="roles/iam.serviceAccountUser"
 ```
 
-### ⚠️ Cloud Storage権限エラー対処法（重要）
-GitHub ActionsでCloud Runデプロイ時に以下のエラーが発生する場合：
-```
-ERROR: Permission 'storage.buckets.create' denied
-ERROR: HTTPError 403: *** does not have storage.buckets.create access
-```
-
-**原因**: Cloud Buildがソースコードをアップロードするためのストレージ権限が不足している
-
-**解決策**:
-```bash
-# Cloud Storage権限を追加（バケット作成・管理）
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:$SA_EMAIL" \
-  --role="roles/storage.admin"
-
-# Cloud Build権限を最適化
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:$SA_EMAIL" \
-  --role="roles/cloudbuild.builds.builder"
+### ⚠️ API有効化エラー対処法
+必要なAPIが有効化されていない場合：
+```powershell
+# 必須APIの一括有効化
+gcloud services enable run.googleapis.com `
+                       cloudbuild.googleapis.com `
+                       artifactregistry.googleapis.com `
+                       cloudresourcemanager.googleapis.com
 ```
 
-### ⚠️ Artifact Registry権限エラー対処法（重要）
-GitHub ActionsでCloud Runデプロイ時に以下のエラーが発生する場合：
-```
-ERROR: Permission denied while accessing Artifact Registry
-ERROR: Permission 'artifactregistry.repositories.get' denied
-```
-
-**原因**: Artifact Registry への権限が不足している
-
-**解決策**:
-1. Artifact Registry API が有効になっているか確認
-```bash
-gcloud services list --enabled --filter="name:artifactregistry.googleapis.com"
-```
-
-2. APIが無効の場合は有効化
-```bash
-gcloud services enable artifactregistry.googleapis.com
-```
-
-3. サービスアカウントにArtifact Registry権限を追加
-```bash
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:$SA_EMAIL" \
-  --role="roles/artifactregistry.writer"
-```
-
-4. 権限確認
-```bash
-gcloud projects get-iam-policy $PROJECT_ID \
-  --flatten="bindings[].members" \
-  --format="table(bindings.role)" \
-  --filter="bindings.members:$SA_EMAIL"
-```
-
-### ⚠️ Workload Identity権限エラー対処法（重要）
+### ⚠️ Workload Identity権限エラー対処法
 GitHub ActionsでCloud Runデプロイ時に以下のエラーが発生する場合：
 ```
 Permission 'iam.serviceAccounts.getAccessToken' denied
@@ -298,55 +272,55 @@ Permission 'iam.serviceAccounts.getAccessToken' denied
 
 **解決策**:
 1. 現在の権限設定を確認
-```bash
+```powershell
 gcloud iam service-accounts get-iam-policy $SA_EMAIL
 ```
 
 2. 権限が空または不足している場合は再設定
-```bash
-# リポジトリ全体からのアクセスを許可
-gcloud iam service-accounts add-iam-policy-binding $SA_EMAIL \
-  --role="roles/iam.workloadIdentityUser" \
+```powershell
+gcloud iam service-accounts add-iam-policy-binding $SA_EMAIL `
+  --role="roles/iam.workloadIdentityUser" `
   --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL_ID/attribute.repository/$REPO"
 ```
 
-3. GitHub Secrets の値を確認
-- `GCP_WIF_PROVIDER`: プロバイダーのフルパスが設定されているか
-- `GCP_WIF_SERVICE_ACCOUNT`: サービスアカウントのメールアドレスが正確か
-
 ### 設定確認コマンド
-```bash
+```powershell
 # 現在のプロジェクト確認
 gcloud config list project
 
-# Workload Identity Pool確認
-gcloud iam workload-identity-pools list --location=global
+# GitHub SA権限確認
+gcloud projects get-iam-policy $PROJECT_ID --flatten="bindings[].members" --format="table(bindings.role)" --filter="bindings.members:$SA_EMAIL"
 
-# プロバイダー確認
-gcloud iam workload-identity-pools providers list --workload-identity-pool=$POOL_ID --location=global
+# Cloud Build SA権限確認
+gcloud projects get-iam-policy $PROJECT_ID --flatten="bindings[].members" --format="table(bindings.role)" --filter="bindings.members:$CLOUDBUILD_SA"
 
-# サービスアカウント権限確認
-gcloud iam service-accounts get-iam-policy $SA_EMAIL
+# Runtime SA権限確認
+gcloud projects get-iam-policy $PROJECT_ID --flatten="bindings[].members" --format="table(bindings.role)" --filter="bindings.members:$RUNTIME_SA_EMAIL"
+
+# Act As権限確認
+gcloud iam service-accounts get-iam-policy $RUNTIME_SA_EMAIL
 
 # Secret Manager確認
 gcloud secrets list --filter="name:app-env"
 ```
 
-次にやる GitHub 側の最小設定
+## GitHub 側の設定
+
+### GitHub Secrets設定
 リポジトリ → Settings → Secrets and variables → Actions
 
-以下 3 つを New repository secret で追加
+以下 3 つを New repository secret で追加:
 
-Name	Value
-GCP_PROJECT	my-gcp-project
-GCP_WORKLOAD_IDENTITY_PROVIDER	上で echo した projects/…/providers/github
-GCP_SERVICE_ACCOUNT	github-deployer@my-gcp-project.iam.gserviceaccount.com
+| Name | Value |
+|------|-------|
+| `GCP_PROJECT` | あなたのプロジェクトID |
+| `GCP_WIF_PROVIDER` | 上で echo した projects/…/providers/github |
+| `GCP_WIF_SERVICE_ACCOUNT` | github-deployer@your-project-id.iam.gserviceaccount.com |
 
-.github/workflows/deploy.yml 例（超シンプル）
+### ワークフロー設定
+`.github/workflows/deploy.yml` は以下の構成になります：
 
 ```yaml
-コピーする
-編集する
 name: Deploy to Cloud Run
 on: [push]
 
@@ -362,8 +336,8 @@ jobs:
     - id: auth
       uses: google-github-actions/auth@v2
       with:
-        workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-        service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+        workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+        service_account: ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}
 
     - uses: google-github-actions/setup-gcloud@v2
 
@@ -372,13 +346,22 @@ jobs:
         gcloud run deploy python-app \
           --region=asia-northeast1 \
           --source=. \
-          --service-account=${{ secrets.GCP_SERVICE_ACCOUNT }} \
+          --service-account=app-runtime@${{ secrets.GCP_PROJECT }}.iam.gserviceaccount.com \
           --set-secrets="/secrets/.env=app-env:latest" \
           --add-volume="name=secret-vol,type=secret,secret=app-env" \
-          --add-volume-mount="volume=secret-vol,mount-path=/secrets"
-
+          --add-volume-mount="volume=secret-vol,mount-path=/secrets" \
+          --min-instances=0 \
+          --max-instances=10 \
+          --allow-unauthenticated
 ```
-これで終わり
+
+## 🎯 完了
 クリック操作ゼロ で GCP 側の準備が完了。
 
 あとは git push するだけで GitHub Actions → GCP Cloud Run へ自動デプロイされます。
+
+### 3層SA設計の利点
+1. **セキュリティ**: 各SAが必要最小限の権限のみ保持
+2. **責任分離**: デプロイ権限、ビルド権限、実行権限を分離
+3. **監査性**: 各段階での権限行使が明確に追跡可能
+4. **保守性**: 権限の変更・追加が局所化される
