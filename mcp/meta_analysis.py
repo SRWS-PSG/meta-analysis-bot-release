@@ -50,7 +50,7 @@ def download_file(url: str, token: str, target_dir: Optional[str] = None, filena
     target_dirが指定された場合、そのディレクトリにファイルを保存する。
     そうでない場合は、ファイルコンテンツを返す。
     """
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {"Authorization": f"Bearer {token.strip()}"}
     response = requests.get(url, headers=headers)
     response.raise_for_status()
     
