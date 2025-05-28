@@ -38,8 +38,8 @@ logger = logging.getLogger(__name__)
 # Consider refactoring upload_file_to_slack to accept a client instance.
 try:
     app_instance = App(
-        token=os.environ.get("SLACK_BOT_TOKEN"),
-        signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
+        token=os.environ.get("SLACK_BOT_TOKEN", "").strip(),
+        signing_secret=os.environ.get("SLACK_SIGNING_SECRET", "").strip()
     )
 except Exception:
     app_instance = None # Fallback if env vars are not set

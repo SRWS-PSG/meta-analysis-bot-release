@@ -56,8 +56,8 @@ class MetaAnalysisBot:
     def __init__(self):
         """初期化"""
         self.app = App(
-            token=os.environ.get("SLACK_BOT_TOKEN"),
-            signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
+            token=os.environ.get("SLACK_BOT_TOKEN", "").strip(),
+            signing_secret=os.environ.get("SLACK_SIGNING_SECRET", "").strip()
         )
         
         # Bot自身のユーザーIDを取得

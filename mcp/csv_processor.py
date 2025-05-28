@@ -68,7 +68,7 @@ class CsvProcessor:
 
             file_content_bytes = download_file(
                 file_obj.get("url_private_download"),
-                client.token
+                client.token.strip() if client.token else ""
             )
             
             if not isinstance(file_content_bytes, bytes):
