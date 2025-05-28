@@ -109,6 +109,18 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:$SA_EMAIL" \
   --role="roles/artifactregistry.admin"
 
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/serviceusage.serviceUsageConsumer"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/compute.networkUser"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/logging.logWriter"
+
 # 3. Secret Manager に .env を登録 (.env がカレントにある前提)
 gcloud secrets create app-env --replication-policy=automatic
 gcloud secrets versions add app-env --data-file=.env
@@ -192,6 +204,32 @@ $SA_EMAIL="github-deployer@$PROJECT_ID.iam.gserviceaccount.com"
 - 長いコマンドではバックスラッシュ（`\`）の代わりにバッククォート（`` ` ``）を使用
 - 変数参照は `$変数名` の形式を使用
 - 実行時に権限エラーが出る場合は管理者権限でPowerShellを起動
+
+### ⚠️ Service Usage Consumer権限エラー対処法（重要）
+GitHub ActionsでCloud Runデプロイ時に以下のエラーが発生する場合：
+```
+ERROR: PERMISSION_DENIED: Build failed because the service account is missing required IAM permissions.
+Grant the caller the roles/serviceusage.serviceUsageConsumer role
+```
+
+**原因**: Cloud BuildがGCPサービス（API）を使用するための権限が不足している
+
+**解決策**:
+```bash
+# Service Usage Consumer権限を追加
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/serviceusage.serviceUsageConsumer"
+
+# 推奨: 追加の安定化権限
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/compute.networkUser"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/logging.logWriter"
+```
 
 ### ⚠️ Cloud Storage権限エラー対処法（重要）
 GitHub ActionsでCloud Runデプロイ時に以下のエラーが発生する場合：
