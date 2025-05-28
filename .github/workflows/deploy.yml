@@ -18,6 +18,9 @@ jobs:
 
     - uses: google-github-actions/setup-gcloud@v2
 
+    - name: Set GCP Project
+      run: gcloud config set project ${{ secrets.GCP_PROJECT }}
+
     - name: Deploy
       run: |
         gcloud run deploy python-app \
@@ -25,7 +28,7 @@ jobs:
           --source=. \
           --service-account=app-runtime@${{ secrets.GCP_PROJECT }}.iam.gserviceaccount.com \
           --set-secrets="/secrets/.env=app-env:latest" \
-          --add-volume="name=secret-vol,type=secret,secret=app-env" \
+          --add-volume="name=secret-vol,secret=app-env" \
           --add-volume-mount="volume=secret-vol,mount-path=/secrets" \
           --min-instances=0 \
           --max-instances=10 \

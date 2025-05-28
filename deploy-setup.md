@@ -131,6 +131,18 @@ gcloud projects add-iam-policy-binding $PROJECT_ID `
 
 gcloud projects add-iam-policy-binding $PROJECT_ID `
   --member="serviceAccount:$SA_EMAIL" `
+  --role="roles/run.sourceDeveloper"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID `
+  --member="serviceAccount:$SA_EMAIL" `
+  --role="roles/cloudbuild.builds.editor"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID `
+  --member="serviceAccount:$SA_EMAIL" `
+  --role="roles/serviceusage.serviceUsageConsumer"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID `
+  --member="serviceAccount:$SA_EMAIL" `
   --role="roles/artifactregistry.writer"
 
 # 4. Cloud Build SA 権限設定
