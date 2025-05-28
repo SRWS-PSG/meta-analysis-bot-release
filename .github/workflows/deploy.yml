@@ -28,7 +28,7 @@ jobs:
           --source=. \
           --service-account=app-runtime@${{ secrets.GCP_PROJECT }}.iam.gserviceaccount.com \
           --set-secrets="SLACK_BOT_TOKEN=slack-bot-token:latest,SLACK_SIGNING_SECRET=slack-signing-secret:latest,GEMINI_API_KEY=gemini-api-key:latest,GEMINI_MODEL_NAME=gemini-model-name:latest,STORAGE_BACKEND=storage-backend:latest,LOG_LEVEL=log-level:latest" \
-          --set-env-vars="SOCKET_MODE=false,PORT=8080" \
+          --set-env-vars="SOCKET_MODE=false" \
           --port=8080 \
           --min-instances=0 \
           --max-instances=10 \
