@@ -33,6 +33,7 @@ GitHub Actions SA → Cloud Build SA → Cloud Run Runtime SA
      (Act As)           (Act As)
 ```
 
+
 ## 手順
 
 ### 1. GCPプロジェクトのセットアップ(ユーザーが手でやる)
