@@ -7,6 +7,24 @@ Slackで共有されたCSVファイルからメタ解析を実行し、結果を
 
 このボットはSlackでアップロードされたCSVファイルを監視し、`mcp/meta_analysis.py`内の`analyze_csv`関数を用いてpandasとGemini APIによる初期分析（CSV構造分析、メタ分析への適合性評価、列の役割マッピング）を行います。その後、ユーザーとの対話を通じて収集されたパラメータに基づき、同モジュール内の`run_meta_analysis`関数が`RTemplateGenerator`を用いてRスクリプトを動的に生成し、Rのmetaforパッケージを使用してメタ解析を実行します。最終的に、プロット、Rコード、およびGemini APIによって生成された学術論文形式のテキストレポートをSlackチャンネルに返します。
 
+## 動作モード
+
+このボットは2つの動作モードに対応しています：
+
+### Socket Mode（ローカル開発推奨）
+- **WebSocket接続**でSlackと通信
+- ファイアウォール内での動作が可能
+- 設定が簡単（Event SubscriptionsのURL設定不要）
+- 長時間接続を維持
+
+### HTTP Mode（Cloud Run対応）
+- **HTTPエンドポイント**でSlackと通信
+- Cloud Runなどのサーバーレス環境に最適
+- 高いスケーラビリティ
+- Event SubscriptionsのURL設定が必要
+
+動作モードは環境変数`SOCKET_MODE`で制御できます（`true`: Socket Mode, `false`または未設定: HTTP Mode）。
+
 ## 機能
 
 - ✅ Slackで共有されたCSVファイルを受信 (`MessageHandler`がイベントを捉え、`CsvProcessor`に処理を委譲)

@@ -159,10 +159,20 @@ class MetaAnalysisBot:
     # For now, assuming MessageHandler's version is sufficient. If not, a wrapper can be added here.
 
     def start(self):
-        if os.environ.get("SOCKET_MODE"):
+        socket_mode = os.environ.get("SOCKET_MODE", "false").lower() == "true"
+        
+        if socket_mode:
+            # Socket Mode - WebSocket接続でSlackと通信
+            logger.info("Starting bot in Socket Mode")
+            if not os.environ.get("SLACK_APP_TOKEN"):
+                logger.error("SLACK_APP_TOKEN is required for Socket Mode")
+                return
             SocketModeHandler(self.app, os.environ.get("SLACK_APP_TOKEN")).start()
         else:
-            self.app.start(port=int(os.environ.get("PORT", 3000)))
+            # HTTP Mode - HTTPエンドポイントでSlackと通信（Cloud Run対応）
+            port = int(os.environ.get("PORT", 8080))
+            logger.info(f"Starting bot in HTTP Mode on port {port}")
+            self.app.start(port=port)
 
 if __name__ == "__main__":
     bot = MetaAnalysisBot()

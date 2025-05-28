@@ -21,17 +21,28 @@ def main():
     """
     Main function to initialize and start the Meta-Analysis Slack Bot.
     """
+    # Check SOCKET_MODE setting
+    socket_mode = os.environ.get("SOCKET_MODE", "false").lower() == "true"
+    
     # Ensure necessary environment variables are set
     required_env_vars = [
         "SLACK_BOT_TOKEN",
         "SLACK_SIGNING_SECRET"
     ]
-    if os.environ.get("SOCKET_MODE", "false").lower() == "true":
+    
+    if socket_mode:
         required_env_vars.append("SLACK_APP_TOKEN")
+        logger.info("Running in Socket Mode")
+    else:
+        logger.info("Running in HTTP Mode (Cloud Run compatible)")
 
     missing_vars = [var for var in required_env_vars if not os.environ.get(var)]
     if missing_vars:
         logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
+        if socket_mode:
+            logger.error("For Socket Mode, ensure SLACK_APP_TOKEN is set.")
+        else:
+            logger.error("For HTTP Mode, ensure PORT is set (defaults to 8080 if not specified).")
         logger.error("Please set them before running the bot. Refer to README.md for setup instructions.")
         return
 

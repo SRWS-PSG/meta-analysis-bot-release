@@ -40,10 +40,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # アプリケーションコードをコピー
 COPY . .
 
-# ポート3000を公開（Slack Socket Modeではポートは不要だが、将来的なHTTP接続のため）
-EXPOSE 3000
+# ポートを公開（HTTP Mode時はPORT環境変数、Socket Mode時は不要だが設定）
+ENV PORT=8080
+EXPOSE $PORT
 
-# ヘルスチェック
+# ヘルスチェック（両モード対応）
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import sys; sys.exit(0)"
 
