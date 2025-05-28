@@ -10,9 +10,15 @@ if os.path.exists('.env') and not os.getenv('GOOGLE_CLOUD_PROJECT'):
 else:
     print("Using environment variables directly (Cloud Run or production)")
 
-# Configure logging
+# Configure logging with validation
+log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
+valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+if log_level not in valid_levels:
+    print(f"Invalid LOG_LEVEL '{log_level}', using INFO instead")
+    log_level = "INFO"
+
 logging.basicConfig(
-    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+    level=log_level,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)

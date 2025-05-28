@@ -21,19 +21,14 @@ jobs:
     - name: Set GCP Project
       run: gcloud config set project ${{ secrets.GCP_PROJECT }}
 
-    - name: Debug Secrets
-      run: |
-        echo "GCP_PROJECT: ${{ secrets.GCP_PROJECT }}"
-        echo "GCP_WIF_SERVICE_ACCOUNT: ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}"
-        echo "GCP_WIF_PROVIDER (last 50 chars): ...$(echo '${{ secrets.GCP_WIF_PROVIDER }}' | tail -c 50)"
-
     - name: Deploy
       run: |
         gcloud run deploy python-app \
           --region=asia-northeast1 \
           --source=. \
           --service-account=app-runtime@${{ secrets.GCP_PROJECT }}.iam.gserviceaccount.com \
-          --set-env-vars="SLACK_BOT_TOKEN=$(gcloud secrets versions access latest --secret=slack-bot-token),SLACK_SIGNING_SECRET=$(gcloud secrets versions access latest --secret=slack-signing-secret),GEMINI_API_KEY=$(gcloud secrets versions access latest --secret=gemini-api-key),GEMINI_MODEL_NAME=$(gcloud secrets versions access latest --secret=gemini-model-name),SOCKET_MODE=false,STORAGE_BACKEND=$(gcloud secrets versions access latest --secret=storage-backend),LOG_LEVEL=$(gcloud secrets versions access latest --secret=log-level)" \
+          --set-secrets="SLACK_BOT_TOKEN=slack-bot-token:latest,SLACK_SIGNING_SECRET=slack-signing-secret:latest,GEMINI_API_KEY=gemini-api-key:latest,GEMINI_MODEL_NAME=gemini-model-name:latest,STORAGE_BACKEND=storage-backend:latest,LOG_LEVEL=log-level:latest" \
+          --set-env-vars="SOCKET_MODE=false,PORT=8080" \
           --port=8080 \
           --min-instances=0 \
           --max-instances=10 \
