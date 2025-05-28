@@ -120,9 +120,14 @@ gcloud iam workload-identity-pools providers create-oidc $PROVIDER_ID \
   --attribute-condition="attribute.repository=='$REPO'"
 
 # 5. Provider から SA を impersonate できるようバインド
+# 修正: 失敗しにくい構文を使用してWorkload Identity権限を設定
 gcloud iam service-accounts add-iam-policy-binding $SA_EMAIL \
   --role="roles/iam.workloadIdentityUser" \
-  --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL_ID/providers/$PROVIDER_ID"
+  --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL_ID/attribute.repository/$REPO"
+
+# 設定確認: Workload Identity権限が正しく設定されたかチェック
+echo "⏳ Workload Identity権限設定を確認中..."
+gcloud iam service-accounts get-iam-policy $SA_EMAIL
 
 # Provider のフルリソース名を控えておく（GitHub Secrets に入れる値）
 export PROVIDER_RESOURCE="$(gcloud iam workload-identity-pools providers describe $PROVIDER_ID \
@@ -181,6 +186,49 @@ $SA_EMAIL="github-deployer@$PROJECT_ID.iam.gserviceaccount.com"
 - 変数参照は `$変数名` の形式を使用
 - 実行時に権限エラーが出る場合は管理者権限でPowerShellを起動
 
+### ⚠️ Workload Identity権限エラー対処法（重要）
+GitHub ActionsでCloud Runデプロイ時に以下のエラーが発生する場合：
+```
+Permission 'iam.serviceAccounts.getAccessToken' denied
+```
+
+**原因**: Workload Identity権限が正しく設定されていない
+
+**解決策**:
+1. 現在の権限設定を確認
+```bash
+gcloud iam service-accounts get-iam-policy $SA_EMAIL
+```
+
+2. 権限が空または不足している場合は再設定
+```bash
+# リポジトリ全体からのアクセスを許可
+gcloud iam service-accounts add-iam-policy-binding $SA_EMAIL \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL_ID/attribute.repository/$REPO"
+```
+
+3. GitHub Secrets の値を確認
+- `GCP_WIF_PROVIDER`: プロバイダーのフルパスが設定されているか
+- `GCP_WIF_SERVICE_ACCOUNT`: サービスアカウントのメールアドレスが正確か
+
+### 設定確認コマンド
+```bash
+# 現在のプロジェクト確認
+gcloud config list project
+
+# Workload Identity Pool確認
+gcloud iam workload-identity-pools list --location=global
+
+# プロバイダー確認
+gcloud iam workload-identity-pools providers list --workload-identity-pool=$POOL_ID --location=global
+
+# サービスアカウント権限確認
+gcloud iam service-accounts get-iam-policy $SA_EMAIL
+
+# Secret Manager確認
+gcloud secrets list --filter="name:app-env"
+```
 
 次にやる GitHub 側の最小設定
 リポジトリ → Settings → Secrets and variables → Actions
