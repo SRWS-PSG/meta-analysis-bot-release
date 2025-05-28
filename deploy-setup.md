@@ -103,7 +103,7 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:$SA_EMAIL" \
-  --role="roles/artifactregistry.writer"
+  --role="roles/artifactregistry.admin"
 
 # 3. Secret Manager に .env を登録 (.env がカレントにある前提)
 gcloud secrets create app-env --replication-policy=automatic
