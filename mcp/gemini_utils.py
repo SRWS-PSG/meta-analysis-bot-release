@@ -687,7 +687,7 @@ def map_csv_columns_to_meta_analysis_roles(csv_columns: List[str], csv_sample_da
             # 候補が存在しない場合に備えてデフォルト値を設定
             mapped_args.setdefault("suggested_subgroup_candidates", [])
             mapped_args.setdefault("suggested_moderator_candidates", [])
-            logger.info(f"Successfully mapped columns via Function Calling: {mapped_args}")
+            logger.info(f"Successfully mapped columns via Function Calling: {json.dumps(mapped_args, ensure_ascii=False)}") # DEBUG LOG
             return {"mapped_columns": mapped_args}
         else:
             logger.warning(f"No function call 'map_csv_columns_to_meta_analysis_roles' found in Gemini response. Response parts: {response.candidates[0].content.parts}")
