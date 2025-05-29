@@ -41,7 +41,7 @@ class ParameterCollector:
         self.context_manager = context_manager
         self.async_runner = async_runner # Store async_runner
 
-    def _update_collected_params_and_get_next_question(self, extracted_params_map: dict, collected_params_state: dict, data_summary: dict, thread_id: str, channel_id: str) -> tuple[bool, Optional[str]]:
+    def _update_collected_params_and_get_next_question(self, extracted_params_map: dict, collected_params_state: dict, data_summary: dict, thread_id: str, channel_id: str) -> Tuple[bool, Optional[str]]:
         logger.info(f"Updating collected_params. Current: {collected_params_state}, Extracted: {extracted_params_map}")
         
         # コンテキストからgemini_questionsを取得（正しいパス: data_state.gemini_analysis.suggested_questions）
