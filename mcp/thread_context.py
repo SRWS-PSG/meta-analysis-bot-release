@@ -14,6 +14,10 @@ import tempfile
 from pathlib import Path
 import shutil
 
+# Firestore imports
+from google.cloud import firestore
+from .firestore_client import get_db
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -166,6 +170,93 @@ class DynamoDBStorage:
             self.table.delete_item(Key={'thread_key': key})
         except Exception as e:
             logger.error(f"DynamoDB削除エラー: {e}")
+
+
+class FirestoreStorage:
+    """Firestoreストレージバックエンド"""
+
+    COLL = "threads"  # Firestore collection name
+
+    def __init__(self):
+        try:
+            self.db = get_db()
+            self.available = True
+            logger.info("FirestoreStorage initialized successfully.")
+        except Exception as e:
+            logger.warning(f"Firestore client initialization error: {e}. Firestore storage will be unavailable.")
+            self.available = False
+
+    def get(self, key: str) -> Optional[Dict]:
+        """Firestoreからキーに対応する値を取得"""
+        if not self.available:
+            logger.error("Firestore client not available for get operation.")
+            return None
+
+        try:
+            actual_thread_id = key.split(':')[-1]
+            snap = self.db.collection(self.COLL).document(actual_thread_id).get()
+            
+            if not snap.exists:
+                logger.debug(f"Document {actual_thread_id} not found in Firestore for key {key}.")
+                return None
+
+            data = snap.to_dict()
+            if not data: # Should not happen if snap.exists is true, but as a safeguard
+                return None
+
+            # Check for 'expires_at' field for TTL
+            if 'expires_at' in data:
+                expires_at_val = data['expires_at']
+                # Firestore returns datetime objects for Timestamp fields
+                if isinstance(expires_at_val, datetime):
+                    if expires_at_val.timestamp() < time.time():
+                        logger.info(f"Firestore document {actual_thread_id} for key {key} has expired based on 'expires_at' field. Deleting.")
+                        self.delete(key)  # Use the original composite key for deletion consistency
+                        return None  # Expired
+                # If expires_at_val is firestore.SERVER_TIMESTAMP, it's not resolved yet, so not expired.
+            
+            return data
+        except Exception as e:
+            logger.error(f"Firestore get error for key {key} (doc_id: {actual_thread_id}): {e}")
+            return None
+
+    def set(self, key: str, value: Dict, expire: int = 0) -> None:
+        """Firestoreにキーと値を保存、オプションで有効期限を設定"""
+        if not self.available:
+            logger.error("Firestore client not available for set operation.")
+            return
+
+        try:
+            actual_thread_id = key.split(':')[-1]
+            
+            data_to_set = value.copy()
+            # Add/overwrite 'updated_at' with Firestore server timestamp
+            data_to_set["updated_at"] = firestore.SERVER_TIMESTAMP
+            
+            # Handle 'expire' for TTL by setting an 'expires_at' field (datetime)
+            if expire > 0:
+                expiration_datetime = datetime.fromtimestamp(time.time() + expire)
+                data_to_set['expires_at'] = expiration_datetime
+            elif 'expires_at' in data_to_set:  # If expire is 0 or not positive, remove 'expires_at' if it exists
+                del data_to_set['expires_at']
+
+            self.db.collection(self.COLL).document(actual_thread_id).set(data_to_set, merge=True)
+            logger.info(f"Context saved to Firestore for key {key} (doc_id: {actual_thread_id})")
+        except Exception as e:
+            logger.error(f"Firestore set error for key {key} (doc_id: {actual_thread_id}): {e}")
+
+    def delete(self, key: str) -> None:
+        """Firestoreからキーと対応する値を削除"""
+        if not self.available:
+            logger.error("Firestore client not available for delete operation.")
+            return
+        
+        try:
+            actual_thread_id = key.split(':')[-1]
+            self.db.collection(self.COLL).document(actual_thread_id).delete()
+            logger.info(f"Context deleted from Firestore for key {key} (doc_id: {actual_thread_id})")
+        except Exception as e:
+            logger.error(f"Firestore delete error for key {key} (doc_id: {actual_thread_id}): {e}")
 
 
 class ThreadContextManager:
@@ -421,7 +512,9 @@ class ThreadContextManager:
             return RedisStorage()
         elif backend == "dynamodb":
             return DynamoDBStorage()
-        else:
+        elif backend == "firestore":
+            return FirestoreStorage()
+        else:  # Default to memory storage
             return MemoryStorage()
 
 class FileBasedStorage:

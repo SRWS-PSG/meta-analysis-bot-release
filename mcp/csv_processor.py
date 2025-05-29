@@ -161,12 +161,18 @@ class CsvProcessor:
                 processed_csv_job_ids.add(job_id)
                 context["processed_csv_job_ids"] = list(processed_csv_job_ids)
                 
+                logger.info(f"DEBUG: csv_processor - result from analyze_csv: {result}") # DEBUG LOG
+                column_mappings_from_result = result.get("column_mappings", {})
+                gemini_analysis_from_result = result.get("gemini_analysis")
+                logger.info(f"DEBUG: csv_processor - column_mappings_from_result: {json.dumps(column_mappings_from_result, ensure_ascii=False)}") # DEBUG LOG
+                logger.info(f"DEBUG: csv_processor - gemini_analysis_from_result: {json.dumps(gemini_analysis_from_result, ensure_ascii=False)}") # DEBUG LOG
+                
                 context["data_state"] = {
                     "file_path": str(result.get("file_path")),
                     "summary": result.get("summary"),
                     "suitable_for_meta_analysis": result.get("suitable_for_meta_analysis"),
-                    "gemini_analysis": result.get("gemini_analysis"),
-                    "column_mappings": result.get("column_mappings", {}), # 新しく追加
+                    "gemini_analysis": gemini_analysis_from_result,
+                    "column_mappings": column_mappings_from_result,
                     "thread_dir": thread_dir
                 }
                 

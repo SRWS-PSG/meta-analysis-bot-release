@@ -114,7 +114,14 @@ gcloud services enable run.googleapis.com `
                        cloudresourcemanager.googleapis.com `
                        secretmanager.googleapis.com `
                        iam.googleapis.com `
-                       logging.googleapis.com
+                       logging.googleapis.com `
+                       firestore.googleapis.com # Firestore API を追加
+
+# 1.1 Firestore データベース作成 (API有効化後、SA権限設定前を推奨)
+# リージョンは Cloud Run と同じものを指定してください (例: $REGION 変数)
+# 1 プロジェクトに1つ作成可能。既に存在する場合はスキップされます。
+# 注意: 無料枠利用の場合でも、Blazeプランへのアップグレードが求められることがあります。課金は超過分のみです。
+gcloud firestore databases create --location=$REGION --project=$PROJECT_ID
 
 # 2. サービス アカウント作成
 # GitHub Actions用SA
@@ -173,6 +180,11 @@ gcloud projects add-iam-policy-binding $PROJECT_ID `
 gcloud projects add-iam-policy-binding $PROJECT_ID `
   --member="serviceAccount:$RUNTIME_SA_EMAIL" `
   --role="roles/secretmanager.secretAccessor"
+
+# Firestoreへのアクセス権限をRuntime SAに付与
+gcloud projects add-iam-policy-binding $PROJECT_ID `
+  --member="serviceAccount:$RUNTIME_SA_EMAIL" `
+  --role="roles/datastore.user"
 
 # 6. Act As 権限設定（重要）
 # GitHub SA → Runtime SA

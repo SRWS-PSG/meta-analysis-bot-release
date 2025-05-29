@@ -46,6 +46,7 @@ class ParameterCollector:
         
         # コンテキストからgemini_questionsを取得（正しいパス: data_state.gemini_analysis.suggested_questions）
         context = self.context_manager.get_context(thread_id=thread_id, channel_id=channel_id)
+        logger.info(f"DEBUG: parameter_collector - context from context_manager: {json.dumps(context, ensure_ascii=False)}") # DEBUG LOG
         gemini_analysis_state = context.get("data_state", {}).get("gemini_analysis", {})
         gemini_questions = gemini_analysis_state.get("suggested_questions", [])
 
@@ -67,8 +68,8 @@ class ParameterCollector:
         logger.info(f"Updated collected_params: {collected_params_state}")
 
         # Geminiによる自動マッピング結果を取得
-        column_mappings_from_context = self.context_manager.get_context(thread_id=thread_id, channel_id=channel_id).get("data_state", {}).get("column_mappings", {})
-        logger.info(f"Column mappings from context: {column_mappings_from_context}")
+        column_mappings_from_context = context.get("data_state", {}).get("column_mappings", {}) # Use already fetched context
+        logger.info(f"DEBUG: parameter_collector - Column mappings from context: {json.dumps(column_mappings_from_context, ensure_ascii=False)}") # DEBUG LOG
 
         # 自動マッピングされたデータ列を collected_params_state["optional"]["data_columns"] に反映
         if "data_columns" not in collected_params_state["optional"]:
@@ -98,9 +99,10 @@ class ParameterCollector:
             
             # detected_columns から yi と vi のマッピングも確認 (HRの場合に特に重要)
             detected_columns_map = column_mappings_from_context.get("detected_columns", {})
+            logger.info(f"DEBUG: parameter_collector - Initial detected_effect_size: {detected_effect_size}, is_log_transformed: {is_log_transformed}, data_format: {data_format}, detected_columns_map: {json.dumps(detected_columns_map, ensure_ascii=False)}") # DEBUG LOG
             
             if detected_effect_size:
-                logger.info(f"Auto-detected effect size: {detected_effect_size}, log_transformed: {is_log_transformed}, format: {data_format}, detected_cols: {detected_columns_map}")
+                logger.info(f"DEBUG: parameter_collector - Auto-detected effect size: {detected_effect_size}, log_transformed: {is_log_transformed}, format: {data_format}, detected_cols: {json.dumps(detected_columns_map, ensure_ascii=False)}") # DEBUG LOG
                 
                 # 自動検出された効果量を設定
                 collected_params_state["required"]["effect_size"] = detected_effect_size

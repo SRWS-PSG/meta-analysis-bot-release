@@ -1,6 +1,17 @@
 import os
 import logging
 
+def clean_env_var(var_name, default=None):
+    """
+    環境変数からBOMと余分な空白を除去
+    Secret Managerから読み込まれた値にBOMが含まれる場合があるため
+    """
+    value = os.environ.get(var_name, default)
+    if value:
+        # BOM（\ufeff）と前後の空白を除去
+        return value.strip().lstrip('\ufeff').strip()
+    return value
+
 # Load environment variables from .env file only for local development
 # Cloud Run環境では環境変数が直接設定されるため、.envファイルは不要
 if os.path.exists('.env') and not os.getenv('GOOGLE_CLOUD_PROJECT'):
@@ -11,7 +22,7 @@ else:
     print("Using environment variables directly (Cloud Run or production)")
 
 # Configure logging with validation
-log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
+log_level = clean_env_var("LOG_LEVEL", "INFO").upper()
 valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 if log_level not in valid_levels:
     print(f"Invalid LOG_LEVEL '{log_level}', using INFO instead")
@@ -28,7 +39,7 @@ def main():
     Main function to initialize and start the Meta-Analysis Slack Bot.
     """
     # Check SOCKET_MODE setting
-    socket_mode = os.environ.get("SOCKET_MODE", "false").lower() == "true"
+    socket_mode = clean_env_var("SOCKET_MODE", "false").lower() == "true"
     
     # Ensure necessary environment variables are set
     required_env_vars = [
@@ -42,7 +53,7 @@ def main():
     else:
         logger.info("Running in HTTP Mode (Cloud Run compatible)")
 
-    missing_vars = [var for var in required_env_vars if not os.environ.get(var)]
+    missing_vars = [var for var in required_env_vars if not clean_env_var(var)]
     if missing_vars:
         logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
         if socket_mode:

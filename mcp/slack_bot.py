@@ -47,6 +47,18 @@ from mcp.report_handler import ReportHandler
 from mcp.message_handlers import MessageHandler # New import
 
 
+def clean_env_var(var_name, default=None):
+    """
+    環境変数からBOMと余分な空白を除去
+    Secret Managerから読み込まれた値にBOMが含まれる場合があるため
+    """
+    value = os.environ.get(var_name, default)
+    if value:
+        # BOM（\ufeff）と前後の空白を除去
+        return value.strip().lstrip('\ufeff').strip()
+    return value
+
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -56,8 +68,8 @@ class MetaAnalysisBot:
     def __init__(self):
         """初期化"""
         self.app = App(
-            token=os.environ.get("SLACK_BOT_TOKEN"),
-            signing_secret=os.environ.get("SLACK_SIGNING_SECRET").strip()
+            token=clean_env_var("SLACK_BOT_TOKEN"),
+            signing_secret=clean_env_var("SLACK_SIGNING_SECRET")
         )
         
         # Bot自身のユーザーIDを取得
@@ -74,7 +86,7 @@ class MetaAnalysisBot:
         except Exception as e:
             logger.error(f"Unexpected error fetching bot user ID via auth_test: {e}", exc_info=True)
 
-        storage_backend = os.environ.get("STORAGE_BACKEND", "memory")
+        storage_backend = clean_env_var("STORAGE_BACKEND", "memory")
         self.context_manager = ThreadContextManager(storage_backend=storage_backend)
         
         self.async_runner = AsyncAnalysisRunner()
@@ -159,18 +171,18 @@ class MetaAnalysisBot:
     # For now, assuming MessageHandler's version is sufficient. If not, a wrapper can be added here.
 
     def start(self):
-        socket_mode = os.environ.get("SOCKET_MODE", "false").lower() == "true"
+        socket_mode = clean_env_var("SOCKET_MODE", "false").lower() == "true"
         
         if socket_mode:
             # Socket Mode - WebSocket接続でSlackと通信
             logger.info("Starting bot in Socket Mode")
-            if not os.environ.get("SLACK_APP_TOKEN"):
+            if not clean_env_var("SLACK_APP_TOKEN"):
                 logger.error("SLACK_APP_TOKEN is required for Socket Mode")
                 return
-            SocketModeHandler(self.app, os.environ.get("SLACK_APP_TOKEN").strip()).start()
+            SocketModeHandler(self.app, clean_env_var("SLACK_APP_TOKEN")).start()
         else:
             # HTTP Mode - HTTPエンドポイントでSlackと通信（Cloud Run対応）
-            port = int(os.environ.get("PORT", 8080))
+            port = int(clean_env_var("PORT", "8080"))
             logger.info(f"Starting bot in HTTP Mode on port {port}")
             self.app.start(port=port)
 
