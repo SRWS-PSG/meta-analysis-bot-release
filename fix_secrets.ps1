@@ -3,6 +3,7 @@
 
 Write-Host "=== Starting Secret cleanup process ==="
 
+
 # === 1. GEMINI_API_KEY ===
 Write-Host "=== Fixing gemini-api-key ==="
 $DIRTY_GEMINI = gcloud secrets versions access latest --secret="gemini-api-key"
