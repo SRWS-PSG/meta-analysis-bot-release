@@ -276,37 +276,36 @@ class ThreadContextManager:
 
     def get_thread_storage_path(self, thread_id: str, channel_id: Optional[str] = None) -> Optional[str]:
         """
-        スレッド固有のストレージパスを取得する（FileBasedStorageの場合のみ）。
-        ディレクトリが存在しない場合は作成を試みる。
+        Gets the storage path for a given thread.
+        For file-based storage, it returns the specific thread's directory.
+        For Firestore (or other non-file-based storage), it creates and returns a temporary directory.
         """
         key = self._make_key(thread_id, channel_id)
-        if hasattr(self.storage, 'get_thread_directory_path') and callable(getattr(self.storage, 'get_thread_directory_path')):
-            # This method in FileBasedStorage returns the path string
-            # We want to ensure the directory exists when its path is requested for use.
-            
-            # Access _get_thread_dir directly if get_thread_directory_path is just a getter
-            # Or, ensure get_thread_directory_path also creates.
-            # The current FileBasedStorage._get_thread_dir does not create.
-            # FileBasedStorage.set *does* create.
-            # Let's make get_thread_storage_path ensure creation.
-            
+        if isinstance(self.storage, FileBasedStorage):
             thread_dir_path_obj = self.storage._get_thread_dir(key) # Gets Path object
             try:
                 thread_dir_path_obj.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Ensured FileBasedStorage directory exists: {thread_dir_path_obj}")
                 return str(thread_dir_path_obj)
             except Exception as e:
-                logger.error(f"Failed to create or access thread directory {thread_dir_path_obj}: {e}")
+                logger.error(f"Failed to create or access FileBasedStorage directory {thread_dir_path_obj}: {e}")
                 return None
-        elif isinstance(self.storage, FileBasedStorage): # Direct check if needed
-             thread_dir_path_obj = self.storage._get_thread_dir(key)
-             try:
-                thread_dir_path_obj.mkdir(parents=True, exist_ok=True)
-                return str(thread_dir_path_obj)
-             except Exception as e:
-                logger.error(f"Failed to create or access thread directory {thread_dir_path_obj} (direct check): {e}")
+        elif isinstance(self.storage, FirestoreStorage): # Check if storage is Firestore
+            try:
+                # Cloud Runなどの環境で利用可能な一時ディレクトリを作成
+                tmp_dir = tempfile.mkdtemp(prefix=f"thread_{channel_id or 'nochannel'}_{thread_id}_")
+                logger.info(f"Created temporary directory for Firestore backend: {tmp_dir} for key {key}")
+                return tmp_dir
+            except Exception as e:
+                logger.error(f"Failed to create temporary directory for Firestore backend (key {key}): {e}")
                 return None
-        return None
-    
+        else:
+            # For other storage backends like MemoryStorage, RedisStorage, DynamoDBStorage,
+            # a file system path might not be applicable or might need a different approach.
+            # For now, returning None if not FileBasedStorage or Firestore.
+            logger.warning(f"get_thread_storage_path not implemented for storage backend type: {type(self.storage)}. Key: {key}")
+            return None
+
     def get_context(self, thread_id: str, channel_id: Optional[str] = None) -> Optional[Dict]:
         """
         スレッドコンテキストを取得
