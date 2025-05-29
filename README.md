@@ -105,7 +105,7 @@ Slackで共有されたCSVファイルからメタ解析を実行し、結果を
 
 11. **スレッドコンテキスト管理 (mcp/thread_context.py)**
     - スレッドごとの会話履歴、データ状態、分析状態の永続化。
-    - ストレージバックエンド対応（メモリ、Redis、DynamoDB、ファイル）。
+    - ストレージバックエンド対応（メモリ、Redis、DynamoDB、ファイル、Firestore）。
 
 12. **非同期処理 (mcp/async_processing.py)**
     - 時間のかかるタスク（`CsvProcessor`によるCSV解析、`AnalysisExecutor`によるメタ解析）のバックグラウンド実行。
@@ -200,7 +200,7 @@ Slack Botをセットアップするには、以下の手順に従ってくだ�
 *   `SLACK_SIGNING_SECRET`: Slackアプリの署名シークレット (必須)
 *   `SLACK_APP_TOKEN`: Socket Modeを使用する場合のSlackアプリトークン (Socket Mode利用時必須)
 *   `SOCKET_MODE`: `true` (Socket Modeを使用する場合) または `false` (デフォルト: `false`、HTTPモード)
-*   `STORAGE_BACKEND`: コンテキスト保存先。`memory` (デフォルト), `redis`, `dynamodb`, `file` のいずれか。
+*   `STORAGE_BACKEND`: コンテキスト保存先。`memory` (デフォルト), `redis`, `dynamodb`, `file`, `firestore` のいずれか。
     *   `STORAGE_BACKEND=redis` の場合:
         *   `REDIS_HOST`: Redisサーバーのホスト名 (デフォルト: `localhost`)
         *   `REDIS_PORT`: Redisサーバーのポート番号 (デフォルト: `6379`)
@@ -209,6 +209,9 @@ Slack Botをセットアップするには、以下の手順に従ってくだ�
     *   `STORAGE_BACKEND=dynamodb` の場合:
         *   `DYNAMODB_TABLE`: 使用するDynamoDBテーブル名 (デフォルト: `slack_thread_contexts`)
         *   AWS認証情報 (例: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` など) がboto3によって解決可能である必要があります。
+    *   `STORAGE_BACKEND=firestore` の場合:
+        *   GCPプロジェクトIDが設定されている必要があります。通常、`GOOGLE_CLOUD_PROJECT` 環境変数が利用されるか、`gcloud auth application-default login` で認証されたプロジェクトが使用されます。
+        *   Cloud RunなどのGCP環境で実行する場合、実行サービスアカウントにFirestoreへの読み書き権限 (`roles/datastore.user` など) が必要です。
     *   `file`の場合:
         * 立ち上げているサーバー内に保持します。
 *   `GEMINI_API_KEY`: Gemini APIを使用する場合のAPIキー (必須)
