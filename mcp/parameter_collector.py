@@ -528,8 +528,10 @@ class ParameterCollector:
                             logger.error(f"Failed to send message in parameter_collector, not updating last_bot_message. Response: {response}")
             
             except Exception as e:
-                logger.error(f"Error in handle_analysis_preference_dialog: {e}", exc_info=True)
-                client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text="パラメータ処理中にエラーが発生しました。")
+                error_message = f"Error in handle_analysis_preference_dialog: {type(e).__name__} - {str(e)}"
+                logger.error(error_message, exc_info=True) # Keep exc_info for full trace if possible
+                logger.info(f"PARAMETER_COLLECTOR_ERROR_DETAIL: {error_message}") # Add specific INFO log for easier finding
+                client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text="パラメータ処理中にエラーが発生しました。詳細はシステムログを確認してください。")
             finally:
                 context["parameter_collection_in_progress"] = False # 処理完了時にフラグをクリア
                 if thinking_message_ts:
