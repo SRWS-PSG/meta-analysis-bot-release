@@ -39,11 +39,14 @@ class MessageHandler:
         if not context:
             context = {
                 "thread_active": True, "thread_ts": thread_ts, "channel_id": channel_id,
-                "dialog_state": {"type": "waiting_for_file", "state": "initial"}
+                "dialog_state": {"type": "waiting_for_file", "state": "initial"},
+                "processed_file_ids": [] # ファイルIDの重複チェック用リスト
             }
             logger.info(f"Created new context for thread {thread_ts}")
         else:
             context["thread_ts"] = thread_ts; context["channel_id"] = channel_id
+            if "processed_file_ids" not in context: # 既存コンテキストにない場合追加
+                context["processed_file_ids"] = []
             logger.info(f"Using existing context for thread {thread_ts}")
 
         files = event.get("files", [])
@@ -51,8 +54,18 @@ class MessageHandler:
         
         if csv_files:
             file_obj = csv_files[0]
+            file_id = file_obj.get("id")
+            if file_id and file_id in context.get("processed_file_ids", []):
+                logger.info(f"File {file_id} already processed in app_mention, skipping. Event ts: {event.get('ts')}")
+                # 必要であればユーザーに通知するメッセージを送信
+                # client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text=f"ファイル「{file_obj.get('name')}」は既に処理を開始しています。")
+                return
+
             client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text=f"CSVファイル「{file_obj.get('name')}」を受け取りました。分析を開始します。")
             self.csv_processor.process_csv_file(file_obj, thread_ts, channel_id, client, context)
+            
+            if file_id:
+                context.setdefault("processed_file_ids", []).append(file_id)
         else:
             client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text="こんにちは！メタアナリシスBotです。私を呼ぶのと同時にCSVファイルを共有していただければ、メタアナリシスを実行します。")
             DialogStateManager.set_dialog_state(context, "WAITING_FILE") # DialogStateManager を直接使用
@@ -114,7 +127,9 @@ class MessageHandler:
                     "thread_ts": thread_ts, 
                     "channel_id": channel_id,
                     "dialog_state": {"type": "waiting_for_file", "state": "initial"}, # app_mention と同じ初期状態
-                    "processed_event_ts": [] # 新規作成時は空リスト
+                    "processed_event_ts": [], # 新規作成時は空リスト
+                    "processed_file_ids": [], # ファイルIDの重複チェック用リスト
+                    "history": [] # 会話履歴を初期化
                 }
                 # self.context_manager.save_context(thread_ts, context, channel_id) # すぐに保存するかは検討
             else:
@@ -139,8 +154,22 @@ class MessageHandler:
 
         if csv_files and current_dialog_type == "waiting_for_file":
             file_obj = csv_files[0]
+            file_id = file_obj.get("id")
+            if file_id and file_id in context.get("processed_file_ids", []):
+                logger.info(f"File {file_id} already processed in message handler, skipping. Event ts: {event_ts}")
+                # 必要であればユーザーに通知するメッセージを送信
+                # client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text=f"ファイル「{file_obj.get('name')}」は既に処理を開始しています。")
+                processed_event_ts_list.append(event_ts) # このイベントは処理済みとしてマーク
+                context["processed_event_ts"] = processed_event_ts_list
+                self.context_manager.save_context(thread_ts, context, channel_id)
+                return
+
             client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text=f"CSVファイル「{file_obj.get('name')}」を受け取りました。分析を開始します。")
             self.csv_processor.process_csv_file(file_obj, thread_ts, channel_id, client, context)
+            
+            if file_id:
+                context.setdefault("processed_file_ids", []).append(file_id)
+            
             # CSV処理後は一度returnして、ユーザーの次のアクションを待つ
             processed_event_ts_list.append(event_ts)
             context["processed_event_ts"] = processed_event_ts_list
@@ -349,6 +378,7 @@ class MessageHandler:
                     "channel_id": channel_id,
                     "dialog_state": {"type": "waiting_for_file", "state": "initial"},
                     "processed_event_ts": [],
+                    "processed_file_ids": [], # ファイルIDの重複チェック用リスト
                     "history": [] # 会話履歴を初期化
                 }
             else:
@@ -378,11 +408,23 @@ class MessageHandler:
 
         if csv_files and current_dialog_type == "waiting_for_file":
             file_obj = csv_files[0]
-            bot_response_text_for_history = f"CSVファイル「{file_obj.get('name')}」を受け取りました。分析を開始します。"
-            response = client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text=bot_response_text_for_history)
-            bot_response_ts_for_history = response.get("ts")
-            self.csv_processor.process_csv_file(file_obj, thread_ts, channel_id, client, context)
+            file_id = file_obj.get("id") # ファイルIDを取得
+            if file_id and file_id in context.get("processed_file_ids", []):
+                logger.info(f"File {file_id} already processed in message handler (duplicate check), skipping. Event ts: {event_ts}")
+                # このイベントは処理済みとしてマーク (応答はしない)
+                bot_response_text_for_history = None 
+                bot_response_ts_for_history = None
+            else:
+                bot_response_text_for_history = f"CSVファイル「{file_obj.get('name')}」を受け取りました。分析を開始します。"
+                response = client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text=bot_response_text_for_history)
+                bot_response_ts_for_history = response.get("ts")
+                self.csv_processor.process_csv_file(file_obj, thread_ts, channel_id, client, context)
+                if file_id:
+                    context.setdefault("processed_file_ids", []).append(file_id)
             # CSV処理後は一度returnして、ユーザーの次のアクションを待つ
+            # ただし、このロジックは handle_message の最初のifブロックと重複しているため、
+            # 実際にはこのelseブロック内のcsv_files処理はあまり実行されない可能性がある。
+            # 最初のifブロックでreturnするため。
         else:
             dialog_state = context.get("dialog_state", {})
             dialog_type = dialog_state.get("type")
