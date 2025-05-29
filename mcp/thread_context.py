@@ -18,6 +18,23 @@ import shutil
 from google.cloud import firestore
 from .firestore_client import get_db
 
+def convert_firestore_timestamps(obj):
+    """
+    Firestoreのタイムスタンプオブジェクトを JSON serializable な形式に変換する
+    """
+    if isinstance(obj, dict):
+        return {key: convert_firestore_timestamps(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_firestore_timestamps(item) for item in obj]
+    elif hasattr(obj, 'timestamp') and hasattr(obj, '__class__') and 'DatetimeWithNanoseconds' in str(obj.__class__):
+        # Firestore DatetimeWithNanoseconds オブジェクトの場合
+        return obj.isoformat() if hasattr(obj, 'isoformat') else str(obj)
+    elif isinstance(obj, datetime):
+        # 通常のdatetimeオブジェクトの場合
+        return obj.isoformat()
+    else:
+        return obj
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -215,6 +232,8 @@ class FirestoreStorage:
                         return None  # Expired
                 # If expires_at_val is firestore.SERVER_TIMESTAMP, it's not resolved yet, so not expired.
             
+            # タイムスタンプを JSON serializable な形式に変換
+            data = convert_firestore_timestamps(data)
             return data
         except Exception as e:
             logger.error(f"Firestore get error for key {key} (doc_id: {actual_thread_id}): {e}")
@@ -229,7 +248,10 @@ class FirestoreStorage:
         try:
             actual_thread_id = key.split(':')[-1]
             
+            # タイムスタンプを JSON serializable な形式に変換してからコピー
+            value = convert_firestore_timestamps(value)
             data_to_set = value.copy()
+            
             # Add/overwrite 'updated_at' with Firestore server timestamp
             data_to_set["updated_at"] = firestore.SERVER_TIMESTAMP
             
@@ -318,7 +340,11 @@ class ThreadContextManager:
             dict: スレッドコンテキスト、存在しない場合はNone
         """
         key = self._make_key(thread_id, channel_id)
-        return self.storage.get(key)
+        context = self.storage.get(key)
+        if context:
+            # タイムスタンプを JSON serializable な形式に変換
+            context = convert_firestore_timestamps(context)
+        return context
     
     def save_context(self, thread_id: str, context: Dict, channel_id: Optional[str] = None) -> None:
         """
@@ -330,6 +356,8 @@ class ThreadContextManager:
             channel_id: チャンネルID（オプション）
         """
         key = self._make_key(thread_id, channel_id)
+        # タイムスタンプを JSON serializable な形式に変換
+        context = convert_firestore_timestamps(context)
         context["last_updated"] = datetime.now().isoformat()
         self.storage.set(key, context, expire=self.expiration_seconds)
     
@@ -640,13 +668,4 @@ if __name__ == "__main__":
     }
     context_manager.update_analysis_state(thread_id, analysis_state, channel_id)
     
-    context_manager.update_history(
-        thread_id, 
-        "サブグループ解析を実行してください", 
-        "サブグループ変数は何を使用しますか？", 
-        channel_id
-    )
-    
-    context = context_manager.get_context(thread_id, channel_id)
-    if context:
-        print(json.dumps(context, indent=2, ensure_ascii=False))
+    context_manager
