@@ -25,6 +25,31 @@ class CsvProcessor:
         """
         CSVファイルを処理する共通メソッド
         """
+        # 処理中チェックを追加
+        current_dialog_type = context.get("dialog_state", {}).get("type")
+        # process_csv_fileが呼ばれるのは、基本的に handle_app_mention から。
+        # handle_app_mention 内で、既にファイル処理中かどうかをチェックする。
+        # ここでは、dialog_stateが "waiting_for_file" から "processing_file" に遷移することを前提とする。
+        # もし、何らかの理由で既に処理中の場合に呼ばれたら、重複処理を避ける。
+        if current_dialog_type == "processing_file" and context.get("file_processing_job_id"):
+            # 既に別のCSVファイルの処理が進行中の場合
+            logger.warning(f"Attempted to process CSV file {file_obj.get('name')} while another CSV is already being processed (job_id: {context.get('file_processing_job_id')}). Skipping.")
+            # ユーザーに通知（任意）
+            # client.chat_postMessage(
+            #     channel=channel_id,
+            #     thread_ts=thread_ts,
+            #     text=f"現在、ファイル「{context.get('data_state', {}).get('summary', {}).get('original_filename', '以前のファイル')}」を処理中です。完了後に再度お試しください。"
+            # )
+            return
+        elif current_dialog_type == "analysis_preference":
+             client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text="現在メタアナリシスのパラメータ設定中です。設定完了後に新しいファイルを共有してください。"
+            )
+             return
+
+
         context["initial_csv_prompt_sent"] = False
         self.context_manager.save_context(thread_ts, context, channel_id)
 

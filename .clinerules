@@ -147,6 +147,19 @@ else:
 
 ```
 
+## GCPメモリデバッグの手順
+- Cloud Runコンテナでのメモリリーク調査
+- Firestoreデータの整合性確認
+- コンテキスト保存/読み込みのトレース
+- gcloudコマンドでの直接データベース確認
+- メモリ使用量とパフォーマンスの監視
+
+## Firestoreデバッグ固有の注意点
+- タイムスタンプ変換問題の特定方法
+- レースコンディションの検出
+- `context.json`の保存状態確認
+- Gemini分析結果の永続化確認
+
 # Rのコードスニペット
 ## forest plot
 ```r
@@ -259,4 +272,149 @@ regplot(res, xlim=c(10,60), predlim=c(10,60), xlab="Absolute Latitude", refline=
         atransf=exp, at=log(seq(0.2,1.6,by=0.2)), digits=1, las=1, bty="l",
         label=c(4,7,12,13), offset=c(1.6,0.8), labsize=0.9)
 ```
+
+# gcloud CLI を使用した Cloud Run ログの確認手順
+
+## 1️⃣ Cloud Run 専用ショートカット ― 最も手軽に読む
+Cloud Run なら Google Cloud CLI がラッパーを用意しています。
+
+```bash
+gcloud run services logs read python-app \
+  --project=gen-lang-client-0650715719 \
+  --region=asia-northeast1 \
+  --limit=100   # 最近100行
+```
+`gcloud run services logs read` は内部で最適なフィルタを生成するので、
+引数はサービス名・リージョン・プロジェクトだけで済みます。
+
+`--limit`, `--severity=ERROR` などの一般的なオプションも利用できます。
+
+## 2️⃣ gcloud logging read の基本構文
+より細かい条件を付けたいときは Logging API 直結のコマンドを使います。
+
+```bash
+gcloud logging read \
+  'resource.type="cloud_run_revision" AND
+   resource.labels.service_name="python-app" AND
+   resource.labels.location="asia-northeast1"' \
+  --project=gen-lang-client-0650715719 \
+  --limit=200 \
+  --format='table(timestamp, severity, textPayload)'
+```
+フィルタ全体をシングルクォートで囲み、内部はダブルクォートが鉄則。
+これで Bash でも PowerShell でも変数展開を防げます。
+
+出力は `table`, `json`, `value(textPayload)` などで整形可能。
+
+## 3️⃣ Cloud Run 固有フィルタの書き方
+| 目的             | 例                                       | 補足                                     |
+| ---------------- | ---------------------------------------- | ---------------------------------------- |
+| 特定サービスだけ | `resource.labels.service_name="python-app"` | Cloud Run Revision の必須属性            |
+| リージョン指定   | `resource.labels.location="asia-northeast1"` | 地域を含めると他リージョンの雑音を除去   |
+| 深刻度フィルタ   | `severity>=ERROR`                        | 重大エラーのみ抽出                       |
+| JSON ペイロード検索 | `jsonPayload.context_json:"memory"`      | 構造化ログの場合に便利                   |
+
+## 4️⃣ 日時条件の組み込み
+RFC 3339形式が必須：`timestamp>="2025-05-30T06:00:00Z"`
+
+ざっくり直近だけなら `--freshness=2h` という CLI フラグでも可。
+
+## 5️⃣ リアルタイムで追いかける（テイル）
+```bash
+# 事前に log-streaming コンポーネントを入れておく
+gcloud components install log-streaming
+
+gcloud alpha logging tail \
+  'resource.type="cloud_run_revision" AND resource.labels.service_name="python-app"' \
+  --project=gen-lang-client-0650715719
+```
+`tail` はストリーミング API (entries.tail) を使いリアルタイム監視が可能。
+
+## 6️⃣ Windows PowerShell での引用符トラブル回避
+| ケース                             | 回避策                                     |
+| ---------------------------------- | ------------------------------------------ |
+| ダブルクォート内にさらにダブルクォート | `"resource.type=\`"cloud_run_revision\`""` |
+| シングルクォートを文字列に含めたい   | 連続させて `''` と書く                     |
+
+フィルタ文字列を 変数に代入→渡す と可読性もアップ：
+
+```powershell
+$filter = 'resource.type="cloud_run_revision" AND resource.labels.service_name="python-app"'
+gcloud logging read $filter --project $PROJECT --limit 100
+```
+
+## 7️⃣ よくあるエラーとヒント
+| 症状               | 原因                                 | 解決                                                       |
+| ------------------ | ------------------------------------ | ---------------------------------------------------------- |
+| Unparseable filter | 演算子前後のスペース不足や引用符ずれ | フィルタを Logs Explorer で一度テストしてから CLI へコピー |
+| 0 行しか返らない   | `resource.type` が誤り               | Cloud Run なら必ず `cloud_run_revision` を使う             |
+| 500 Internal Error | 一時的な API 障害                    | 数分待って再試行、または `gcloud run services logs read` へ切替 |
+
+## 8️⃣ コマンドスニペット集（コピーして即実行）
+```bash
+# 8-1 直近１時間・ERROR 以上
+gcloud logging read \
+ 'resource.type="cloud_run_revision" AND resource.labels.service_name="python-app" AND severity>=ERROR AND timestamp>="'$(date -u -d '-1 hour' +%FT%TZ)'"' \
+ --project=gen-lang-client-0650715719 --limit=100 --format=json
+
+# 8-2 textPayload に "context.json" を含む行を 50 件
+gcloud logging read \
+ 'resource.type="cloud_run_revision" AND textPayload:"context.json"' \
+ --project=gen-lang-client-0650715719 --limit=50 \
+ --format='table(timestamp, textPayload)'
+```
+
+## まとめ
+- まずは `gcloud run services logs read` で動作確認。
+- 詳細分析は `gcloud logging read` + Logging Query Language を習得。
+- フィルタ全体を１組の引用符で包み、内部の `" "` を崩さない。
+- 時間条件は RFC 3339、または `--freshness` を活用。
+- PowerShell はとくに引用符の入れ子・エスケープに注意。
+
+これらのコツを押さえれば、「フィルタ構文エラー」や「ログが０件」問題を大幅に減らし、必要な Cloud Run ログを確実に取得できます。
+
+## Firestore デバッグの注意点
+2. gcloud CLI でドキュメントを読む
+2-1. 環境変数と認証
+bash
+コピーする
+編集する
+PROJECT_ID=gen-lang-client-0650715719
+export GOOGLE_CLOUD_PROJECT=$PROJECT_ID   # ADC を使う場合
+gcloud auth login                         # ローカル検証時のみ
+Cloud Run 内では Workload Identity で自動認証されるため不要。
+
+2-2. ドキュメント一覧（list）
+bash
+コピーする
+編集する
+gcloud firestore documents list \
+  --project=$PROJECT_ID \
+  --collection-ids=myCollection \
+  --page-size=20 \
+  --format="table(name.basename():label=DOC_ID, updateTime)"
+--collection-ids でトップレベルコレクションを指定。
+
+階層パスを直接指定したい場合は --parent="projects/$PROJECT_ID/databases/(default)/documents/users/alice" のように書く。 
+Fig
+Google Cloud
+
+2-3. 単一ドキュメント取得（get）
+bash
+コピーする
+編集する
+gcloud firestore documents get \
+  projects/$PROJECT_ID/databases/(default)/documents/myCollection/doc123 \
+  --project=$PROJECT_ID \
+  --format=json
+フルリソース名を第 1 引数に書く（path 省略形不可）。
+
+--mask.field-paths="fieldA,fieldB" で必要なフィールドだけ取得可能。 
+Fig
+
+2-4. IAM エラー時
+役割 roles/datastore.user で読み取り可、書き込みは roles/datastore.owner か roles/datastore.editor。
+
+Cloud Run の実行サービスアカウントにロールを付与しているか確認。 
+Google Cloud
 

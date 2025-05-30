@@ -53,24 +53,40 @@ class MessageHandler:
         csv_files = [f for f in files if f.get("name", "").lower().endswith(".csv")]
         
         if csv_files:
+            # ファイル処理中か確認
+            current_dialog_type = context.get("dialog_state", {}).get("type")
+            if current_dialog_type in ["processing_file", "analysis_preference"]:
+                client.chat_postMessage(
+                    channel=channel_id,
+                    thread_ts=thread_ts,
+                    text="現在別のファイルを処理中です。処理完了後に再度お試しいただくか、別スレッドでご相談ください。"
+                )
+                context_manager_instance.save_context(thread_ts, context, channel_id)
+                return
+
             file_obj = csv_files[0]
             file_id = file_obj.get("id")
             if file_id and file_id in context.get("processed_file_ids", []):
                 logger.info(f"File {file_id} already processed in app_mention, skipping. Event ts: {event.get('ts')}")
-                # 必要であればユーザーに通知するメッセージを送信
                 # client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text=f"ファイル「{file_obj.get('name')}」は既に処理を開始しています。")
+                context_manager_instance.save_context(thread_ts, context, channel_id)
                 return
 
-            client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text=f"CSVファイル「{file_obj.get('name')}」を受け取りました。分析を開始します。")
+            # 最初のメッセージ送信は csv_processor に任せるか、ここで統一するか検討。
+            # csv_processor.process_csv_file の冒頭で「分析を開始しています...」を送信しているので、
+            # ここでの「受け取りました」メッセージは削除または変更する。
+            # client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text=f"CSVファイル「{file_obj.get('name')}」を受け取りました。分析を開始します。")
+            
             self.csv_processor.process_csv_file(file_obj, thread_ts, channel_id, client, context)
             
-            if file_id:
+            if file_id: # process_csv_file が正常に開始された場合のみ追加
                 context.setdefault("processed_file_ids", []).append(file_id)
         else:
+            # ファイルがないメンションの場合
             client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text="こんにちは！メタアナリシスBotです。私を呼ぶのと同時にCSVファイルを共有していただければ、メタアナリシスを実行します。")
-            DialogStateManager.set_dialog_state(context, "WAITING_FILE") # DialogStateManager を直接使用
+            DialogStateManager.set_dialog_state(context, "WAITING_FILE")
         
-        context_manager_instance.save_context(thread_ts, context, channel_id) # 引数の context_manager_instance を使用
+        context_manager_instance.save_context(thread_ts, context, channel_id)
 
     def handle_message(self, event, client, run_meta_analysis_wrapper_func, check_analysis_job_func):
         try:
@@ -150,34 +166,34 @@ class MessageHandler:
 
 
         csv_files = [f for f in event_files if f.get("name", "").lower().endswith(".csv")]
-        current_dialog_type = context.get("dialog_state", {}).get("type")
+        current_dialog_state = context.get("dialog_state", {})
+        current_dialog_type = current_dialog_state.get("type")
 
-        if csv_files and current_dialog_type == "waiting_for_file":
-            file_obj = csv_files[0]
-            file_id = file_obj.get("id")
-            if file_id and file_id in context.get("processed_file_ids", []):
-                logger.info(f"File {file_id} already processed in message handler, skipping. Event ts: {event_ts}")
-                # 必要であればユーザーに通知するメッセージを送信
-                # client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text=f"ファイル「{file_obj.get('name')}」は既に処理を開始しています。")
-                processed_event_ts_list.append(event_ts) # このイベントは処理済みとしてマーク
+        # messageイベントでは、app_mentionでファイルが処理されることを期待し、ファイル処理は行わない。
+        # ただし、ユーザーがファイル処理中やパラメータ収集中に新しいファイルを投げた場合は拒否メッセージを出す。
+        if csv_files:
+            if current_dialog_type in ["processing_file", "analysis_preference"]:
+                client.chat_postMessage(
+                    channel=channel_id,
+                    thread_ts=thread_ts,
+                    text="現在別のファイルを処理中です。処理完了後に再度お試しいただくか、別スレッドでご相談ください。"
+                )
+                # このイベントは処理済みとしてマーク
+                processed_event_ts_list.append(event_ts)
+                context["processed_event_ts"] = processed_event_ts_list
+                self.context_manager.save_context(thread_ts, context, channel_id)
+                return
+            else:
+                # waiting_for_file の場合など、app_mention で処理されるはずなのでここでは何もしない
+                logger.info(f"CSV file found in message event (type: {current_dialog_type}), but deferring to app_mention or ignoring. Event ts: {event_ts}")
+                # このイベントは処理済みとしてマーク (応答はしない)
+                processed_event_ts_list.append(event_ts)
                 context["processed_event_ts"] = processed_event_ts_list
                 self.context_manager.save_context(thread_ts, context, channel_id)
                 return
 
-            client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text=f"CSVファイル「{file_obj.get('name')}」を受け取りました。分析を開始します。")
-            self.csv_processor.process_csv_file(file_obj, thread_ts, channel_id, client, context)
-            
-            if file_id:
-                context.setdefault("processed_file_ids", []).append(file_id)
-            
-            # CSV処理後は一度returnして、ユーザーの次のアクションを待つ
-            processed_event_ts_list.append(event_ts)
-            context["processed_event_ts"] = processed_event_ts_list
-            self.context_manager.save_context(thread_ts, context, channel_id)
-            return
-
-        dialog_state = context.get("dialog_state", {})
-        dialog_type = dialog_state.get("type")
+        dialog_state = context.get("dialog_state", {}) # 再取得
+        dialog_type = dialog_state.get("type") # 再取得
         
         # Botが最後にメッセージを送信した時刻を記録・取得
         last_bot_message_details = context.get("last_bot_message", {})
