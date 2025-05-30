@@ -373,7 +373,7 @@ gcloud logging read \
 
 これらのコツを押さえれば、「フィルタ構文エラー」や「ログが０件」問題を大幅に減らし、必要な Cloud Run ログを確実に取得できます。
 
-## Firestore デバッグの注意点
+## Firestore デバッグのためにファイルを参照するときの注意点
 Firestore REST API を curl で直叩きするときの注意点まとめ
 (＝ gcloud firestore … は使えない！！)
 
