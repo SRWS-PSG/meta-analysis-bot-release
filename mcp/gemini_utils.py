@@ -641,6 +641,7 @@ def map_csv_columns_to_meta_analysis_roles(csv_columns: List[str], csv_sample_da
             f"- 'events_experimental' → 'ai' (実験群のイベント数)\n"
             f"- 'total_experimental' → 'n1i' (実験群の総数)\n\n"
             f"【役割マッピングのヒント】\n"
+            f"- **最優先事項:** CSV列名に 'Study', 'study', 'STUDY', 'study_id', 'StudyID', 'study_name', 'StudyName', 'Author', 'author' のような、研究や論文を一意に識別する可能性のある単一の列が存在する場合、それを `study_label` の役割にマッピングしてください。この単一の `study_label` が見つかった場合、`study_label_author` や `study_label_year` の個別マッピングは不要です。もし適切な単一の `study_label` が見つからない場合に限り、`study_label_author` と `study_label_year` の組み合わせによるラベル生成を検討してください。\n"
             f"- 'study_id'や'author'のような研究識別子は、ユニークな値が多い文字列型の列が該当しやすいです。\n"
             f"- 'publication_year'は年を表す数値型の列が該当します。\n"
             f"- 'events_treatment', 'total_treatment', 'events_control', 'total_control' は、イベント数や総数を表す整数型の列が該当します。\n"
