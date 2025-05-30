@@ -300,6 +300,63 @@ class ParameterCollector:
                 "proportion_events", "proportion_total", "proportion_time", "yi", "vi",
                 "study_label", "study_label_author", "study_label_year"]
 
+    def _get_sensitivity_candidates(self, data_summary: dict) -> List[str]:
+        """感度分析の候補を取得する"""
+        sensitivity_candidates_formatted = []
+        
+        if data_summary and data_summary.get("columns"):
+            df_sample_head = pd.DataFrame(data_summary.get("head", []))
+            if not df_sample_head.empty:
+                for col in data_summary.get("columns", []):
+                    if col in df_sample_head.columns and \
+                       (df_sample_head[col].dtype == 'object' or pd.api.types.is_string_dtype(df_sample_head[col])):
+                        
+                        # headデータからカテゴリとその出現回数を取得
+                        value_counts_in_head = df_sample_head[col].value_counts()
+                        # 出現回数が2回以上のカテゴリのみを抽出 (headの範囲内)
+                        valid_categories_in_head = [
+                            str(idx) for idx, count in value_counts_in_head.items() if count > 1
+                        ]
+                        
+                        # 元のロジック: ユニークなカテゴリ数が1より多く5以下の場合に候補とする
+                        if valid_categories_in_head and (1 < len(valid_categories_in_head) <= 5):
+                            sensitivity_candidates_formatted.append(f"{col} ({', '.join(valid_categories_in_head)})")
+        
+        return sensitivity_candidates_formatted
+
+    def _check_and_ask_for_no_candidate_params(self, column_mappings: dict, data_summary: dict, collected_params_state: dict) -> Tuple[bool, Optional[str]]:
+        """候補がない項目をまとめて確認する"""
+        no_candidate_items = []
+        
+        # 各項目の候補をチェック（まだ質問していない項目のみ）
+        if "subgroup_columns" not in collected_params_state.get("asked_optional", []):
+            subgroup_candidates = column_mappings.get("suggested_subgroup_candidates", [])
+            if not subgroup_candidates:
+                no_candidate_items.append("サブグループ解析")
+        
+        if "moderator_columns" not in collected_params_state.get("asked_optional", []):
+            moderator_candidates = column_mappings.get("suggested_moderator_candidates", [])
+            if not moderator_candidates:
+                no_candidate_items.append("メタ回帰分析")
+        
+        if "sensitivity_variable" not in collected_params_state.get("asked_optional", []):
+            sensitivity_candidates = self._get_sensitivity_candidates(data_summary)
+            if not sensitivity_candidates:
+                no_candidate_items.append("感度分析")
+        
+        # 候補がない項目がある場合、まとめて質問
+        if no_candidate_items:
+            question = f"以下の解析は適切な候補が見つかりませんでした：\n"
+            for item in no_candidate_items:
+                question += f"- {item}\n"
+            question += "\nこれらは「なし」としてよろしいですか？（はい/いいえ）"
+            
+            # 候補がない項目のリストを保存（後で処理するため）
+            collected_params_state["no_candidate_items_to_confirm_none"] = no_candidate_items # キー名を変更
+            return True, question
+        
+        return False, None
+
     def _get_missing_data_columns_question(self, effect_size: Optional[str], current_data_cols: Dict[str, str], available_csv_columns: List[str], column_mappings: Dict[str, Any]) -> Optional[str]:
         if not effect_size:
             return None
@@ -418,7 +475,41 @@ class ParameterCollector:
 
             try:
                 extracted_params_map = {}
-                if text:
+                # ユーザーが「はい」または「いいえ」で応答した場合の処理
+                no_candidate_items_to_confirm = collected_params_state.get("no_candidate_items_to_confirm_none", [])
+                
+                if no_candidate_items_to_confirm and text:
+                    lower_text = text.lower()
+                    if "はい" in lower_text or "yes" in lower_text:
+                        for item_name in no_candidate_items_to_confirm:
+                            if item_name == "サブグループ解析":
+                                collected_params_state["optional"]["subgroup_columns"] = []
+                                if "subgroup_columns" not in collected_params_state["asked_optional"]:
+                                    collected_params_state["asked_optional"].append("subgroup_columns")
+                            elif item_name == "メタ回帰分析":
+                                collected_params_state["optional"]["moderator_columns"] = []
+                                if "moderator_columns" not in collected_params_state["asked_optional"]:
+                                    collected_params_state["asked_optional"].append("moderator_columns")
+                            elif item_name == "感度分析":
+                                collected_params_state["optional"]["sensitivity_variable"] = None
+                                collected_params_state["optional"]["sensitivity_value"] = None
+                                if "sensitivity_variable" not in collected_params_state["asked_optional"]:
+                                    collected_params_state["asked_optional"].append("sensitivity_variable")
+                                if "sensitivity_value" not in collected_params_state["asked_optional"]:
+                                    collected_params_state["asked_optional"].append("sensitivity_value")
+                        logger.info(f"User confirmed 'none' for no-candidate items: {no_candidate_items_to_confirm}")
+                        collected_params_state.pop("no_candidate_items_to_confirm_none", None) # 確認済みなので削除
+                        # 「はい」と答えたので、Geminiによるパラメータ抽出はスキップ
+                    elif "いいえ" in lower_text or "no" in lower_text:
+                        # 「いいえ」の場合、これらの項目は後で個別に尋ねられるようにする
+                        logger.info(f"User replied 'no' for no-candidate items: {no_candidate_items_to_confirm}. These will be asked individually if not already asked.")
+                        collected_params_state.pop("no_candidate_items_to_confirm_none", None) # 確認済みなので削除
+                        # 「いいえ」と答えたので、Geminiによるパラメータ抽出はスキップ
+                    else:
+                        # 「はい」「いいえ」以外の応答の場合は、通常のパラメータ抽出へ
+                        pass # Fall through to normal parameter extraction
+                
+                if text and not collected_params_state.get("no_candidate_items_to_confirm_none"): # 「はい」「いいえ」で処理済みでなければ抽出
                     # 会話履歴と収集コンテキストを準備
                     raw_history = context.get("history", [])
                     conversation_history_for_gemini = []
@@ -428,17 +519,10 @@ class ParameterCollector:
                         if "bot" in entry and entry["bot"]:
                              conversation_history_for_gemini.append({"role": "model", "content": entry["bot"]}) # Geminiは 'model' を期待
 
-                    # 現在どのパラメータについて質問しているかを特定するロジック
                     current_question_target = None
                     if collected_params_state.get("missing_required"):
-                        current_question_target = collected_params_state["missing_required"][0]
-                    elif "subgroup_columns" not in collected_params_state.get("asked_optional", []):
-                        current_question_target = "subgroup_columns"
-                    elif "moderator_columns" not in collected_params_state.get("asked_optional", []):
-                        current_question_target = "moderator_columns"
-                    elif not self._get_missing_data_columns_question(collected_params_state.get("required", {}).get("effect_size"), collected_params_state.get("optional", {}).get("data_columns", {}), data_summary.get('columns', []), context.get("data_state", {}).get("column_mappings", {}).get("target_role_mappings", {})):
-                         current_question_target = "data_columns"
-
+                        current_question_target = collected_params_state.get("missing_required")[0]
+                    # ... (他のcurrent_question_targetのロジック)
 
                     collection_context_for_gemini = {
                         "phase": "parameter_collection",
@@ -462,18 +546,34 @@ class ParameterCollector:
                     extracted_params_map = gemini_response.get("extracted_params", {}) if isinstance(gemini_response, dict) else {}
                     if not extracted_params_map:
                         logger.warning(f"Gemini Function Calling failed or returned no params for text '{text}'. Response: {gemini_response}")
-                else:
-                    logger.info("Text for parameter extraction was empty, skipping Gemini call.")
-
-                parsed_model_type = None
-                lower_text = text.lower() 
-                if "fixed" in lower_text or "固定" in lower_text: parsed_model_type = "fixed"
-                elif "random" in lower_text or "ランダム" in lower_text: parsed_model_type = "random"
-                if parsed_model_type and not extracted_params_map.get("model_type"): extracted_params_map["model_type"] = parsed_model_type
                 
+                # 効果量やモデルタイプの簡易パース（Gemini抽出を補完）
+                if text: # text がある場合のみパース
+                    parsed_model_type = None
+                    lower_text_for_parse = text.lower()
+                    if "fixed" in lower_text_for_parse or "固定" in lower_text_for_parse: parsed_model_type = "fixed"
+                    elif "random" in lower_text_for_parse or "ランダム" in lower_text_for_parse: parsed_model_type = "random"
+                    if parsed_model_type and not extracted_params_map.get("model_type"): extracted_params_map["model_type"] = parsed_model_type
+                
+                # 最初に「候補なし」項目の一括確認を行う
+                column_mappings = context.get("data_state", {}).get("column_mappings", {})
+                asked_no_candidate_question, no_candidate_question_text = self._check_and_ask_for_no_candidate_params(
+                    column_mappings, data_summary, collected_params_state
+                )
+                if asked_no_candidate_question and not collected_params_state.get("no_candidate_items_to_confirm_none_asked"): # まだこの質問をしていなければ
+                    collected_params_state["no_candidate_items_to_confirm_none_asked"] = True # 質問したフラグ
+                    self.context_manager.save_context(thread_ts, context, channel_id)
+                    client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text=no_candidate_question_text)
+                    if thinking_message_ts:
+                        try: client.chat_delete(channel=channel_id, ts=thinking_message_ts)
+                        except Exception as e_del: logger.error(f"Failed to delete 'thinking' message: {e_del}")
+                    context["parameter_collection_in_progress"] = False
+                    self.context_manager.save_context(thread_ts, context, channel_id)
+                    return # ユーザーの「はい/いいえ」の応答を待つ
+
                 is_ready, next_question = self._update_collected_params_and_get_next_question(extracted_params_map, collected_params_state, data_summary, thread_ts, channel_id)
                 
-                dialog_state["is_initial_response"] = False
+                dialog_state["is_initial_response"] = False # 最初の質問ではないことを示す
                 context["dialog_state"]["collected_params"] = collected_params_state
 
                 if is_ready:
