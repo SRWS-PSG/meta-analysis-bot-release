@@ -1,6 +1,7 @@
 # mcp/firestore_client.py
 import os
 import logging
+from typing import Optional # Optional をインポート
 from google.cloud import firestore
 
 logger = logging.getLogger(__name__)
