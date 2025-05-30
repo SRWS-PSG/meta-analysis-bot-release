@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from typing import List, Dict, Any # 追加
+from typing import List, Dict, Any, Optional # 追加
 
 # mainモジュールからclean_env_varをインポート
 # 注意: 循環参照を避けるため、main.pyが直接gemini_utilsをトップレベルでインポートしていないことを確認

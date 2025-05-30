@@ -1,6 +1,8 @@
 # Dockerコンテナ ログ確認・ファイル操作手順
 
 meta-analysis-bot のような Docker コンテナ内で動作するアプリケーションのデバッグ時には、コンテナのログを確認したり、コンテナ内のファイルにアクセスしたりする必要が生じることがあります。以下にその基本的な手順を示します。
+これはopen repositoryなので、誰でも閲覧可能です。
+secretに該当する内容は.env以外には絶対に記載しない。
 
 ## 1. 実行中のコンテナIDまたは名前の確認
 
@@ -280,7 +282,7 @@ Cloud Run なら Google Cloud CLI がラッパーを用意しています。
 
 ```bash
 gcloud run services logs read python-app \
-  --project=gen-lang-client-0650715719 \
+  --project=PROJECTID \
   --region=asia-northeast1 \
   --limit=100   # 最近100行
 ```
@@ -297,7 +299,7 @@ gcloud logging read \
   'resource.type="cloud_run_revision" AND
    resource.labels.service_name="python-app" AND
    resource.labels.location="asia-northeast1"' \
-  --project=gen-lang-client-0650715719 \
+  --project=PROJECTID \
   --limit=200 \
   --format='table(timestamp, severity, textPayload)'
 ```
@@ -326,7 +328,7 @@ gcloud components install log-streaming
 
 gcloud alpha logging tail \
   'resource.type="cloud_run_revision" AND resource.labels.service_name="python-app"' \
-  --project=gen-lang-client-0650715719
+  --project=PROJECTID
 ```
 `tail` はストリーミング API (entries.tail) を使いリアルタイム監視が可能。
 
@@ -355,12 +357,12 @@ gcloud logging read $filter --project $PROJECT --limit 100
 # 8-1 直近１時間・ERROR 以上
 gcloud logging read \
  'resource.type="cloud_run_revision" AND resource.labels.service_name="python-app" AND severity>=ERROR AND timestamp>="'$(date -u -d '-1 hour' +%FT%TZ)'"' \
- --project=gen-lang-client-0650715719 --limit=100 --format=json
+ --project=PROJECTID --limit=100 --format=json
 
 # 8-2 textPayload に "context.json" を含む行を 50 件
 gcloud logging read \
  'resource.type="cloud_run_revision" AND textPayload:"context.json"' \
- --project=gen-lang-client-0650715719 --limit=50 \
+ --project=PROJECTID --limit=50 \
  --format='table(timestamp, textPayload)'
 ```
 
