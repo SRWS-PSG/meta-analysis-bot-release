@@ -469,6 +469,10 @@ tryCatch({
     
     {egger_json_update_code}
 
+    # Add R and metafor versions
+    summary_list$r_version <- R.version.string
+    summary_list$metafor_version <- as.character(packageVersion("metafor"))
+
 }, error = function(e_sum) {
     summary_list$error_in_summary_generation <- paste("Error creating parts of summary:", e_sum$message)
     logger::log_error(sprintf("Error creating parts of summary_list: %s", e_sum$message))

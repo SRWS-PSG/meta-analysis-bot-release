@@ -323,6 +323,7 @@ def generate_academic_writing_suggestion(results_summary, analysis_type="meta-an
         - "statistically significant"は使用せず、数値と信頼区間で客観的に記述
         - 各セクションは英語記述後に日本語訳を併記
         - 結果のセクション書くときには、点推定値、信頼区間といっしょに、Certainty of evidenceのプレースホルダーを書く
+        - **Analysis Environment:** Include the R version and metafor package version used for the analysis. This information will be provided in the `results_summary` under keys like `r_version` and `metafor_version`. If available, list them under a subheading like "Analysis Environment".
 
         **出力形式:**
 
@@ -365,6 +366,7 @@ def generate_academic_writing_suggestion(results_summary, analysis_type="meta-an
         - **Publication bias (if assessed):** 検定統計量とp値
         - 図についても言及（例：フォレストプロット、ファンネルプロット）
         - 実行された感度分析
+        - **Analysis Environment:** R version (e.g., R version 4.4.0 (2024-04-24 ucrt)) and metafor package version (e.g., metafor version 4.0-0). This should be mentioned at the end of the results or in a dedicated "Methods" or "Analysis Environment" section if appropriate for the context.
         - [Note: Certainty of evidence assessment would be inserted here]
 
         【記述スタイル】
