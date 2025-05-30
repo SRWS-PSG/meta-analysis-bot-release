@@ -48,6 +48,8 @@ class MessageHandler:
             if "processed_file_ids" not in context: # 既存コンテキストにない場合追加
                 context["processed_file_ids"] = []
             logger.info(f"Using existing context for thread {thread_ts}")
+            # Log the state of dialog_state and file_processing_job_id when context is loaded
+            logger.info(f"Context loaded in handle_app_mention for thread {thread_ts}: dialog_state={context.get('dialog_state')}, file_processing_job_id={context.get('file_processing_job_id')}")
 
         files = event.get("files", [])
         csv_files = [f for f in files if f.get("name", "").lower().endswith(".csv")]
