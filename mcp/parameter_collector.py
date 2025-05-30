@@ -404,6 +404,8 @@ class ParameterCollector:
     def handle_analysis_preference_dialog(self, text: str, thread_ts: str, channel_id: str, client, context: dict, run_meta_analysis_func, check_analysis_job_func):
         logger.info(f"=== handle_analysis_preference_dialog (State: {context.get('dialog_state', {}).get('state')}) ===")
         logger.info(f"Received text for parameter collection in handle_analysis_preference_dialog: '{text}'")
+        initial_collected_params_state_for_log = json.dumps(context.get("dialog_state", {}).get("collected_params", {}), ensure_ascii=False, indent=2)
+        logger.info(f"Initial collected_params in handle_analysis_preference_dialog: {initial_collected_params_state_for_log}")
 
         # タイムアウト処理: 5分以上経過していたら強制的にフラグをクリア
         if context.get("parameter_collection_in_progress"):
@@ -536,7 +538,7 @@ class ParameterCollector:
                         "last_bot_question": context.get("question_history", {}).get("last_question"),
                         "current_question_target": current_question_target
                     }
-                    
+                    logger.info(f"Calling extract_parameters_from_user_input with text: '{text}', collection_context: {json.dumps(collection_context_for_gemini, ensure_ascii=False, indent=2)}")
                     gemini_response = extract_parameters_from_user_input(
                         user_input=text,
                         data_summary=data_summary,
@@ -544,6 +546,7 @@ class ParameterCollector:
                         collection_context=collection_context_for_gemini
                     )
                     extracted_params_map = gemini_response.get("extracted_params", {}) if isinstance(gemini_response, dict) else {}
+                    logger.info(f"Extracted params from Gemini: {json.dumps(extracted_params_map, ensure_ascii=False, indent=2)}")
                     if not extracted_params_map:
                         logger.warning(f"Gemini Function Calling failed or returned no params for text '{text}'. Response: {gemini_response}")
 
@@ -591,8 +594,11 @@ class ParameterCollector:
                     context["parameter_collection_in_progress"] = False
                     self.context_manager.save_context(thread_ts, context, channel_id)
                     return # ユーザーの「はい/いいえ」の応答を待つ
-
+                
+                logger.info(f"Calling _update_collected_params_and_get_next_question with collected_params_state before update: {json.dumps(collected_params_state, ensure_ascii=False, indent=2)}")
                 is_ready, next_question = self._update_collected_params_and_get_next_question(extracted_params_map, collected_params_state, data_summary, thread_ts, channel_id)
+                logger.info(f"Result from _update_collected_params_and_get_next_question: is_ready={is_ready}, next_question='{next_question}'")
+                logger.info(f"collected_params_state after _update_collected_params_and_get_next_question: {json.dumps(collected_params_state, ensure_ascii=False, indent=2)}")
                 
                 dialog_state["is_initial_response"] = False # 最初の質問ではないことを示す
                 context["dialog_state"]["collected_params"] = collected_params_state
