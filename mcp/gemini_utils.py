@@ -541,6 +541,13 @@ def extract_parameters_from_user_input(
         prompt_parts.append("- subgroup_columns (サブグループ解析列): CSV列名のリスト")
         prompt_parts.append("- moderator_columns (メタ回帰列): CSV列名のリスト")
         prompt_parts.append("- data_columns (効果量計算用列マッピング): ai, bi, ci, diなどとCSV列名のマッピング")
+
+        prompt_parts.append("\n【「はい」「いいえ」の解釈に関する重要指示】")
+        prompt_parts.append("- ユーザーの最新の回答が「はい」または「いいえ」（あるいはそれに類する短い肯定/否定）のみである場合、それは会話履歴における直前のボットの質問（`collection_context` の `last_bot_question` を参照）に対する応答であると強く推測されます。")
+        prompt_parts.append("- その場合、ボットの質問の意図（例：特定の解析を行わないことの確認、特定の効果量で進めることの確認など）を正確に理解してください。")
+        prompt_parts.append("- もし、ボットの質問が単なる確認であり、ユーザーの「はい」という応答から新たに抽出・設定すべきパラメータがない場合は、Function Callingの `extracted_params` として空のオブジェクト `{}` を返してください。")
+        prompt_parts.append("- 同様に、「いいえ」という応答で、それが特定のパラメータ設定を拒否する意図であれば、該当するパラメータを抽出しないか、あるいは以前の設定を取り消すような解釈を試みてください（ただし、Function Callingのスキーマ内で表現できる範囲で）。")
+        prompt_parts.append("- ユーザーの意図を誤解釈して、無関係なパラメータを無理に抽出しようとしたり、必須パラメータが不足していると誤判断したりしないでください。")
         
         prompt_parts.append("\n【重要】パラメータ抽出のヒント:")
         prompt_parts.append("1. ユーザーの最新の回答は、`collection_context` 内の `last_bot_question`（ボットが最後にした質問）に対するものである可能性が高いです。")
