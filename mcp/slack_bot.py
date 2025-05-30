@@ -89,6 +89,12 @@ class MetaAnalysisBot:
         storage_backend = clean_env_var("STORAGE_BACKEND", "memory")
         self.context_manager = ThreadContextManager(storage_backend=storage_backend)
         
+        # 履歴の最大保持件数を環境変数から設定
+        max_history = int(clean_env_var("MAX_HISTORY_LENGTH", "20"))
+        self.context_manager.set_max_history_length(max_history)
+        
+        logger.info(f"Thread context manager initialized with storage_backend={storage_backend}, max_history={max_history}")
+        
         self.async_runner = AsyncAnalysisRunner()
         
         self.error_handler = ErrorHandler()

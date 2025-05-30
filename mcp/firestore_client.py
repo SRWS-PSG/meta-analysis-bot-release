@@ -16,7 +16,7 @@ def clean_env_var(var_name, default=None):
         return value.strip().lstrip('\ufeff').strip()
     return value
 
-_db = None
+_db: Optional[firestore.Client] = None
 def get_db():
     global _db
     if _db is None:

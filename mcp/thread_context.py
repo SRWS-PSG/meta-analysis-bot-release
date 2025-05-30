@@ -8,6 +8,7 @@ import json
 import time
 from datetime import datetime, timedelta
 import os
+import uuid
 import logging
 from typing import Dict, List, Optional, Any, Union
 import tempfile
@@ -280,6 +281,120 @@ class FirestoreStorage:
         except Exception as e:
             logger.error(f"Firestore delete error for key {key} (doc_id: {actual_thread_id}): {e}")
 
+    def append_message(self, conversation_id: str, role: str, content: str, message_ts: Optional[str] = None) -> str:
+        """Firestoreの会話にメッセージを追加（サブコレクション形式）"""
+        if not self.available:
+            logger.error("Firestore client not available for append_message operation.")
+            return None
+        
+        try:
+            # メッセージIDを生成（Slackのtsがあればそれを使用、なければUUID）
+            msg_id = message_ts.replace('.', '_') if message_ts else str(uuid.uuid4())
+            
+            conv_ref = self.db.collection("conversations").document(conversation_id)
+            msg_ref = conv_ref.collection("messages").document(msg_id)
+            
+            message_data = {
+                "role": role,
+                "content": content,
+                "createdAt": firestore.SERVER_TIMESTAMP,
+                "slackTs": message_ts if message_ts else None
+            }
+            
+            msg_ref.set(message_data)
+            
+            # 会話のメタデータも更新
+            conv_ref.set({
+                "updatedAt": firestore.SERVER_TIMESTAMP,
+                "lastActivity": firestore.SERVER_TIMESTAMP
+            }, merge=True)
+            
+            logger.info(f"Message appended to conversation {conversation_id} with msg_id {msg_id}")
+            return msg_id
+            
+        except Exception as e:
+            logger.error(f"Firestore append_message error for conversation {conversation_id}: {e}")
+            return None
+
+    def get_recent_messages(self, conversation_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """最新のメッセージを取得（サブコレクション形式）"""
+        if not self.available:
+            logger.error("Firestore client not available for get_recent_messages operation.")
+            return []
+        
+        try:
+            conv_ref = self.db.collection("conversations").document(conversation_id)
+            messages_ref = conv_ref.collection("messages")
+            
+            # createdAt 降順で取得して、後で昇順にする（最新から古い順で取得し、制限をかけてから逆順にする）
+            message_docs = (
+                messages_ref
+                .order_by("createdAt", direction=firestore.Query.DESCENDING)
+                .limit(limit)
+                .stream()
+            )
+            
+            messages = []
+            for doc in message_docs:
+                data = doc.to_dict()
+                if data:
+                    # タイムスタンプを JSON serializable な形式に変換
+                    data = convert_firestore_timestamps(data)
+                    messages.append({
+                        "role": data.get("role"),
+                        "content": data.get("content"),
+                        "timestamp": data.get("createdAt"),
+                        "slackTs": data.get("slackTs")
+                    })
+            
+            # 時系列順（古い→新しい）に並び替え
+            messages.reverse()
+            
+            logger.info(f"Retrieved {len(messages)} recent messages for conversation {conversation_id}")
+            return messages
+            
+        except Exception as e:
+            logger.error(f"Firestore get_recent_messages error for conversation {conversation_id}: {e}")
+            return []
+
+    def cleanup_old_messages(self, conversation_id: str, keep_count: int = 100) -> None:
+        """古いメッセージを削除（オプション機能）"""
+        if not self.available:
+            return
+        
+        try:
+            conv_ref = self.db.collection("conversations").document(conversation_id)
+            messages_ref = conv_ref.collection("messages")
+            
+            # 古いメッセージを取得（keep_count より古いもの）
+            docs_to_delete = (
+                messages_ref
+                .order_by("createdAt", direction=firestore.Query.DESCENDING)
+                .offset(keep_count)
+                .stream()
+            )
+            
+            batch = self.db.batch()
+            delete_count = 0
+            
+            for doc in docs_to_delete:
+                batch.delete(doc.reference)
+                delete_count += 1
+                
+                # バッチサイズの制限（Firestoreは500件まで）
+                if delete_count >= 450:
+                    batch.commit()
+                    batch = self.db.batch()
+                    delete_count = 0
+            
+            if delete_count > 0:
+                batch.commit()
+                
+            logger.info(f"Cleaned up old messages for conversation {conversation_id}")
+            
+        except Exception as e:
+            logger.error(f"Firestore cleanup_old_messages error for conversation {conversation_id}: {e}")
+
 
 class ThreadContextManager:
     """スレッドごとの会話コンテキストを管理するクラス"""
@@ -295,6 +410,8 @@ class ThreadContextManager:
         self.storage = self._init_storage(storage_backend)
         self.expiration_days = expiration_days
         self.expiration_seconds = expiration_days * 86400
+        self.max_history_length = 20  # デフォルトの履歴保持件数
+        self.enable_firestore_subcollection = isinstance(self.storage, FirestoreStorage)  # Firestoreサブコレクション機能の有効化
 
     def get_thread_storage_path(self, thread_id: str, channel_id: Optional[str] = None) -> Optional[str]:
         """
@@ -344,6 +461,11 @@ class ThreadContextManager:
         if context:
             # タイムスタンプを JSON serializable な形式に変換
             context = convert_firestore_timestamps(context)
+            
+            # Firestoreサブコレクション機能が有効な場合は、履歴を別途取得
+            if self.enable_firestore_subcollection:
+                context["history"] = self.storage.get_recent_messages(key, self.max_history_length)
+                
         return context
     
     def save_context(self, thread_id: str, context: Dict, channel_id: Optional[str] = None) -> None:
@@ -359,15 +481,23 @@ class ThreadContextManager:
         # タイムスタンプを JSON serializable な形式に変換
         context = convert_firestore_timestamps(context)
         context["last_updated"] = datetime.now().isoformat()
-        self.storage.set(key, context, expire=self.expiration_seconds)
+        
+        # Firestoreサブコレクション機能が有効な場合は、historyフィールドを除外して保存
+        if self.enable_firestore_subcollection:
+            context_to_save = {k: v for k, v in context.items() if k != "history"}
+            # history は個別にサブコレクションで管理されるため、メインドキュメントからは除外
+            self.storage.set(key, context_to_save, expire=self.expiration_seconds)
+        else:
+            # 従来の方式（メモリ、Redis、DynamoDB、ファイル）
+            self.storage.set(key, context, expire=self.expiration_seconds)
     
     def update_history(self, thread_id: str, 
-                      user_message_content: Optional[str], 
-                      bot_response_content: Optional[str], 
-                      channel_id: Optional[str] = None, 
-                      user_message_ts: Optional[str] = None,
-                      bot_response_ts: Optional[str] = None,
-                      max_history: int = 20) -> None: # max_historyを増やしても良い
+                       user_message_content: Optional[str], 
+                       bot_response_content: Optional[str], 
+                       channel_id: Optional[str] = None, 
+                       user_message_ts: Optional[str] = None,
+                       bot_response_ts: Optional[str] = None,
+                       max_history: int = None) -> None:
         """
         会話履歴を更新。ユーザーメッセージとBotの応答を別々のエントリとして保存。
         
@@ -380,6 +510,55 @@ class ThreadContextManager:
             bot_response_ts: Bot応答のSlackタイムスタンプ (Noneの場合あり)
             max_history: 保持する履歴エントリの最大数 (各メッセージが1エントリ)
         """
+        # max_historyのデフォルト値設定
+        if max_history is None:
+            max_history = self.max_history_length
+        
+        # Firestoreサブコレクション機能が有効な場合は、個別メッセージとして保存
+        if self.enable_firestore_subcollection:
+            self._update_history_firestore_subcollection(
+                thread_id, user_message_content, bot_response_content, 
+                channel_id, user_message_ts, bot_response_ts
+            )
+            return
+        
+        # 従来の方式（メモリ、Redis、DynamoDB、ファイル）
+        self._update_history_traditional(
+            thread_id, user_message_content, bot_response_content,
+            channel_id, user_message_ts, bot_response_ts, max_history
+        )
+    
+    def _update_history_firestore_subcollection(self, thread_id: str,
+                                               user_message_content: Optional[str],
+                                               bot_response_content: Optional[str],
+                                               channel_id: Optional[str] = None,
+                                               user_message_ts: Optional[str] = None,
+                                               bot_response_ts: Optional[str] = None) -> None:
+        """Firestoreサブコレクション形式での履歴更新"""
+        key = self._make_key(thread_id, channel_id)
+        
+        # ユーザーメッセージを追加 (存在する場合)
+        if user_message_content:
+            msg_id = self.storage.append_message(key, "user", user_message_content, user_message_ts)
+            if msg_id:
+                logger.debug(f"Added user message to Firestore subcollection for thread {thread_id}: '{user_message_content}' (msg_id: {msg_id})")
+
+        # Botの応答を追加 (存在する場合)
+        if bot_response_content:
+            msg_id = self.storage.append_message(key, "model", bot_response_content, bot_response_ts)
+            if msg_id:
+                logger.debug(f"Added bot response to Firestore subcollection for thread {thread_id}: '{bot_response_content}' (msg_id: {msg_id})")
+        
+        logger.info(f"History updated in Firestore subcollection for thread {thread_id}")
+    
+    def _update_history_traditional(self, thread_id: str,
+                                   user_message_content: Optional[str],
+                                   bot_response_content: Optional[str],
+                                   channel_id: Optional[str] = None,
+                                   user_message_ts: Optional[str] = None,
+                                   bot_response_ts: Optional[str] = None,
+                                   max_history: int = 20) -> None:
+        """従来方式での履歴更新（メモリ、Redis、DynamoDB、ファイル用）"""
         context = self.get_context(thread_id, channel_id) or self._create_empty_context(thread_id, channel_id)
         
         if "history" not in context or not isinstance(context["history"], list):
@@ -410,6 +589,23 @@ class ThreadContextManager:
         
         self.save_context(thread_id, context, channel_id)
         logger.info(f"History updated for thread {thread_id}. Current length: {len(context['history'])}")
+
+    def cleanup_old_history(self, thread_id: str, channel_id: Optional[str] = None, keep_count: int = 100) -> None:
+        """古い履歴をクリーンアップ（Firestoreサブコレクション使用時のみ）"""
+        if not self.enable_firestore_subcollection:
+            logger.warning("cleanup_old_history is only available with Firestore subcollection feature.")
+            return
+        
+        key = self._make_key(thread_id, channel_id)
+        self.storage.cleanup_old_messages(key, keep_count)
+        logger.info(f"Cleaned up old history for thread {thread_id}, keeping latest {keep_count} messages")
+
+    def get_conversation_summary(self, thread_id: str, channel_id: Optional[str] = None) -> Optional[str]:
+        """会話の要約を取得（将来的にLLMで自動要約する機能の準備）"""
+        context = self.get_context(thread_id, channel_id)
+        if context:
+            return context.get("summary")
+        return None
 
     def update_data_state(self, thread_id: str, data_state: Dict, 
                          channel_id: Optional[str] = None) -> None:
@@ -487,6 +683,15 @@ class ThreadContextManager:
         # 実際の本番環境では、各ストレージバックエンドに対応したパターン検索を実装する必要がある
         
         return active_threads
+    
+    def set_max_history_length(self, length: int) -> None:
+        """履歴の最大保持件数を設定"""
+        self.max_history_length = max(1, length)  # 最低1件は保持
+        logger.info(f"Max history length set to {self.max_history_length}")
+
+    def get_max_history_length(self) -> int:
+        """現在の履歴最大保持件数を取得"""
+        return self.max_history_length
     
     def _create_empty_context(self, thread_id: str, channel_id: Optional[str] = None) -> Dict:
         """

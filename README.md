@@ -227,6 +227,21 @@ Slack Botをセットアップするには、以下の手順に従ってくだ�
 *   `GEMINI_MODEL_NAME`: 使用するGeminiモデル名 (オプション、デフォルト: `gemini-2.5-flash-preview-05-20`)
 *   `R_EXECUTABLE_PATH`: Rscriptの実行パス (オプション。Dockerコンテナ内では通常不要。ホストOSで直接Rスクリプトを実行する場合や、システムパス上に `Rscript` がない場合に指定)
 
+### ストレージバックエンドの詳細設定
+
+#### Firestoreの高度な設定
+```bash
+# Firestoreサブコレクション機能（推奨）
+FIRESTORE_USE_SUBCOLLECTION="true"  # デフォルト: true（Firestoreバックエンド使用時）
+
+# 履歴保持件数の設定
+MAX_HISTORY_LENGTH="20"  # デフォルト: 20件
+
+# 古いメッセージの自動クリーンアップ（オプション）
+ENABLE_AUTO_CLEANUP="true"  # デフォルト: false
+AUTO_CLEANUP_KEEP_COUNT="100"  # 保持するメッセージ数
+```
+
 ### 3. ローカル環境での実行 (Docker使用)
 
 #### a. Dockerイメージのビルド
