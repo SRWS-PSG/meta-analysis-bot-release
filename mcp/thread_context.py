@@ -19,6 +19,17 @@ import shutil
 from google.cloud import firestore
 from .firestore_client import get_db
 
+def clean_env_var(var_name, default=None):
+    """
+    環境変数からBOMと余分な空白を除去
+    Secret Managerから読み込まれた値にBOMが含まれる場合があるため
+    """
+    value = os.environ.get(var_name, default)
+    if value:
+        # BOM（\ufeff）と前後の空白を除去
+        return value.strip().lstrip('\ufeff').strip()
+    return value
+
 def convert_firestore_timestamps(obj):
     """
     Firestoreのタイムスタンプオブジェクトを JSON serializable な形式に変換する
@@ -80,10 +91,10 @@ class RedisStorage:
         try:
             import redis
             self.redis = redis.Redis(
-                host=os.environ.get('REDIS_HOST', 'localhost'),
-                port=int(os.environ.get('REDIS_PORT', 6379)),
-                db=int(os.environ.get('REDIS_DB', 0)),
-                password=os.environ.get('REDIS_PASSWORD', None),
+                host=clean_env_var('REDIS_HOST', 'localhost'),
+                port=int(clean_env_var('REDIS_PORT', '6379')),
+                db=int(clean_env_var('REDIS_DB', '0')),
+                password=clean_env_var('REDIS_PASSWORD', None),
                 decode_responses=True
             )
             self.available = True
@@ -135,7 +146,7 @@ class DynamoDBStorage:
         try:
             import boto3
             self.dynamodb = boto3.resource('dynamodb')
-            self.table = self.dynamodb.Table(os.environ.get('DYNAMODB_TABLE', 'slack_thread_contexts'))
+            self.table = self.dynamodb.Table(clean_env_var('DYNAMODB_TABLE', 'slack_thread_contexts'))
             self.available = True
         except (ImportError, Exception) as e:
             logger.warning(f"DynamoDB接続エラー: {e}. フォールバックとしてメモリストレージを使用します。")
