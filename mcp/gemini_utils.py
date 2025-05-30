@@ -401,7 +401,7 @@ extract_analysis_params_function = {
         "properties": {
             "effect_size": {
                 "type": "string",
-                "description": "分析に使用する効果量。ユーザーが「オッズ比」と言えば'OR'と解釈します。「リスク差」は'RD'と解釈します。",
+                "description": "分析に使用する効果量。ユーザーが「オッズ比」と言えば'OR'と解釈します。「リスク差」は'RD'と解釈します。「ハザード比」あるいはhrは'HR'と解釈します。その他の効果量も同様に解釈します。",
                 "enum": ["OR", "RR", "RD", "HR", "SMD", "MD", "COR", "proportion", "IR", "PETO", "ROM", "yi", "RD"]
             },
             "model_type": {

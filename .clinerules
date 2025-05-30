@@ -374,47 +374,34 @@ gcloud logging read \
 これらのコツを押さえれば、「フィルタ構文エラー」や「ログが０件」問題を大幅に減らし、必要な Cloud Run ログを確実に取得できます。
 
 ## Firestore デバッグの注意点
-2. gcloud CLI でドキュメントを読む
-2-1. 環境変数と認証
-bash
-コピーする
-編集する
-PROJECT_ID=gen-lang-client-0650715719
-export GOOGLE_CLOUD_PROJECT=$PROJECT_ID   # ADC を使う場合
-gcloud auth login                         # ローカル検証時のみ
-Cloud Run 内では Workload Identity で自動認証されるため不要。
+Firestore REST API を curl で直叩きするときの注意点まとめ
+(＝ gcloud firestore … は使えない！！)
 
-2-2. ドキュメント一覧（list）
-bash
-コピーする
-編集する
-gcloud firestore documents list \
-  --project=$PROJECT_ID \
-  --collection-ids=myCollection \
-  --page-size=20 \
-  --format="table(name.basename():label=DOC_ID, updateTime)"
---collection-ids でトップレベルコレクションを指定。
-
-階層パスを直接指定したい場合は --parent="projects/$PROJECT_ID/databases/(default)/documents/users/alice" のように書く。 
-Fig
+項目	具体的な注意	補足
+① 認証トークンの発行	gcloud を使わない場合は
+ ・サービスアカウント JSON キー → oauth2token ライブラリ／google-auth などで JWT→OAuth 2.0 アクセストークン を生成
+ ・scope=https://www.googleapis.com/auth/datastore を必ず付与	Firebase ID トークンでも可だが、その場合は Security Rules が評価対象になる 
+Firebase
+② Authorization ヘッダ	curl -H "Authorization: Bearer $TOKEN" ― HTTP クライアントをまたいでも共通	トークンは約 1 h で失効。長時間のバッチは自動更新を実装
+③ URL とパス	
+https://firestore.googleapis.com/v1/projects/PROJECT_ID/databases/(default)/documents/コレクション/ドキュメントID
+パス区切り / は URL-encode 必須 (ユーザー/山田 → ユーザー%2F山田)	projects…documents:get エンドポイントを利用 
 Google Cloud
-
-2-3. 単一ドキュメント取得（get）
-bash
-コピーする
-編集する
-gcloud firestore documents get \
-  projects/$PROJECT_ID/databases/(default)/documents/myCollection/doc123 \
-  --project=$PROJECT_ID \
-  --format=json
-フルリソース名を第 1 引数に書く（path 省略形不可）。
-
---mask.field-paths="fieldA,fieldB" で必要なフィールドだけ取得可能。 
-Fig
-
-2-4. IAM エラー時
-役割 roles/datastore.user で読み取り可、書き込みは roles/datastore.owner か roles/datastore.editor。
-
-Cloud Run の実行サービスアカウントにロールを付与しているか確認。 
+④ レスポンス形式	JSON フィールドは型付き ("stringValue", "integerValue" など)。クライアント側でパースが必要	1 ドキュメント ≤ 1 MiB − 4 B の上限あり 
 Google Cloud
-
+⑤ 一括取得	.../documents:listDocuments?parent=...&pageSize=N + pageToken でページング	デフォルト pageSize は 100。大規模コレクションは繰り返し呼び出し
+⑥ 書き込み系	新規作成: POST …/documents?documentId=
+更新: PATCH …/documents/ID?updateMask.fieldPaths=foo,bar
+削除: DELETE …/documents/ID	書き込み時も Bearer トークン + IAM 権限
+⑦ IAM と Security Rules	サービスアカウント経由の REST 呼び出しは Security Rules をバイパス。アクセス制御は IAM ロールのみで決まる（最低 roles/datastore.user）	想定外の全権アクセスになりやすいのでロール設定は最小限に 
+Firebase
+⑧ 料金 / クォータ	curl １回 = １リクエスト（READ/WRITE）として課金・カウント。
+Free Tier は 1 日 50k reads／20k writes	思わぬループで無料枠を超過しないよう注意 
+Google Cloud
+⑨ パフォーマンス最適化	* Field Mask (mask.fieldPaths) で必要列だけ返す
+* HTTP/2 か keep-alive を使い接続数を抑える
+* 連続エラーは指数バックオフ	高頻度取得は gRPC API の方が低レイテンシ 
+Google Cloud
+⑩ セキュリティ実務	* トークンを履歴やログに残さない（read -sで入力／環境変数に格納）
+* HTTPS 強制（http → 403）
+* 長期バッチはサービスアカウント鍵を Secret Manager に置く	GitHub Actions など CI では OIDC Workload Identity が推奨

@@ -349,7 +349,7 @@ class ParameterCollector:
             question = f"以下の解析は適切な候補が見つかりませんでした：\n"
             for item in no_candidate_items:
                 question += f"- {item}\n"
-            question += "\nこれらは「なし」としてよろしいですか？（はい/いいえ）"
+            question += "\nこれらは「行わない」という方針でよろしいですか？（はい/いいえ）"
             
             # 候補がない項目のリストを保存（後で処理するため）
             collected_params_state["no_candidate_items_to_confirm_none"] = no_candidate_items # キー名を変更
@@ -546,6 +546,27 @@ class ParameterCollector:
                     extracted_params_map = gemini_response.get("extracted_params", {}) if isinstance(gemini_response, dict) else {}
                     if not extracted_params_map:
                         logger.warning(f"Gemini Function Calling failed or returned no params for text '{text}'. Response: {gemini_response}")
+
+                    # 効果量の簡易パースを追加 (Gemini抽出を補完)
+                    if text and not extracted_params_map.get("effect_size"):
+                        lower_text_for_parse = text.lower().strip()
+                        # 一般的な効果量の略語と、それに対応する正式な効果量名のマッピング
+                        simple_effect_size_map = {
+                            "hr": "HR",
+                            "or": "OR",
+                            "rr": "RR",
+                            "rd": "RD",
+                            "smd": "SMD",
+                            "md": "MD",
+                            "peto": "PETO",
+                            "proportion": "proportion",
+                            "ir": "IR",
+                            "cor": "COR",
+                            "yi": "yi"
+                        }
+                        if lower_text_for_parse in simple_effect_size_map:
+                            extracted_params_map["effect_size"] = simple_effect_size_map[lower_text_for_parse]
+                            logger.info(f"Simplified parsing set effect_size to: {extracted_params_map['effect_size']}")
                 
                 # 効果量やモデルタイプの簡易パース（Gemini抽出を補完）
                 if text: # text がある場合のみパース
