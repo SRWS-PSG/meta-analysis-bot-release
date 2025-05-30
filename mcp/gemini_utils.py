@@ -401,8 +401,8 @@ extract_analysis_params_function = {
         "properties": {
             "effect_size": {
                 "type": "string",
-                "description": "分析に使用する効果量。ユーザーが「オッズ比」と言えば'OR'と解釈します。",
-                "enum": ["OR", "RR", "RD", "HR", "SMD", "MD", "COR", "proportion", "IR", "PETO", "ROM", "yi"]
+                "description": "分析に使用する効果量。ユーザーが「オッズ比」と言えば'OR'と解釈します。「リスク差」は'RD'と解釈します。",
+                "enum": ["OR", "RR", "RD", "HR", "SMD", "MD", "COR", "proportion", "IR", "PETO", "ROM", "yi", "RD"]
             },
             "model_type": {
                 "type": "string",
@@ -479,8 +479,8 @@ map_csv_columns_to_meta_analysis_roles_function = {
             },
             "detected_effect_size": {
                 "type": "string",
-                "description": "列名パターンから検出された効果量のタイプ（例: OR, RR, HR, SMD, MD, yi）。不明な場合はnull。",
-                "enum": ["OR", "RR", "RD", "HR", "SMD", "MD", "COR", "proportion", "IR", "PETO", "ROM", "yi", None]
+                "description": "列名パターンから検出された効果量のタイプ（例: OR, RR, RD, HR, SMD, MD, yi）。不明な場合はnull。",
+                "enum": ["OR", "RR", "RD", "HR", "SMD", "MD", "COR", "proportion", "IR", "PETO", "ROM", "yi", "RD", None]
             },
             "is_log_transformed": {
                 "type": "boolean",
