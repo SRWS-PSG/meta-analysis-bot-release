@@ -50,4 +50,4 @@ COPY . .
 #    CMD python -c "import sys; sys.exit(0)"
 
 # アプリケーションを実行 (Herokuは$PORTにバインドすることを期待)
-CMD ["gunicorn", "main:app", "--bind", "0.0.0.0:${PORT}", "--workers", "4", "--timeout", "120"]
+CMD gunicorn main:app --bind 0.0.0.0:$PORT --workers 4 --timeout 120
