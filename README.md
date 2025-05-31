@@ -377,6 +377,29 @@ jobs:
 
 このワークフローは、指定したブランチ（例: `main`）にプッシュされると自動的に実行され、Dockerイメージをビルドし、Herokuコンテナレジストリにプッシュ後、新しいイメージをリリースします。
 
+#### 4.5.1. デプロイ時の一般的なエラーと対処法
+
+Herokuへのデプロイプロセス中に発生する可能性のある一般的なエラーと、その解決策を以下に示します。
+
+1.  **GitHub Actionsでの `heroku: command not found` エラー**
+    *   **原因:** GitHub Actionsの実行環境 (ランナー) にHeroku CLIがインストールされていません。
+    *   **対処法:** `.github/workflows/deploy-heroku.yml` ファイル内の、Dockerイメージをリリースするステップ (`Release image to Heroku`) の**前**に、Heroku CLIをインストールするステップを追加します。
+        ```yaml
+              - name: Install Heroku CLI
+                run: curl https://cli-assets.heroku.com/install.sh | sh
+        ```
+        これにより、ワークフローの実行中にHeroku CLIが利用可能になります。
+
+2.  **GitHub Actionsでの `Error: This command is for Docker apps only. Switch stacks by running heroku stack:set container.` エラー**
+    *   **原因:** Herokuアプリケーションが、Dockerイメージを受け入れるための「コンテナスタック」を使用するように設定されていません。`heroku container:release` コマンドは、コンテナスタックを使用しているアプリ専用です。
+    *   **対処法:** ローカル環境のターミナルで以下のコマンドを実行し、Herokuアプリケーションのスタックを `container` に変更します。`YOUR_HEROKU_APP_NAME` は実際のHerokuアプリ名に置き換えてください。
+        ```bash
+        heroku stack:set container --app YOUR_HEROKU_APP_NAME
+        ```
+    *   **補足:**
+        *   このコマンドを実行するには、ローカル環境にHeroku CLIがインストールされ、Herokuアカウントにログインしている必要があります。
+        *   ローカルで `heroku` コマンドが認識されない場合は、Heroku CLIをインストールし、システムの環境変数 `PATH` にHeroku CLIのインストールディレクトリ (例: `C:\Program Files\Heroku\bin`) が正しく追加されていることを確認してください。変更後は、新しいターミナルを開くか、PCを再起動するとPATHが反映されます。
+
 #### 4.6. デプロイの実行
 
 変更をGitHubにプッシュします。
