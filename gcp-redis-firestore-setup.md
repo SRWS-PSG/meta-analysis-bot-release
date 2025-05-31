@@ -13,7 +13,7 @@ Meta Analysis Bot を Redis (キャッシュ) + Firestore (永続化) のハイ�
 ```bash
 # プロジェクト変数設定
 PROJECT_ID="your-project-id"
-REGION="asia-northeast1"
+REGION="asia-northeast1" #東京の場合
 REDIS_INSTANCE_NAME="chat-cache"
 
 # Redis インスタンス作成 (Simple モード、1GiB)
@@ -49,14 +49,20 @@ gcloud compute networks vpc-access connectors describe $CONNECTOR_NAME --region=
 ### 2.1 Firestore データベース作成
 ```bash
 # Firestore Native モード有効化
+# このコマンドはプロジェクトに初めてFirestoreデータベースを作成する場合に実行します。
+# 既に存在する場合はスキップされます。
 gcloud firestore databases create --region=$REGION --project=$PROJECT_ID
 
 # インデックス設定 (会話履歴の効率的な取得用)
-gcloud firestore indexes composite create \
-  --collection-group=messages \
-  --field-config field-path=createdAt,order=ascending \
-  --field-config field-path=__name__,order=ascending \
-  --project=$PROJECT_ID
+# 以下の複合インデックスは、Firestoreの自動インデックス作成機能や
+# 単一フィールドインデックスでカバーされるため、明示的な作成は不要と判断されました。
+# コマンド実行時に "this index is not necessary" というエラーが返される場合があります。
+# 必要に応じて、GCPコンソールのFirestoreセクションでインデックスの状態を確認してください。
+# gcloud firestore indexes composite create \
+#   --collection-group=messages \
+#   --field-config field-path=createdAt,order=ascending \
+#   --field-config field-path=__name__,order=ascending \
+#   --project=$PROJECT_ID
 ```
 
 ## 3. Cloud Run デプロイ設定更新
@@ -64,14 +70,25 @@ gcloud firestore indexes composite create \
 ### 3.1 環境変数設定
 ```bash
 # Redis 接続情報を Secret Manager に保存
-REDIS_HOST=$(gcloud redis instances describe $REDIS_INSTANCE_NAME --region=$REGION --format="value(host)")
+# 注意: 以下のgcloud secrets createコマンドが "already exists" エラーになる場合は、
+# 既にシークレットが存在するため、createコマンドをスキップし、続く versions add コマンドを実行してください。
 
-gcloud secrets create redis-host --data-file=<(echo -n "$REDIS_HOST") --project=$PROJECT_ID
-gcloud secrets create redis-port --data-file=<(echo -n "6379") --project=$PROJECT_ID
-gcloud secrets create redis-cache-ttl --data-file=<(echo -n "300") --project=$PROJECT_ID
+# Redisホストの登録
+$REDIS_HOST = $(gcloud redis instances describe $REDIS_INSTANCE_NAME --region=$REGION --project=$PROJECT_ID --format="value(host)")
+gcloud secrets create redis-host --replication-policy=automatic --project=$PROJECT_ID
+echo -n $REDIS_HOST | gcloud secrets versions add redis-host --data-file=- --project=$PROJECT_ID
 
-# ストレージバックエンド設定
-gcloud secrets create storage-backend --data-file=<(echo -n "hybrid") --project=$PROJECT_ID
+# Redisポートの登録
+gcloud secrets create redis-port --replication-policy=automatic --project=$PROJECT_ID
+echo -n "6379" | gcloud secrets versions add redis-port --data-file=- --project=$PROJECT_ID
+
+# RedisキャッシュTTLの登録
+gcloud secrets create redis-cache-ttl --replication-policy=automatic --project=$PROJECT_ID
+echo -n "300" | gcloud secrets versions add redis-cache-ttl --data-file=- --project=$PROJECT_ID
+
+# ストレージバックエンド設定の登録
+gcloud secrets create storage-backend --replication-policy=automatic --project=$PROJECT_ID
+echo -n "hybrid" | gcloud secrets versions add storage-backend --data-file=- --project=$PROJECT_ID
 ```
 
 ### 3.2 Cloud Run デプロイ時の VPC コネクタ指定

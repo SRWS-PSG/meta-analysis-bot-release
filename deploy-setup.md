@@ -134,6 +134,9 @@ gcloud firestore databases create --location=$REGION --project=$PROJECT_ID
 # Uniform bucket-level access を有効にすることを推奨します。
 gcloud storage buckets create gs://$GCS_BUCKET_NAME --project=$PROJECT_ID --location=$REGION --uniform-bucket-level-access
 
+## Redis及び関連設定について
+Redis (Cloud Memorystore) の設定、VPCコネクタの作成、およびCloud Runデプロイ時の関連設定については、別途 `gcp-redis-firestore-setup.md` を参照してください。
+
 # 2. サービス アカウント作成
 # GitHub Actions用SA
 gcloud iam service-accounts create $SA_NAME `
