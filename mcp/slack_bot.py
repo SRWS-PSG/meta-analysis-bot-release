@@ -86,14 +86,18 @@ class MetaAnalysisBot:
         except Exception as e:
             logger.error(f"Unexpected error fetching bot user ID via auth_test: {e}", exc_info=True)
 
-        storage_backend = clean_env_var("STORAGE_BACKEND", "memory")
-        self.context_manager = ThreadContextManager(storage_backend=storage_backend)
+        # storage_backend を "firestore" に固定し、GCS連携機能を利用
+        # GCSバケット名は FirestoreStorage 内で環境変数 GCS_BUCKET_NAME から読み込まれる
+        storage_backend_fixed = "firestore" 
+        self.context_manager = ThreadContextManager(storage_backend=storage_backend_fixed)
         
-        # 履歴の最大保持件数を環境変数から設定
-        max_history = int(clean_env_var("MAX_HISTORY_LENGTH", "20"))
-        self.context_manager.set_max_history_length(max_history)
-        
-        logger.info(f"Thread context manager initialized with storage_backend={storage_backend}, max_history={max_history}")
+        # 履歴の最大保持件数を環境変数から設定 (これは ThreadContextManager 内で処理されるようになった)
+        # max_history = int(clean_env_var("MAX_HISTORY_LENGTH", "20"))
+        # self.context_manager.set_max_history_length(max_history)
+        # logger.info(f"Thread context manager initialized with storage_backend={storage_backend_fixed}, max_history={self.context_manager.get_max_history_length()}")
+        # ↑ ThreadContextManagerのコンストラクタでmax_historyが設定されるため、ここでの個別設定とログは不要かも。
+        # ThreadContextManagerのログに任せる。
+        logger.info(f"Thread context manager initialized with storage_backend={storage_backend_fixed}. Max history will be set from ENV within ThreadContextManager.")
         
         self.async_runner = AsyncAnalysisRunner()
         

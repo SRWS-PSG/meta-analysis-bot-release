@@ -90,6 +90,10 @@ $RUNTIME_SA_NAME="app-runtime"
 # ⑤ Workload Identity Pool / Provider 名
 $POOL_ID="github-pool"
 $PROVIDER_ID="github"
+
+# ⑥ Cloud Storage Bucket 名 (グローバルに一意な名前)
+# 例: $PROJECT_ID + "-meta-analysis-bot-files"
+$GCS_BUCKET_NAME="your-gcs-bucket-name" 
 ################################################################################
 
 # プロジェクトを選択 (gcloud init 済みなら不要)
@@ -115,6 +119,7 @@ gcloud services enable run.googleapis.com `
                        secretmanager.googleapis.com `
                        iam.googleapis.com `
                        logging.googleapis.com `
+                       storage.googleapis.com ` # Cloud Storage API を追加
                        firestore.googleapis.com # Firestore API を追加
 
 # 1.1 Firestore データベース作成 (API有効化後、SA権限設定前を推奨)
@@ -122,6 +127,12 @@ gcloud services enable run.googleapis.com `
 # 1 プロジェクトに1つ作成可能。既に存在する場合はスキップされます。
 # 注意: 無料枠利用の場合でも、Blazeプランへのアップグレードが求められることがあります。課金は超過分のみです。
 gcloud firestore databases create --location=$REGION --project=$PROJECT_ID
+
+# 1.2 Google Cloud Storage バケット作成
+# バケット名はグローバルに一意である必要があります。
+# リージョンはCloud Runと同じリージョンを指定することを推奨します。
+# Uniform bucket-level access を有効にすることを推奨します。
+gcloud storage buckets create gs://$GCS_BUCKET_NAME --project=$PROJECT_ID --location=$REGION --uniform-bucket-level-access
 
 # 2. サービス アカウント作成
 # GitHub Actions用SA
@@ -185,6 +196,13 @@ gcloud projects add-iam-policy-binding $PROJECT_ID `
 gcloud projects add-iam-policy-binding $PROJECT_ID `
   --member="serviceAccount:$RUNTIME_SA_EMAIL" `
   --role="roles/datastore.user"
+
+# Cloud Storageバケットへのアクセス権限をRuntime SAに付与
+# roles/storage.objectAdmin はオブジェクトの読み書き削除が可能
+# roles/storage.objectCreator (書き込み) と roles/storage.objectViewer (読み取り) に分離も可能
+gcloud storage buckets add-iam-policy-binding gs://$GCS_BUCKET_NAME `
+  --member="serviceAccount:$RUNTIME_SA_EMAIL" `
+  --role="roles/storage.objectAdmin"
 
 # 6. Act As 権限設定（重要）
 # GitHub SA → Runtime SA
@@ -347,6 +365,7 @@ gcloud secrets list --filter="name:app-env"
 | `GCP_PROJECT` | あなたのプロジェクトID |
 | `GCP_WIF_PROVIDER` | 上で echo した projects/…/providers/github |
 | `GCP_WIF_SERVICE_ACCOUNT` | github-deployer@your-project-id.iam.gserviceaccount.com |
+| `GCS_BUCKET_NAME` | 上で設定した `$GCS_BUCKET_NAME` の値 |
 
 ### ワークフロー設定
 `.github/workflows/deploy.yml` は以下の構成になります：
@@ -382,6 +401,7 @@ jobs:
           --source=. \
           --service-account=app-runtime@${{ secrets.GCP_PROJECT }}.iam.gserviceaccount.com \
           --set-secrets="/secrets/.env=app-env:latest" \
+          --set-env-vars="GCS_BUCKET_NAME=${{ secrets.GCS_BUCKET_NAME }}" \ # GCSバケット名を設定
           --add-volume="name=secret-vol,type=secret,secret=app-env" \
           --add-volume-mount="volume=secret-vol,mount-path=/secrets" \
           --min-instances=0 \

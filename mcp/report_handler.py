@@ -31,34 +31,49 @@ class ReportHandler:
             self.context_manager.save_context(thread_ts, context, channel_id)
             return
 
-        if not result.get("structured_summary_content"):
-            logger.warning("レポート生成に必要な結果データ(JSON文字列)が見つかりません。")
-            client.chat_postMessage(
-                channel=channel_id, 
-                thread_ts=thread_ts, 
-                text="レポート生成に必要な分析結果のJSONデータが見つかりませんでした。メタアナリシスの主要処理は完了しています。"
-            )
-            context["dialog_state"] = {"type": "post_analysis", "state": "missing_summary_json_for_report"}
-            self.context_manager.save_context(thread_ts, context, channel_id)
-            return
+        # structured_summary_content (JSON文字列) または gcs_structured_summary_json_path (GCSパス) を確認
+        summary_json_content_str = result.get("structured_summary_content")
+        gcs_summary_json_path = result.get("gcs_structured_summary_json_path")
 
         summary_for_gemini = None
+
         if "processed_rdata_json" in context and context["processed_rdata_json"] is not None:
             summary_for_gemini = context["processed_rdata_json"]
-        elif result.get("structured_summary_content"):
+            logger.info("Using processed_rdata_json from context for report generation.")
+        elif summary_json_content_str:
             try:
-                summary_for_gemini = json.loads(result["structured_summary_content"])
+                summary_for_gemini = json.loads(summary_json_content_str)
+                logger.info("Using structured_summary_content string from result for report generation.")
             except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse fallback structured_summary_content: {e}")
+                logger.error(f"Failed to parse structured_summary_content string: {e}")
+        elif gcs_summary_json_path:
+            logger.info(f"Attempting to download summary JSON from GCS: {gcs_summary_json_path}")
+            # GCSからサマリーJSONをダウンロード
+            temp_dir = self.context_manager.get_thread_storage_path(thread_ts, channel_id)
+            if temp_dir:
+                local_summary_json_path = Path(temp_dir) / Path(gcs_summary_json_path).name
+                if self.context_manager.download_file_from_gcs(thread_ts, channel_id, Path(gcs_summary_json_path).name, str(local_summary_json_path)):
+                    try:
+                        with open(local_summary_json_path, 'r', encoding='utf-8') as f:
+                            summary_for_gemini = json.load(f)
+                        logger.info(f"Successfully downloaded and parsed summary JSON from GCS path {gcs_summary_json_path} to {local_summary_json_path}")
+                        # 必要であればローカル一時ファイルを削除
+                        # cleanup_temp_files(str(local_summary_json_path)) # ここではまだ使うかもしれないので削除しない
+                    except Exception as e:
+                        logger.error(f"Failed to read or parse downloaded summary JSON from {local_summary_json_path}: {e}")
+                else:
+                    logger.error(f"Failed to download summary JSON from GCS path: {gcs_summary_json_path}")
+            else:
+                logger.error("Failed to get temporary directory for downloading GCS summary JSON.")
         
         if summary_for_gemini is None:
-            logger.warning("No valid summary data found for report generation.")
+            logger.warning("No valid summary data (processed_rdata_json, string content, or GCS path) found for report generation.")
             client.chat_postMessage(
                 channel=channel_id, 
                 thread_ts=thread_ts, 
-                text="レポート生成に必要な分析結果データが見つかりませんでした。メタアナリシスの主要処理は完了しています。"
+                text="レポート生成に必要な分析結果データが見つかりませんでした。メタアナリシスの主要処理は完了しています。(Error code: RPH001)"
             )
-            context["dialog_state"] = {"type": "post_analysis", "state": "missing_summary_for_report_generation"}
+            context["dialog_state"] = {"type": "post_analysis", "state": "missing_summary_for_report"}
             self.context_manager.save_context(thread_ts, context, channel_id)
             return
         

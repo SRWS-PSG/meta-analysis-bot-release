@@ -17,6 +17,7 @@ import shutil
 
 # Firestore imports
 from google.cloud import firestore
+from google.cloud import storage # GCS クライアント
 from .firestore_client import get_db
 
 def clean_env_var(var_name, default=None):
@@ -204,16 +205,23 @@ class DynamoDBStorage:
 class FirestoreStorage:
     """Firestoreストレージバックエンド"""
 
-    COLL = "threads"  # Firestore collection name
+    COLL = "threads"  # Firestore collection name for thread contexts
+    CONV_COLL = "conversations" # Firestore collection name for conversation logs
 
-    def __init__(self):
+    def __init__(self, gcs_bucket_name: Optional[str] = None):
         try:
             self.db = get_db()
+            self.gcs_client = storage.Client()
+            self.gcs_bucket_name = gcs_bucket_name or clean_env_var("GCS_BUCKET_NAME")
+            if not self.gcs_bucket_name:
+                logger.warning("GCS_BUCKET_NAME is not set. File operations to GCS will fail.")
             self.available = True
-            logger.info("FirestoreStorage initialized successfully.")
+            logger.info(f"FirestoreStorage initialized successfully. GCS Bucket: {self.gcs_bucket_name}")
         except Exception as e:
-            logger.warning(f"Firestore client initialization error: {e}. Firestore storage will be unavailable.")
+            logger.warning(f"Firestore/GCS client initialization error: {e}. Firestore/GCS storage will be unavailable.")
             self.available = False
+            self.gcs_client = None
+            self.gcs_bucket_name = None
 
     def get(self, key: str) -> Optional[Dict]:
         """Firestoreからキーに対応する値を取得"""
@@ -236,13 +244,21 @@ class FirestoreStorage:
             # Check for 'expires_at' field for TTL
             if 'expires_at' in data:
                 expires_at_val = data['expires_at']
-                # Firestore returns datetime objects for Timestamp fields
-                if isinstance(expires_at_val, datetime):
-                    if expires_at_val.timestamp() < time.time():
-                        logger.info(f"Firestore document {actual_thread_id} for key {key} has expired based on 'expires_at' field. Deleting.")
-                        self.delete(key)  # Use the original composite key for deletion consistency
-                        return None  # Expired
-                # If expires_at_val is firestore.SERVER_TIMESTAMP, it's not resolved yet, so not expired.
+            # Firestore returns datetime objects for Timestamp fields
+            if isinstance(expires_at_val, datetime):
+                # Python 3.8以降では aware datetime と naive datetime の比較は TypeError
+                # expires_at_val が aware (timezone情報あり) の場合、time.time() (naive) と比較できない
+                # FirestoreのTimestampはUTCなので、比較する側もUTCに合わせるか、両方naiveにする
+                # ここでは expires_at_val を naive UTC datetime に変換して比較
+                if expires_at_val.replace(tzinfo=None) < datetime.utcfromtimestamp(time.time()):
+                    logger.info(f"Firestore document {actual_thread_id} for key {key} has expired based on 'expires_at' field. Deleting.")
+                    self.delete(key)
+                    return None
+            elif isinstance(expires_at_val, (int, float)): # Unix timestamp (seconds)
+                 if expires_at_val < time.time():
+                    logger.info(f"Firestore document {actual_thread_id} for key {key} has expired based on numeric 'expires_at' field. Deleting.")
+                    self.delete(key)
+                    return None
             
             # タイムスタンプを JSON serializable な形式に変換
             data = convert_firestore_timestamps(data)
@@ -300,9 +316,11 @@ class FirestoreStorage:
         
         try:
             # メッセージIDを生成（Slackのtsがあればそれを使用、なければUUID）
+            # conversation_id は "thread:channel_id:thread_ts" 形式なので、実際のID部分を取り出す
+            actual_conv_id = conversation_id.split(':')[-1]
             msg_id = message_ts.replace('.', '_') if message_ts else str(uuid.uuid4())
             
-            conv_ref = self.db.collection("conversations").document(conversation_id)
+            conv_ref = self.db.collection(self.CONV_COLL).document(actual_conv_id)
             msg_ref = conv_ref.collection("messages").document(msg_id)
             
             message_data = {
@@ -314,17 +332,25 @@ class FirestoreStorage:
             
             msg_ref.set(message_data)
             
-            # 会話のメタデータも更新
-            conv_ref.set({
+            # 会話のメタデータも更新 (初回作成時も考慮)
+            conv_metadata = {
                 "updatedAt": firestore.SERVER_TIMESTAMP,
-                "lastActivity": firestore.SERVER_TIMESTAMP
-            }, merge=True)
+                "lastActivity": firestore.SERVER_TIMESTAMP,
+                "channelId": conversation_id.split(':')[1] if ':' in conversation_id else None, # channel_idを保存
+                "threadTs": actual_conv_id # thread_ts (conversation_idの主要部) を保存
+            }
+            # 初回メッセージ時にcreatedAtも設定
+            doc_snap = conv_ref.get()
+            if not doc_snap.exists:
+                conv_metadata["createdAt"] = firestore.SERVER_TIMESTAMP
+                
+            conv_ref.set(conv_metadata, merge=True)
             
-            logger.info(f"Message appended to conversation {conversation_id} with msg_id {msg_id}")
+            logger.info(f"Message appended to conversation {actual_conv_id} with msg_id {msg_id}")
             return msg_id
             
         except Exception as e:
-            logger.error(f"Firestore append_message error for conversation {conversation_id}: {e}")
+            logger.error(f"Firestore append_message error for conversation {conversation_id} (actual_conv_id: {actual_conv_id}): {e}")
             return None
 
     def get_recent_messages(self, conversation_id: str, limit: int = 20) -> List[Dict[str, Any]]:
@@ -334,7 +360,8 @@ class FirestoreStorage:
             return []
         
         try:
-            conv_ref = self.db.collection("conversations").document(conversation_id)
+            actual_conv_id = conversation_id.split(':')[-1]
+            conv_ref = self.db.collection(self.CONV_COLL).document(actual_conv_id)
             messages_ref = conv_ref.collection("messages")
             
             # createdAt 降順で取得して、後で昇順にする（最新から古い順で取得し、制限をかけてから逆順にする）
@@ -354,18 +381,18 @@ class FirestoreStorage:
                     messages.append({
                         "role": data.get("role"),
                         "content": data.get("content"),
-                        "timestamp": data.get("createdAt"),
+                        "timestamp": data.get("createdAt"), # FirestoreのTimestampオブジェクトが変換されたISO文字列
                         "slackTs": data.get("slackTs")
                     })
             
             # 時系列順（古い→新しい）に並び替え
             messages.reverse()
             
-            logger.info(f"Retrieved {len(messages)} recent messages for conversation {conversation_id}")
+            logger.info(f"Retrieved {len(messages)} recent messages for conversation {actual_conv_id}")
             return messages
             
         except Exception as e:
-            logger.error(f"Firestore get_recent_messages error for conversation {conversation_id}: {e}")
+            logger.error(f"Firestore get_recent_messages error for conversation {conversation_id} (actual_conv_id: {actual_conv_id}): {e}")
             return []
 
     def cleanup_old_messages(self, conversation_id: str, keep_count: int = 100) -> None:
@@ -374,26 +401,32 @@ class FirestoreStorage:
             return
         
         try:
-            conv_ref = self.db.collection("conversations").document(conversation_id)
+            actual_conv_id = conversation_id.split(':')[-1]
+            conv_ref = self.db.collection(self.CONV_COLL).document(actual_conv_id)
             messages_ref = conv_ref.collection("messages")
             
             # 古いメッセージを取得（keep_count より古いもの）
             docs_to_delete = (
                 messages_ref
                 .order_by("createdAt", direction=firestore.Query.DESCENDING)
-                .offset(keep_count)
+                .offset(keep_count) # offset は Firestore Python クライアントの stream() では直接サポートされない。
+                                     # limit() で多めに取得してPython側でスライスするか、カーソルを使う必要がある。
+                                     # ここでは簡略化のため、全件取得してPython側で処理する形にするが、
+                                     # 大量データの場合はパフォーマンスに注意。
                 .stream()
             )
             
+            all_messages = sorted([doc.reference for doc in docs_to_delete], 
+                                  key=lambda ref: ref.get().to_dict().get("createdAt"), reverse=True)
+
             batch = self.db.batch()
             delete_count = 0
             
-            for doc in docs_to_delete:
-                batch.delete(doc.reference)
+            for doc_ref in all_messages[keep_count:]: # keep_count以降のものを削除
+                batch.delete(doc_ref)
                 delete_count += 1
                 
-                # バッチサイズの制限（Firestoreは500件まで）
-                if delete_count >= 450:
+                if delete_count >= 450: # バッチサイズの制限
                     batch.commit()
                     batch = self.db.batch()
                     delete_count = 0
@@ -401,10 +434,82 @@ class FirestoreStorage:
             if delete_count > 0:
                 batch.commit()
                 
-            logger.info(f"Cleaned up old messages for conversation {conversation_id}")
+            logger.info(f"Cleaned up old messages for conversation {actual_conv_id}, keeping up to {keep_count}")
             
         except Exception as e:
-            logger.error(f"Firestore cleanup_old_messages error for conversation {conversation_id}: {e}")
+            logger.error(f"Firestore cleanup_old_messages error for conversation {conversation_id} (actual_conv_id: {actual_conv_id}): {e}")
+
+    def upload_file_to_gcs(self, conversation_id: str, local_file_path: str, destination_filename: str) -> Optional[str]:
+        """Uploads a file to GCS and returns its GCS path or public URL."""
+        if not self.available or not self.gcs_client or not self.gcs_bucket_name:
+            logger.error("GCS client or bucket name not available for upload_file_to_gcs.")
+            return None
+        
+        try:
+            actual_conv_id = conversation_id.split(':')[-1]
+            bucket = self.gcs_client.bucket(self.gcs_bucket_name)
+            blob_path = f"chat-attachments/{actual_conv_id}/{destination_filename}"
+            blob = bucket.blob(blob_path)
+            
+            blob.upload_from_filename(local_file_path)
+            logger.info(f"File {local_file_path} uploaded to gs://{self.gcs_bucket_name}/{blob_path}")
+            
+            # Firestoreにファイルメタデータを記録
+            self.append_file_metadata_to_firestore(
+                conversation_id, 
+                destination_filename, 
+                Path(local_file_path).suffix, # filetype from extension
+                f"gs://{self.gcs_bucket_name}/{blob_path}"
+            )
+            return f"gs://{self.gcs_bucket_name}/{blob_path}" # GCS URIを返す
+        except Exception as e:
+            logger.error(f"Failed to upload {local_file_path} to GCS for conversation {conversation_id}: {e}")
+            return None
+
+    def download_file_from_gcs(self, conversation_id: str, source_filename: str, local_destination_path: str) -> bool:
+        """Downloads a file from GCS to a local path."""
+        if not self.available or not self.gcs_client or not self.gcs_bucket_name:
+            logger.error("GCS client or bucket name not available for download_file_from_gcs.")
+            return False
+            
+        try:
+            actual_conv_id = conversation_id.split(':')[-1]
+            bucket = self.gcs_client.bucket(self.gcs_bucket_name)
+            blob_path = f"chat-attachments/{actual_conv_id}/{source_filename}"
+            blob = bucket.blob(blob_path)
+            
+            # Ensure local directory exists
+            Path(local_destination_path).parent.mkdir(parents=True, exist_ok=True)
+            
+            blob.download_to_filename(local_destination_path)
+            logger.info(f"File gs://{self.gcs_bucket_name}/{blob_path} downloaded to {local_destination_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to download {source_filename} from GCS for conversation {conversation_id} to {local_destination_path}: {e}")
+            return False
+
+    def append_file_metadata_to_firestore(self, conversation_id: str, filename: str, filetype: str, gcs_path: str):
+        """Appends file metadata to the conversation document in Firestore."""
+        if not self.available:
+            logger.error("Firestore client not available for append_file_metadata_to_firestore.")
+            return
+
+        try:
+            actual_conv_id = conversation_id.split(':')[-1]
+            conv_ref = self.db.collection(self.CONV_COLL).document(actual_conv_id)
+            
+            file_metadata_entry = {
+                "name": filename,
+                "type": filetype,
+                "gcsPath": gcs_path, # GCS URI
+                "uploadedAt": firestore.SERVER_TIMESTAMP
+            }
+            
+            # Use ArrayUnion to add to a 'files' array field in the conversation document
+            conv_ref.update({"files": firestore.ArrayUnion([file_metadata_entry])})
+            logger.info(f"Appended file metadata for {filename} to conversation {actual_conv_id} in Firestore.")
+        except Exception as e:
+            logger.error(f"Failed to append file metadata for {filename} to Firestore for conversation {conversation_id}: {e}")
 
 
 class ThreadContextManager:
@@ -421,8 +526,12 @@ class ThreadContextManager:
         self.storage = self._init_storage(storage_backend)
         self.expiration_days = expiration_days
         self.expiration_seconds = expiration_days * 86400
-        self.max_history_length = 20  # デフォルトの履歴保持件数
+        self.max_history_length = int(clean_env_var("MAX_HISTORY_LENGTH", "20"))
         self.enable_firestore_subcollection = isinstance(self.storage, FirestoreStorage)  # Firestoreサブコレクション機能の有効化
+        self.gcs_bucket_name = None
+        if isinstance(self.storage, FirestoreStorage):
+            self.gcs_bucket_name = self.storage.gcs_bucket_name
+
 
     def get_thread_storage_path(self, thread_id: str, channel_id: Optional[str] = None) -> Optional[str]:
         """
@@ -443,18 +552,39 @@ class ThreadContextManager:
         elif isinstance(self.storage, FirestoreStorage): # Check if storage is Firestore
             try:
                 # Cloud Runなどの環境で利用可能な一時ディレクトリを作成
-                tmp_dir = tempfile.mkdtemp(prefix=f"thread_{channel_id or 'nochannel'}_{thread_id}_")
-                logger.info(f"Created temporary directory for Firestore backend: {tmp_dir} for key {key}")
-                return tmp_dir
+                # スレッドIDとチャンネルIDをサニタイズしてディレクトリ名に使用
+                sane_thread_id = thread_id.replace('.', '_')
+                sane_channel_id = channel_id.replace('.', '_') if channel_id else "nochannel"
+                
+                # 一時ディレクトリのベースパスを指定（例：/tmp）
+                # Cloud Runでは /tmp が書き込み可能なメモリファイルシステム
+                base_tmp_dir = "/tmp" 
+                Path(base_tmp_dir).mkdir(parents=True, exist_ok=True) # Ensure /tmp exists
+
+                # スレッド固有の一時ディレクトリを作成
+                # このパスはローカルファイルシステム上の一時的な作業領域として使われる
+                thread_tmp_dir = Path(base_tmp_dir) / f"thread_{sane_channel_id}_{sane_thread_id}"
+                thread_tmp_dir.mkdir(parents=True, exist_ok=True)
+                
+                logger.info(f"Ensured temporary directory for Firestore/GCS backend: {str(thread_tmp_dir)} for key {key}")
+                return str(thread_tmp_dir)
             except Exception as e:
-                logger.error(f"Failed to create temporary directory for Firestore backend (key {key}): {e}")
+                logger.error(f"Failed to create temporary directory for Firestore/GCS backend (key {key}): {e}")
                 return None
-        else:
-            # For other storage backends like MemoryStorage, RedisStorage, DynamoDBStorage,
-            # a file system path might not be applicable or might need a different approach.
-            # For now, returning None if not FileBasedStorage or Firestore.
-            logger.warning(f"get_thread_storage_path not implemented for storage backend type: {type(self.storage)}. Key: {key}")
-            return None
+        else: # MemoryStorage, RedisStorage, DynamoDBStorage
+            logger.warning(f"get_thread_storage_path called for non-file-oriented backend type: {type(self.storage)}. Key: {key}. Creating a standard temp dir.")
+            try:
+                sane_thread_id = thread_id.replace('.', '_')
+                sane_channel_id = channel_id.replace('.', '_') if channel_id else "nochannel"
+                base_tmp_dir = "/tmp"
+                Path(base_tmp_dir).mkdir(parents=True, exist_ok=True)
+                thread_tmp_dir = Path(base_tmp_dir) / f"thread_{sane_channel_id}_{sane_thread_id}"
+                thread_tmp_dir.mkdir(parents=True, exist_ok=True)
+                return str(thread_tmp_dir)
+            except Exception as e:
+                logger.error(f"Failed to create fallback temporary directory for key {key}: {e}")
+                return None
+
 
     def get_context(self, thread_id: str, channel_id: Optional[str] = None) -> Optional[Dict]:
         """
@@ -489,26 +619,36 @@ class ThreadContextManager:
             channel_id: チャンネルID（オプション）
         """
         key = self._make_key(thread_id, channel_id)
-        # タイムスタンプを JSON serializable な形式に変換
-        context = convert_firestore_timestamps(context)
-        context["last_updated"] = datetime.now().isoformat()
         
-        # Firestoreサブコレクション機能が有効な場合は、historyフィールドを除外して保存
+        # Firestoreサブコレクション機能が有効な場合は、historyフィールドを除外してメインドキュメントを保存
         if self.enable_firestore_subcollection:
-            context_to_save = {k: v for k, v in context.items() if k != "history"}
+            # タイムスタンプを JSON serializable な形式に変換
+            context_main_doc = convert_firestore_timestamps(context.copy())
+            context_main_doc["last_updated"] = datetime.now().isoformat() # ISO format string
+            
             # history は個別にサブコレクションで管理されるため、メインドキュメントからは除外
-            self.storage.set(key, context_to_save, expire=self.expiration_seconds)
+            if "history" in context_main_doc:
+                del context_main_doc["history"] 
+            
+            self.storage.set(key, context_main_doc, expire=self.expiration_seconds)
+            
+            # history内のメッセージは append_message で個別に追加されるので、ここでは何もしない
+            # もしcontext["history"]に未保存のメッセージがあれば、ここでループしてappend_messageを呼ぶ必要があるが、
+            # 通常はupdate_history経由で追加されるはず。
         else:
             # 従来の方式（メモリ、Redis、DynamoDB、ファイル）
-            self.storage.set(key, context, expire=self.expiration_seconds)
-    
+            # タイムスタンプを JSON serializable な形式に変換
+            context_to_save = convert_firestore_timestamps(context.copy())
+            context_to_save["last_updated"] = datetime.now().isoformat()
+            self.storage.set(key, context_to_save, expire=self.expiration_seconds)
+
     def update_history(self, thread_id: str, 
                        user_message_content: Optional[str], 
                        bot_response_content: Optional[str], 
                        channel_id: Optional[str] = None, 
                        user_message_ts: Optional[str] = None,
                        bot_response_ts: Optional[str] = None,
-                       max_history: int = None) -> None:
+                       max_history: Optional[int] = None) -> None: # max_historyをOptionalに
         """
         会話履歴を更新。ユーザーメッセージとBotの応答を別々のエントリとして保存。
         
@@ -749,6 +889,8 @@ class ThreadContextManager:
         Returns:
             object: ストレージインターフェース
         """
+        gcs_bucket_name_env = clean_env_var("GCS_BUCKET_NAME")
+
         if backend == "file":
             return FileBasedStorage()
         elif backend == "redis":
@@ -756,9 +898,30 @@ class ThreadContextManager:
         elif backend == "dynamodb":
             return DynamoDBStorage()
         elif backend == "firestore":
-            return FirestoreStorage()
-        else:  # Default to memory storage
+            return FirestoreStorage(gcs_bucket_name=gcs_bucket_name_env)
+        elif backend == "memory": # Explicitly handle memory
             return MemoryStorage()
+        else:  # Default to memory storage if backend string is unrecognized
+            logger.warning(f"Unknown storage backend '{backend}', defaulting to memory storage.")
+            return MemoryStorage()
+
+    def upload_file_to_gcs(self, thread_id: str, channel_id: Optional[str], local_file_path: str, destination_filename: str) -> Optional[str]:
+        """Uploads a file to GCS using the configured storage backend."""
+        if not isinstance(self.storage, FirestoreStorage) or not self.storage.available:
+            logger.error("Cannot upload to GCS: Storage backend is not FirestoreStorage or not available.")
+            return None
+        
+        key = self._make_key(thread_id, channel_id) # conversation_id for GCS path
+        return self.storage.upload_file_to_gcs(key, local_file_path, destination_filename)
+
+    def download_file_from_gcs(self, thread_id: str, channel_id: Optional[str], source_filename: str, local_destination_path: str) -> bool:
+        """Downloads a file from GCS using the configured storage backend."""
+        if not isinstance(self.storage, FirestoreStorage) or not self.storage.available:
+            logger.error("Cannot download from GCS: Storage backend is not FirestoreStorage or not available.")
+            return False
+            
+        key = self._make_key(thread_id, channel_id) # conversation_id for GCS path
+        return self.storage.download_file_from_gcs(key, source_filename, local_destination_path)
 
 class FileBasedStorage:
     """ファイルベースのストレージ実装"""

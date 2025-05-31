@@ -72,30 +72,30 @@ def download_file(url: str, token: str, target_dir: Optional[str] = None, filena
         # Let's adjust analyze_csv to prepare the path.
         # For now, if target_dir is None, we'll raise an error or return content.
         # Returning content for now.
-        logger.warning("download_file called without target_dir. Returning content instead of path.")
-        return response.content # This will likely need adjustment based on how analyze_csv calls it.
+        # logger.warning("download_file called without target_dir. Returning content instead of path.")
+        # return response.content # This will likely need adjustment based on how analyze_csv calls it.
+        # 修正: target_dirがNoneの場合はエラーとするか、デフォルトの一時ディレクトリに保存する。
+        # CsvProcessor側でローカル保存するため、この関数はバイト列を返すだけで良い。
+        return response.content
 
-def analyze_csv(file_content: bytes, thread_dir: Optional[str] = None, input_filename: str = "data.csv"):
+
+def analyze_csv(file_path: str, thread_dir: Optional[str] = None, input_filename: Optional[str] = None):
     """
-    pandasを使用してCSVコンテンツを分析する。
-    thread_dirが指定された場合、そのディレクトリにCSVファイルを保存して分析する。
+    pandasを使用してCSVファイルを分析する。
+    file_path: 分析対象のCSVファイルのフルパス。
+    thread_dir: (オプション) この処理では直接使用しないが、ログや互換性のために残す。
+    input_filename: (オプション) 元のファイル名。ログやサマリー情報に使用。
     """
-    if thread_dir:
-        temp_path = Path(thread_dir) / input_filename
-        temp_path.parent.mkdir(parents=True, exist_ok=True) # Ensure directory exists
-        with open(temp_path, 'wb') as f: # Write bytes
-            f.write(file_content)
-        logger.info(f"CSV content saved to {temp_path} for analysis.")
-    else:
-        # Fallback to old behavior if thread_dir is not provided
-        with tempfile.NamedTemporaryFile(suffix='.csv', delete=False, mode='wb') as temp_file_obj:
-            temp_file_obj.write(file_content)
-            temp_path = Path(temp_file_obj.name)
-        logger.warning(f"analyze_csv: thread_dir not provided, using tempfile: {temp_path}")
+    temp_path = Path(file_path) # analyze_csvは渡されたパスをそのまま使用する
+    if not input_filename: # input_filenameがなければパスから取得
+        input_filename = temp_path.name
+    
+    logger.info(f"Analyzing CSV file from path: {temp_path}")
 
     try:
-        df = pd.read_csv(str(temp_path))
+        df = pd.read_csv(str(temp_path)) # temp_path は既に str であるべきだが念のため
         data_summary = {
+            "original_filename": input_filename, # 元のファイル名をサマリーに追加
             "shape": df.shape,
             "columns": df.columns.tolist(),
             "head": df.head(5).to_dict(orient='records')
@@ -218,6 +218,7 @@ def run_meta_analysis(csv_path: str, analysis_preferences: dict = None, thread_d
     try:
         df = pd.read_csv(abs_csv_path)
         data_summary = {
+            "original_filename": Path(csv_path).name, # 元のファイル名を追加
             "shape": df.shape,
             "columns": df.columns.tolist(),
             "head": df.head(5).to_dict(orient='records')

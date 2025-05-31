@@ -142,24 +142,73 @@ class AnalysisExecutor:
 
 
                 if result.get("success"):
+                    # GCSへのアップロード処理を追加
+                    output_dir_from_result = result.get("output_dir")
+
+                    # RスクリプトのGCSアップロードとSlackアップロード
                     if "r_script_path" in result and os.path.exists(result["r_script_path"]):
-                        try: upload_file_to_slack(self.app_client, result["r_script_path"], channel_id, "Rスクリプト", thread_ts); time.sleep(1)
-                        except Exception as e: logger.error(f"Rスクリプトのアップロードエラー: {e}")
-                    
+                        local_path = result["r_script_path"]
+                        filename = Path(local_path).name
+                        gcs_path = self.context_manager.upload_file_to_gcs(thread_ts, channel_id, local_path, filename)
+                        if gcs_path:
+                            logger.info(f"R script uploaded to GCS: {gcs_path}")
+                            result["gcs_r_script_path"] = gcs_path
+                        else:
+                            logger.error(f"Failed to upload R script to GCS: {local_path}")
+                        try: 
+                            upload_file_to_slack(self.app_client, local_path, channel_id, "Rスクリプト", thread_ts); time.sleep(1)
+                        except Exception as e: logger.error(f"RスクリプトのSlackアップロードエラー: {e}")
+
+                    # 生成されたプロットのGCSアップロードとSlackアップロード
+                    result["gcs_generated_plots"] = []
                     for plot_info in result.get("generated_plots", []):
-                        plot_path = plot_info.get("path")
+                        plot_filename = plot_info.get("path") # これはファイル名のはず
                         plot_label = plot_info.get("label", "プロット")
-                        plot_full_path = os.path.join(result["output_dir"], plot_path) if result.get("output_dir") and not os.path.isabs(plot_path) else plot_path
-                        if plot_full_path and os.path.exists(plot_full_path):
-                            try: upload_file_to_slack(self.app_client, plot_full_path, channel_id, plot_label.replace("_", " ").title(), thread_ts); time.sleep(1)
-                            except Exception as e: logger.error(f"{plot_label} のアップロードエラー: {e}")
+                        if output_dir_from_result and plot_filename:
+                            local_plot_full_path = str(Path(output_dir_from_result) / plot_filename)
+                            if os.path.exists(local_plot_full_path):
+                                gcs_plot_path = self.context_manager.upload_file_to_gcs(thread_ts, channel_id, local_plot_full_path, plot_filename)
+                                if gcs_plot_path:
+                                    logger.info(f"{plot_label} uploaded to GCS: {gcs_plot_path}")
+                                    result["gcs_generated_plots"].append({"label": plot_label, "gcs_path": gcs_plot_path, "local_path": local_plot_full_path})
+                                else:
+                                    logger.error(f"Failed to upload {plot_label} to GCS: {local_plot_full_path}")
+                                try:
+                                    upload_file_to_slack(self.app_client, local_plot_full_path, channel_id, plot_label.replace("_", " ").title(), thread_ts); time.sleep(1)
+                                except Exception as e: logger.error(f"{plot_label} のSlackアップロードエラー: {e}")
+                            else:
+                                logger.warning(f"Plot file not found at {local_plot_full_path}")
+                        else:
+                            logger.warning(f"Could not determine full path for plot: {plot_info}")
                     
+                    # 結果データ (RData) のGCSアップロードとSlackアップロード
                     if "result_data_path" in result and os.path.exists(result["result_data_path"]):
-                        try: upload_file_to_slack(self.app_client, result["result_data_path"], channel_id, "結果データ (result.RData)", thread_ts); time.sleep(1)
-                        except Exception as e: logger.error(f"結果データのアップロードエラー: {e}")
+                        local_rdata_path = result["result_data_path"]
+                        rdata_filename = Path(local_rdata_path).name
+                        gcs_rdata_path = self.context_manager.upload_file_to_gcs(thread_ts, channel_id, local_rdata_path, rdata_filename)
+                        if gcs_rdata_path:
+                            logger.info(f"RData uploaded to GCS: {gcs_rdata_path}")
+                            result["gcs_result_data_path"] = gcs_rdata_path
+                        else:
+                            logger.error(f"Failed to upload RData to GCS: {local_rdata_path}")
+                        try:
+                            upload_file_to_slack(self.app_client, local_rdata_path, channel_id, "結果データ (result.RData)", thread_ts); time.sleep(1)
+                        except Exception as e: logger.error(f"結果データのSlackアップロードエラー: {e}")
+                    
+                    # summary.json のGCSアップロード (Slackには通常アップロードしない)
+                    summary_json_path = result.get("structured_summary_json_path")
+                    if summary_json_path and os.path.exists(summary_json_path):
+                        summary_filename = Path(summary_json_path).name
+                        gcs_summary_path = self.context_manager.upload_file_to_gcs(thread_ts, channel_id, summary_json_path, summary_filename)
+                        if gcs_summary_path:
+                            logger.info(f"Summary JSON uploaded to GCS: {gcs_summary_path}")
+                            result["gcs_structured_summary_json_path"] = gcs_summary_path
+                        else:
+                            logger.error(f"Failed to upload Summary JSON to GCS: {summary_json_path}")
+                        # Slackへのアップロードは通常不要だが、デバッグ用に残す場合はここに記述
 
                     summary_content_str = result.get("structured_summary_content")
-                    summary_json_path = result.get("structured_summary_json_path")
+                    # summary_json_path は上で使用済み
                     parsed_summary = None
                     if summary_content_str and summary_content_str != "{}":
                         try: parsed_summary = json.loads(summary_content_str)
@@ -223,3 +272,18 @@ class AnalysisExecutor:
         processed_job_ids.add(job_id)
         context["processed_job_ids"] = list(processed_job_ids)
         self.context_manager.save_context(thread_ts, context, channel_id)
+
+        # クリーンアップ処理: run_meta_analysis が作成した一時ディレクトリを削除
+        if isinstance(status.get("result"), dict) and status.get("result", {}).get("output_dir"):
+            output_dir_to_cleanup = status.get("result").get("output_dir")
+            if output_dir_to_cleanup and os.path.exists(output_dir_to_cleanup):
+                logger.info(f"Cleaning up temporary output directory: {output_dir_to_cleanup}")
+                # cleanup_temp_files はファイルのみを対象とするため、ディレクトリ削除には shutil を使う
+                import shutil
+                try:
+                    shutil.rmtree(output_dir_to_cleanup)
+                    logger.info(f"Successfully deleted temporary output directory: {output_dir_to_cleanup}")
+                except Exception as e_cleanup:
+                    logger.error(f"Error cleaning up temporary output directory {output_dir_to_cleanup}: {e_cleanup}")
+            elif output_dir_to_cleanup:
+                 logger.warning(f"Temporary output directory {output_dir_to_cleanup} not found for cleanup.")

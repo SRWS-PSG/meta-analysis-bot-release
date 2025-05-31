@@ -221,6 +221,7 @@ Slack Botをセットアップするには、以下の手順に従ってくだ�
     *   `STORAGE_BACKEND=firestore` の場合:
         *   GCPプロジェクトIDが設定されている必要があります。通常、`GOOGLE_CLOUD_PROJECT` 環境変数が利用されるか、`gcloud auth application-default login` で認証されたプロジェクトが使用されます。
         *   Cloud RunなどのGCP環境で実行する場合、実行サービスアカウントにFirestoreへの読み書き権限 (`roles/datastore.user` など) が必要です。
+        *   **`GCS_BUCKET_NAME`**: Firestoreストレージバックエンドでファイル（CSV、プロット画像、RDataなど）を永続化するために使用するGoogle Cloud Storageバケットの名前 (必須)。バケットは事前に作成し、Cloud Runの実行サービスアカウントに適切な読み書き権限 (`roles/storage.objectAdmin` または `roles/storage.objectCreator` と `roles/storage.objectViewer`) を付与しておく必要があります。
     *   `file`の場合:
         * 立ち上げているサーバー内に保持します。
 *   `GEMINI_API_KEY`: Gemini APIを使用する場合のAPIキー (必須)
@@ -289,7 +290,17 @@ docker-compose up --build
 
 ### 4. Google Cloud Platform (GCP) へのデプロイ
 
-詳細は[deploy-setup.md](deploy-setup.md)
+GCP Cloud Runへのデプロイ手順の詳細は[deploy-setup.md](deploy-setup.md)を参照してください。
+この手順書には、以下のGCPリソース設定に関するコマンドも含まれています（または追記が必要です）。
+
+*   **Google Cloud Storage (GCS) バケットの作成**: アプリケーションがCSVファイルや分析結果（プロット、RDataなど）を保存するためのGCSバケット。
+*   **サービスアカウント権限の設定**:
+    *   Cloud Runのランタイムサービスアカウントに対するFirestoreデータベースへのアクセス権限。
+    *   Cloud Runのランタイムサービスアカウントに対する上記GCSバケットへの読み書き権限。
+*   **環境変数の設定**:
+    *   Cloud Runサービスに `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `GEMINI_API_KEY` などの基本的な環境変数。
+    *   `STORAGE_BACKEND="firestore"` を設定。
+    *   `GCS_BUCKET_NAME` に作成したGCSバケット名を設定。
 
 ### 5. デプロイ後の運用
 
