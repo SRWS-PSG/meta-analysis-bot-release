@@ -50,7 +50,7 @@ from mcp.message_handlers import MessageHandler # New import
 def clean_env_var(var_name, default=None):
     """
     環境変数からBOMと余分な空白を除去
-    Secret Managerから読み込まれた値にBOMが含まれる場合があるため
+    環境変数として渡された値に意図しないBOMや空白が含まれる場合があるため
     """
     value = os.environ.get(var_name, default)
     if value:
@@ -86,19 +86,12 @@ class MetaAnalysisBot:
         except Exception as e:
             logger.error(f"Unexpected error fetching bot user ID via auth_test: {e}", exc_info=True)
 
-        # storage_backend を "firestore" に固定し、GCS連携機能を利用
-        # GCSバケット名は FirestoreStorage 内で環境変数 GCS_BUCKET_NAME から読み込まれる
-        storage_backend_fixed = "firestore" 
+        # Heroku環境では永続ストレージを使用せず、メモリを使用
+        storage_backend_fixed = "memory"
         self.context_manager = ThreadContextManager(storage_backend=storage_backend_fixed)
         
-        # 履歴の最大保持件数を環境変数から設定 (これは ThreadContextManager 内で処理されるようになった)
-        # max_history = int(clean_env_var("MAX_HISTORY_LENGTH", "20"))
-        # self.context_manager.set_max_history_length(max_history)
-        # logger.info(f"Thread context manager initialized with storage_backend={storage_backend_fixed}, max_history={self.context_manager.get_max_history_length()}")
-        # ↑ ThreadContextManagerのコンストラクタでmax_historyが設定されるため、ここでの個別設定とログは不要かも。
-        # ThreadContextManagerのログに任せる。
         logger.info(f"Thread context manager initialized with storage_backend={storage_backend_fixed}. Max history will be set from ENV within ThreadContextManager.")
-        
+
         self.async_runner = AsyncAnalysisRunner()
         
         self.error_handler = ErrorHandler()

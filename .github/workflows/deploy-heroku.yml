@@ -1,0 +1,38 @@
+name: Deploy to Heroku (Eco)
+
+on:
+  push:
+    branches:
+      - main # mainブランチへのpushで発火。実際のブランチ名に合わせてください。
+  workflow_dispatch: # 手動実行も可能にする
+
+env:
+  HEROKU_APP_NAME: ${{ secrets.HEROKU_APP_NAME }}
+  REGISTRY_IMAGE: registry.heroku.com/${{ secrets.HEROKU_APP_NAME }}/web
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (for multi-platform builds if needed)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Heroku Container Registry
+        run: echo "${{ secrets.HEROKU_API_KEY }}" | docker login --username=_ --password-stdin registry.heroku.com
+
+      - name: Build and push Docker image
+        run: |
+          docker build --platform linux/amd64 -t $REGISTRY_IMAGE .
+          docker push $REGISTRY_IMAGE
+        # Apple Silicon (arm64) などで開発している場合、Heroku (amd64) 用に --platform linux/amd64 を指定
+
+      - name: Release image to Heroku
+        run: heroku container:release web --app $HEROKU_APP_NAME
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}

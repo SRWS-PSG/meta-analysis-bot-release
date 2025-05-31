@@ -14,8 +14,6 @@ Slackで共有されたCSVファイルからメタ解析を実行し、結果を
 3. ユーザーは自然な日本語で分析の意図を伝える
 4. 結果はスレッド内に共有され、スレッド内で会話コンテキストが維持される(インスタンスが維持される間だけ)
 
-
-
 ## 動作モード
 
 このボットは2つの動作モードに対応しています：
@@ -26,13 +24,13 @@ Slackで共有されたCSVファイルからメタ解析を実行し、結果を
 - 設定が簡単（Event SubscriptionsのURL設定不要）
 - 長時間接続を維持
 
-### HTTP Mode（Cloud Run対応）
+### HTTP Mode（Herokuデプロイ推奨）
 - **HTTPエンドポイント**でSlackと通信
-- Cloud Runなどのサーバーレス環境に最適
+- Herokuなどのサーバーレス環境に最適
 - 高いスケーラビリティ
-- Event SubscriptionsのURL設定が必要
+- Event SubscriptionsのURL設定が必要 (Herokuデプロイ時は通常不要、Herokuが自動でルーティング)
 
-動作モードは環境変数`SOCKET_MODE`で制御できます（`true`: Socket Mode, `false`または未設定: HTTP Mode）。
+動作モードは環境変数`SOCKET_MODE`で制御できます（`true`: Socket Mode (ローカル開発時), `false`または未設定: HTTP Mode (Herokuデプロイ時)）。
 
 ## 機能
 
@@ -40,7 +38,7 @@ Slackで共有されたCSVファイルからメタ解析を実行し、結果を
 - ✅ pandasとGemini APIを使用してCSV構造を分析 (`meta_analysis.py`の`analyze_csv`関数がCSVの基本情報抽出、メタ分析への適合性評価、列の役割マッピングを実施)
 - ✅ 収集されたパラメータに基づき、Rのmetaforパッケージを使用してメタ解析を実行 (`meta_analysis.py`の`run_meta_analysis`関数が`RTemplateGenerator`を用いてRスクリプトを生成し、`subprocess`で実行。エラー時はGeminiによるデバッグ・再試行も実施)
 - ✅ フォレストプロット、Rコード、およびGemini APIによる学術論文形式のテキストレポートをSlackチャンネルに返信 (`AnalysisExecutor`が結果ファイルをアップロードし、`ReportHandler`がテキストレポートを生成・投稿)
-- ✅ **スレッド内会話コンテキストの維持** (`ThreadContextManager`による)
+- ✅ **スレッド内会話コンテキストの維持** (`ThreadContextManager`による。Herokuでは主にメモリ上で維持)
 - 🚧 **複数の分析タイプ（ペアワイズ、サブグループ、メタ回帰など）** (基本的な対話フローは実装済み、Rスクリプト生成の高度化は進行中)
 - ✅ **非同期処理によるSlackの3秒ルール対応** (`CsvProcessor`によるCSV分析、`AnalysisExecutor`によるメタ分析実行など)
 - ✅ **Geminiを活用した自然言語理解**
@@ -114,7 +112,7 @@ Slackで共有されたCSVファイルからメタ解析を実行し、結果を
 
 11. **スレッドコンテキスト管理 (mcp/thread_context.py)**
     - スレッドごとの会話履歴、データ状態、分析状態の永続化。
-    - ストレージバックエンド対応（メモリ、Redis、DynamoDB、ファイル、Firestore）。
+    - Heroku環境では、dynoの再起動で揮発するメモリ上のストレージ (`STORAGE_BACKEND=memory`) を使用します。結果はSlackに投稿されるため、永続的なストレージは不要です。
 
 12. **非同期処理 (mcp/async_processing.py)**
     - 時間のかかるタスク（`CsvProcessor`によるCSV解析、`AnalysisExecutor`によるメタ解析）のバックグラウンド実行。
@@ -141,7 +139,7 @@ Slackで共有されたCSVファイルからメタ解析を実行し、結果を
 - Python 3.8+
 - metaforパッケージを含むR
 - Slack API認証情報
-- Google Gemini API Key（オプション）
+- Google Gemini API Key
 
 ## セットアップ
 
@@ -149,17 +147,20 @@ Slackで共有されたCSVファイルからメタ解析を実行し、結果を
 
 ### 1. 前提条件
 
-*   Dockerがインストールされていること。
-*   （必要に応じて）Google Cloud SDKがインストールされ、設定済みであること（GCPデプロイの場合）。
+*   Docker Desktopがインストールされていること。
+*   Gitがインストールされていること。
+*   Heroku CLIがインストールされていること。
+*   VS Code（推奨、拡張機能：Heroku Extension, GitHub Actions, PowerShell）
 
-### 2. 環境変数の準備
+### 2. 環境変数の準備 (ローカル開発用)
 
-プロジェクトルートに`.env`ファイルを作成し、必要な環境変数を設定します。`.env.example`をコピーして編集してください。
+ローカル開発用に、プロジェクトルートに`.env`ファイルを作成し、必要な環境変数を設定します。`.env.example`をコピーして編集してください。
 
 ```bash
 cp .env.example .env
 # .envファイルに必要な情報を記述
 ```
+Herokuデプロイ時は、これらの変数をHerokuのConfig Varsに設定します。
 
 ### 2.1. Slack Botの設定
 
@@ -184,64 +185,38 @@ Slack Botをセットアップするには、以下の手順に従ってくだ�
 
 3.  **Bot User OAuth Tokenの取得とインストール:**
     *   「OAuth & Permissions」ページの上部にある「Install to Workspace」ボタンをクリックし、アプリをワークスペースにインストールします。
-    *   インストールが完了すると、「Bot User OAuth Token」が表示されます（`xoxb-...`で始まる文字列）。このトークンをコピーし、`.env`ファイルの`SLACK_BOT_TOKEN`に設定します。
+    *   インストールが完了すると、「Bot User OAuth Token」が表示されます（`xoxb-...`で始まる文字列）。このトークンをコピーし、ローカル開発時は`.env`ファイルの`SLACK_BOT_TOKEN`に、Herokuデプロイ時はConfig Varsに設定します。
 
 4.  **Signing Secretの取得:**
     *   アプリ管理画面の左側のナビゲーションから「Basic Information」を選択します。
     *   「App Credentials」セクションまでスクロールし、「Signing Secret」の横にある「Show」をクリックして表示されるシークレットをコピーします。
-    *   これを`.env`ファイルの`SLACK_SIGNING_SECRET`に設定します。
+    *   これをローカル開発時は`.env`ファイルの`SLACK_SIGNING_SECRET`に、Herokuデプロイ時はConfig Varsに設定します。
 
-5.  **Socket Modeの設定 (必要な場合):**
-    *   Socket Modeを使用する場合（推奨）、アプリ管理画面の左側のナビゲーションから「Socket Mode」を選択し、「Enable Socket Mode」をオンにします。
+5.  **Socket Modeの設定 (ローカル開発時):**
+    *   ローカル開発でSocket Modeを使用する場合、アプリ管理画面の左側のナビゲーションから「Socket Mode」を選択し、「Enable Socket Mode」をオンにします。
     *   「App-Level Tokens」セクションで「Generate an app-level token and add scopes」をクリックします。
     *   トークン名を入力し、「connections:write」スコープを追加して「Generate」をクリックします。
     *   生成されたトークン（`xapp-...`で始まる文字列）をコピーし、`.env`ファイルの`SLACK_APP_TOKEN`に設定します。
     *   `.env`ファイルで`SOCKET_MODE=true`に設定します。
+    *   **Herokuデプロイ時はHTTP Mode (`SOCKET_MODE=false`または未設定) を使用するため、この設定は不要です。**
 
 6.  **Event Subscriptionsの設定 (HTTPモードの場合):**
+    *   Herokuデプロイ時 (HTTP Mode) は、HerokuがリクエストURLを自動的に提供するため、通常この設定は不要です。ローカルでHTTP Modeをテストする場合に設定します。
     *   Socket Modeを使用しない場合（`SOCKET_MODE=false`）、アプリ管理画面の左側のナビゲーションから「Event Subscriptions」を選択し、「Enable Events」をオンにします。
-    *   「Request URL」に、ボットがSlackイベントを受信するエンドポイントのURL（例: `https://your-domain.com/slack/events`）を設定します。
+    *   「Request URL」に、ボットがSlackイベントを受信するエンドポイントのURL（例: `https://your-ngrok-url.io/slack/events`）を設定します。
     *   「Subscribe to bot events」セクションで、ボットが購読するイベント（例: `app_mention`, `message.channels`, `file_shared`など）を追加します。
 
-最低限、以下の環境変数を設定する必要があります。
+Herokuデプロイ時にConfig Varsに設定が必要な主な環境変数:
 
 *   `SLACK_BOT_TOKEN`: Slackボットのトークン (必須)
 *   `SLACK_SIGNING_SECRET`: Slackアプリの署名シークレット (必須)
-*   `SLACK_APP_TOKEN`: Socket Modeを使用する場合のSlackアプリトークン (Socket Mode利用時必須)
-*   `SOCKET_MODE`: `true` (Socket Modeを使用する場合) または `false` (デフォルト: `false`、HTTPモード)
-*   `STORAGE_BACKEND`: コンテキスト保存先。`memory` (デフォルト), `redis`, `dynamodb`, `file`, `firestore` のいずれか。
-    *   `STORAGE_BACKEND=redis` の場合:
-        *   `REDIS_HOST`: Redisサーバーのホスト名 (デフォルト: `localhost`)
-        *   `REDIS_PORT`: Redisサーバーのポート番号 (デフォルト: `6379`)
-        *   `REDIS_DB`: Redisデータベース番号 (デフォルト: `0`)
-        *   `REDIS_PASSWORD`: Redisのパスワード (デフォルト: なし)
-    *   `STORAGE_BACKEND=dynamodb` の場合:
-        *   `DYNAMODB_TABLE`: 使用するDynamoDBテーブル名 (デフォルト: `slack_thread_contexts`)
-        *   AWS認証情報 (例: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` など) がboto3によって解決可能である必要があります。
-    *   `STORAGE_BACKEND=firestore` の場合:
-        *   GCPプロジェクトIDが設定されている必要があります。通常、`GOOGLE_CLOUD_PROJECT` 環境変数が利用されるか、`gcloud auth application-default login` で認証されたプロジェクトが使用されます。
-        *   Cloud RunなどのGCP環境で実行する場合、実行サービスアカウントにFirestoreへの読み書き権限 (`roles/datastore.user` など) が必要です。
-        *   **`GCS_BUCKET_NAME`**: Firestoreストレージバックエンドでファイル（CSV、プロット画像、RDataなど）を永続化するために使用するGoogle Cloud Storageバケットの名前 (必須)。バケットは事前に作成し、Cloud Runの実行サービスアカウントに適切な読み書き権限 (`roles/storage.objectAdmin` または `roles/storage.objectCreator` と `roles/storage.objectViewer`) を付与しておく必要があります。
-    *   `file`の場合:
-        * 立ち上げているサーバー内に保持します。
+*   `SOCKET_MODE`: `false` (または未設定。HerokuではHTTPモードを使用)
+*   `STORAGE_BACKEND`: `memory` (Herokuではメモリ上のストレージを使用。結果はSlackに投稿されるため永続化不要)
 *   `GEMINI_API_KEY`: Gemini APIを使用する場合のAPIキー (必須)
 *   `GEMINI_MODEL_NAME`: 使用するGeminiモデル名 (オプション、デフォルト: `gemini-2.5-flash-preview-05-20`)
-*   `R_EXECUTABLE_PATH`: Rscriptの実行パス (オプション。Dockerコンテナ内では通常不要。ホストOSで直接Rスクリプトを実行する場合や、システムパス上に `Rscript` がない場合に指定)
+*   `R_EXECUTABLE_PATH`: Rscriptの実行パス (オプション。Dockerコンテナ内では通常不要。)
 
-### ストレージバックエンドの詳細設定
-
-#### Firestoreの高度な設定
-```bash
-# Firestoreサブコレクション機能（推奨）
-FIRESTORE_USE_SUBCOLLECTION="true"  # デフォルト: true（Firestoreバックエンド使用時）
-
-# 履歴保持件数の設定
-MAX_HISTORY_LENGTH="20"  # デフォルト: 20件
-
-# 古いメッセージの自動クリーンアップ（オプション）
-ENABLE_AUTO_CLEANUP="true"  # デフォルト: false
-AUTO_CLEANUP_KEEP_COUNT="100"  # 保持するメッセージ数
-```
+ローカル開発時は上記に加え、Socket Mode利用時に`SLACK_APP_TOKEN`も`.env`ファイルに設定します。
 
 ### 3. ローカル環境での実行 (Docker使用)
 
@@ -253,7 +228,7 @@ docker build -t meta-analysis-bot .
 
 #### b. Dockerコンテナの実行
 
-**通常の実行:**
+**通常の実行 (ローカル開発用):**
 
 ```bash
 docker run --env-file .env meta-analysis-bot
@@ -280,33 +255,144 @@ docker run --env-file .env meta-analysis-bot
     docker run -it --env-file .env -v $(pwd):/app meta-analysis-bot
     ```
 
-**docker-composeを使用する場合:**
+**docker-composeを使用する場合 (ローカル開発用):**
 
-`docker-compose.yml` をプロジェクトルートに作成します (内容は既存のものを流用)。
+`docker-compose.yml` をプロジェクトルートに作成します。
 
 ```bash
 docker-compose up --build
 ```
 
-### 4. Google Cloud Platform (GCP) へのデプロイ
+### 4. Herokuへのデプロイ
 
-GCP Cloud Runへのデプロイ手順の詳細は[deploy-setup.md](deploy-setup.md)を参照してください。
-この手順書には、以下のGCPリソース設定に関するコマンドも含まれています（または追記が必要です）。
+このアプリケーションはHerokuのEco Dynosプランでの運用を想定しています。
 
-*   **Google Cloud Storage (GCS) バケットの作成**: アプリケーションがCSVファイルや分析結果（プロット、RDataなど）を保存するためのGCSバケット。
-*   **サービスアカウント権限の設定**:
-    *   Cloud Runのランタイムサービスアカウントに対するFirestoreデータベースへのアクセス権限。
-    *   Cloud Runのランタイムサービスアカウントに対する上記GCSバケットへの読み書き権限。
-*   **環境変数の設定**:
-    *   Cloud Runサービスに `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `GEMINI_API_KEY` などの基本的な環境変数。
-    *   `STORAGE_BACKEND="firestore"` を設定。
-    *   `GCS_BUCKET_NAME` に作成したGCSバケット名を設定。
+#### 4.1. Heroku側の準備
 
-### 5. デプロイ後の運用
+1.  **Eco Dynosプランへの加入**:
+    *   Herokuダッシュボードの Account → Billing → Eco Dynos から加入します (月$5で1000 dyno-hours)。
+2.  **アプリの新規作成**:
+    *   Herokuダッシュボードで新しいアプリを作成し、アプリ名 (`HEROKU_APP_NAME`) を控えます。
+3.  **API Keyの発行**:
+    *   Account → API Key からAPIキーを発行し、コピーしておきます。これはGitHub ActionsのSecret (`HEROKU_API_KEY`) として使用します。
+4.  **Config Varsの登録**:
+    *   作成したアプリの Settings → Config Vars で、以下の環境変数を設定します。
+        *   `SLACK_BOT_TOKEN`
+        *   `SLACK_SIGNING_SECRET`
+        *   `GEMINI_API_KEY`
+        *   `SOCKET_MODE=false` (または未設定)
+        *   `STORAGE_BACKEND=memory`
+        *   その他必要なAPIキーなど。
+    *   `.env`ファイルの内容をここに登録します。公開リポジトリに`.env`ファイルをコミットしないでください。
 
-詳細は[post-deployment.md](post-deployment.md)
+#### 4.2. GitHub側の準備
 
+1.  **Secretsの登録**:
+    *   リポジトリの Settings → Secrets and variables → Actions で、以下の2つのリポジトリシークレットを登録します。
+        *   `HEROKU_API_KEY`: 4.1.3で取得したHeroku APIキー。
+        *   `HEROKU_APP_NAME`: 4.1.2で控えたHerokuアプリ名。
+2.  **Secret Scanning & Push Protectionの有効化**:
+    *   リポジトリの Settings → Code security and analysis で、Secret scanning と Push protection を有効化します。
+3.  **.gitignoreの確認**:
+    *   `.gitignore`に`.env`, `*.key`, `__pycache__/`などが含まれていることを確認し、機密情報や不要なファイルがコミットされないようにします。
 
+#### 4.3. ローカルリポジトリの準備とDockerfileの修正
+
+1.  **リポジトリの取得とブランチ作成**:
+    ```powershell
+    git clone https://github.com/SRWS-PSG/meta-analysis-bot-release.git # あなたのリポジトリURLに置き換えてください
+    cd meta-analysis-bot-release
+    git checkout -b feature/heroku-setup
+    ```
+2.  **Dockerfileの修正**:
+    Herokuルーターは割り当てられた`$PORT`に60秒以内にバインドするアプリのみを生存とみなします。そのため、`Dockerfile`の`CMD`命令を以下のように修正します。
+    ```dockerfile
+    # (既存のDockerfileの内容)
+    # CMD ["python", "main.py"] # ← このような行を修正または置換
+    CMD ["gunicorn", "app:server", "--bind", "0.0.0.0:${PORT:-8000}"]
+    ```
+    `app:server`の部分は、お使いのPython Webフレームワーク（Flask, FastAPIなど）のエントリーポイントに合わせてください。`main.py`が直接gunicornで起動できる場合は、`main:app`のようになることもあります。現在の`main.py`がFlaskアプリを`app`という名前でインスタンス化していることを想定しています。
+
+#### 4.4. Heroku CLIでの設定と初回コミット
+
+1.  **Heroku CLIでの操作**:
+    ```powershell
+    heroku login              # ブラウザで認証
+    heroku container:login
+    heroku git:remote -a YOUR_HEROKU_APP_NAME # YOUR_HEROKU_APP_NAMEを実際のアプリ名に置き換え
+    heroku stack:set container      # スタックをDocker運用に変更
+    heroku ps:type web=eco          # dynoタイプをecoに設定
+    ```
+2.  **コミット**:
+    ```powershell
+    git add Dockerfile .gitignore # Dockerfileの変更と.gitignoreを確認してadd
+    git commit -m "feat: Configure for Heroku deployment, update Dockerfile for $PORT"
+    ```
+    必要に応じて他の変更ファイルもコミットしてください。
+
+#### 4.5. GitHub Actionsによる自動デプロイの設定
+
+プロジェクトのルートに`.github/workflows/deploy-heroku.yml`というファイル名で以下のワークフローを作成します。
+
+```yaml
+name: Deploy to Heroku (Eco)
+
+on:
+  push:
+    branches:
+      - main # mainブランチへのpushで発火。開発ブランチ名に合わせてください。
+  workflow_dispatch: # 手動実行も可能にする
+
+env:
+  HEROKU_APP_NAME: ${{ secrets.HEROKU_APP_NAME }}
+  REGISTRY_IMAGE: registry.heroku.com/${{ secrets.HEROKU_APP_NAME }}/web
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (for multi-platform builds if needed)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Heroku Container Registry
+        run: echo "${{ secrets.HEROKU_API_KEY }}" | docker login --username=_ --password-stdin registry.heroku.com
+
+      - name: Build and push Docker image
+        run: |
+          docker build --platform linux/amd64 -t $REGISTRY_IMAGE .
+          docker push $REGISTRY_IMAGE
+        # Apple Silicon (arm64) などで開発している場合、Heroku (amd64) 用に --platform linux/amd64 を指定
+
+      - name: Release image to Heroku
+        run: heroku container:release web --app $HEROKU_APP_NAME
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+```
+
+このワークフローは、指定したブランチ（例: `main`）にプッシュされると自動的に実行され、Dockerイメージをビルドし、Herokuコンテナレジストリにプッシュ後、新しいイメージをリリースします。
+
+#### 4.6. デプロイの実行
+
+変更をGitHubにプッシュします。
+
+```powershell
+git push origin feature/heroku-setup
+```
+プルリクエストを作成し、`main`ブランチ（またはワークフローで指定したブランチ）にマージすると、GitHub Actionsが起動し、Herokuへのデプロイが実行されます。
+
+### 5. Herokuでの運用 (低アクセス想定)
+
+*   **スリープ仕様**: Eco dynoは30分間通信がないと自動的にスリープします。再度アクセスがあると約5～10秒で再起動します。低コスト運用のため、監視Pingなどは設定しません。
+*   **Dyno Hoursの確認**: `heroku ps -a YOUR_HEROKU_APP_NAME`でdynoの状態や使用時間を確認できます。月末に残りが少ない場合は、`heroku ps:scale web=0 -a YOUR_HEROKU_APP_NAME`でdynoを停止し、プール超過を防ぎます。
+*   **ログ確認**: `heroku logs --tail -a YOUR_HEROKU_APP_NAME`でリアルタイムログを確認できます。
+*   **コード更新**: ローカルでコードを修正し、コミットしてGitHubにプッシュすると、GitHub Actionsが自動的に再デプロイします。
+*   **一時的な作業**: `heroku run bash -a YOUR_HEROKU_APP_NAME`でワンオフのdynoを起動し、データベースマイグレーションなどの一時的なコマンドを実行できます（本プロジェクトではDBを使用しないため、主にデバッグ用途）。
 
 ## License
 

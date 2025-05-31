@@ -42,13 +42,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # アプリケーションコードをコピー
 COPY . .
 
-# ポートを公開（HTTP Mode時はPORT環境変数、Socket Mode時は不要だが設定）
-ENV PORT=8080
-EXPOSE $PORT
+# ポートを公開 (Herokuが$PORT環境変数を設定)
+# EXPOSE $PORT # HerokuではCMDで直接$PORTを使用するため、EXPOSEは必須ではない
 
-# ヘルスチェック（両モード対応）
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import sys; sys.exit(0)"
+# ヘルスチェックはHerokuの機能に任せるため削除
+# HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+#    CMD python -c "import sys; sys.exit(0)"
 
-# アプリケーションを実行
-CMD ["python", "main.py"]
+# アプリケーションを実行 (Herokuは$PORTにバインドすることを期待)
+CMD ["gunicorn", "main:app", "--bind", "0.0.0.0:${PORT}", "--workers", "4", "--timeout", "120"]

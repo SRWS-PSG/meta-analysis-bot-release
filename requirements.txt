@@ -8,5 +8,3 @@ boto3>=1.38.0
 redis>=4.5.0
 rpy2>=3.5.0
 pyreadr
-google-cloud-firestore==2.*
-google-cloud-storage
