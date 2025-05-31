@@ -533,6 +533,92 @@ class FirestoreStorage:
             logger.error(f"Failed to append file metadata for {filename} to Firestore for conversation {conversation_id}: {e}")
 
 
+class HybridStorage:
+    """Redis + Firestore ハイブリッドストレージバックエンド"""
+    
+    def __init__(self, gcs_bucket_name_param: Optional[str] = None):
+        """
+        Redis (キャッシュ) + Firestore (永続化) のハイブリッドストレージを初期化
+        
+        Args:
+            gcs_bucket_name_param: GCSバケット名 (Firestore連携用)
+        """
+        self.redis_storage = RedisStorage()
+        # Firestore (永続化層)  
+        self.firestore_storage = FirestoreStorage(gcs_bucket_name_param)
+        
+        self.cache_ttl = int(clean_env_var('REDIS_CACHE_TTL', '300'))  # デフォルト5分
+        self.available = self.firestore_storage.available  # Firestoreが利用可能かどうかで判定
+        
+        if not self.firestore_storage.available:
+            logger.error("HybridStorage: Firestore not available. Falling back to Redis only.")
+        
+        logger.info(f"HybridStorage initialized. Redis available: {self.redis_storage.available}, Firestore available: {self.firestore_storage.available}")
+
+    def get(self, key: str) -> Optional[Dict]:
+        """Redis からキャッシュを取得、なければ Firestore から取得してキャッシュに保存"""
+        if self.redis_storage.available:
+            cached_data = self.redis_storage.get(key)
+            if cached_data:
+                logger.debug(f"Cache hit for key: {key}")
+                return cached_data
+                
+        if self.firestore_storage.available:
+            data = self.firestore_storage.get(key)
+            if data:
+                if self.redis_storage.available:
+                    self.redis_storage.set(key, data, self.cache_ttl)
+                    logger.debug(f"Cached data from Firestore for key: {key}")
+                return data
+                
+        return None
+
+    def set(self, key: str, value: Dict, expire: int = 0) -> None:
+        """FirestoreとRedisの両方に保存 (Write-through キャッシュ)"""
+        # Firestoreに永続化
+        if self.firestore_storage.available:
+            self.firestore_storage.set(key, value, expire)
+            
+        if self.redis_storage.available:
+            cache_expire = self.cache_ttl if expire == 0 else min(expire, self.cache_ttl)
+            self.redis_storage.set(key, value, cache_expire)
+
+    def delete(self, key: str) -> None:
+        """FirestoreとRedisの両方から削除"""
+        if self.firestore_storage.available:
+            self.firestore_storage.delete(key)
+        if self.redis_storage.available:
+            self.redis_storage.delete(key)
+
+    def append_message(self, conversation_id: str, role: str, content: str, timestamp: str = None) -> bool:
+        """Firestoreにメッセージを追加し、Redisキャッシュを無効化"""
+        if not self.firestore_storage.available:
+            logger.error("Cannot append message: Firestore not available")
+            return False
+            
+        # Firestoreにメッセージを追加
+        result = self.firestore_storage.append_message(conversation_id, role, content, timestamp)
+        
+        if result and self.redis_storage.available:
+            self.redis_storage.delete(conversation_id)
+            logger.debug(f"Invalidated cache for conversation: {conversation_id}")
+            
+        return result
+
+    def get_recent_messages(self, conversation_id: str, limit: int = 50) -> List[Dict]:
+        """最近のメッセージを取得 (Firestore subcollection 使用)"""
+        if not self.firestore_storage.available:
+            return []
+        return self.firestore_storage.get_recent_messages(conversation_id, limit)
+
+    def cleanup_old_messages(self, conversation_id: str, keep_count: int = 100) -> None:
+        """古いメッセージをクリーンアップし、キャッシュを無効化"""
+        if self.firestore_storage.available:
+            self.firestore_storage.cleanup_old_messages(conversation_id, keep_count)
+            if self.redis_storage.available:
+                self.redis_storage.delete(conversation_id)
+
+
 class ThreadContextManager:
     """スレッドごとの会話コンテキストを管理するクラス"""
     
@@ -549,9 +635,9 @@ class ThreadContextManager:
         self.expiration_seconds = expiration_days * 86400
         # MAX_HISTORY_LENGTH もシークレットまたは環境変数から取得するように変更する可能性を考慮
         self.max_history_length = int(get_secret_or_env("max_history_length", "MAX_HISTORY_LENGTH", "20"))
-        self.enable_firestore_subcollection = isinstance(self.storage, FirestoreStorage)  # Firestoreサブコレクション機能の有効化
+        self.enable_firestore_subcollection = isinstance(self.storage, (FirestoreStorage, HybridStorage))  # Firestoreサブコレクション機能の有効化
         self.gcs_bucket_name = None
-        if isinstance(self.storage, FirestoreStorage):
+        if isinstance(self.storage, (FirestoreStorage, HybridStorage)):
             self.gcs_bucket_name = self.storage.gcs_bucket_name
 
 
@@ -922,6 +1008,8 @@ class ThreadContextManager:
         elif backend == "firestore":
             # FirestoreStorage のコンストラクタは gcs_bucket_name_param を受け取るように変更済み
             return FirestoreStorage(gcs_bucket_name_param=gcs_bucket_name_env)
+        elif backend == "hybrid":
+            return HybridStorage(gcs_bucket_name_param=gcs_bucket_name_env)
         elif backend == "memory": # Explicitly handle memory
             return MemoryStorage()
         else:  # Default to memory storage if backend string is unrecognized
@@ -930,21 +1018,39 @@ class ThreadContextManager:
 
     def upload_file_to_gcs(self, thread_id: str, channel_id: Optional[str], local_file_path: str, destination_filename: str) -> Optional[str]:
         """Uploads a file to GCS using the configured storage backend."""
-        if not isinstance(self.storage, FirestoreStorage) or not self.storage.available:
-            logger.error("Cannot upload to GCS: Storage backend is not FirestoreStorage or not available.")
+        if isinstance(self.storage, HybridStorage):
+            if not self.storage.firestore_storage.available:
+                logger.error("Cannot upload to GCS: Firestore in HybridStorage is not available.")
+                return None
+            key = self._make_key(thread_id, channel_id) # conversation_id for GCS path
+            return self.storage.firestore_storage.upload_file_to_gcs(key, local_file_path, destination_filename)
+        elif isinstance(self.storage, FirestoreStorage):
+            if not self.storage.available:
+                logger.error("Cannot upload to GCS: FirestoreStorage is not available.")
+                return None
+            key = self._make_key(thread_id, channel_id) # conversation_id for GCS path
+            return self.storage.upload_file_to_gcs(key, local_file_path, destination_filename)
+        else:
+            logger.error("Cannot upload to GCS: Storage backend is not FirestoreStorage or HybridStorage.")
             return None
-        
-        key = self._make_key(thread_id, channel_id) # conversation_id for GCS path
-        return self.storage.upload_file_to_gcs(key, local_file_path, destination_filename)
 
     def download_file_from_gcs(self, thread_id: str, channel_id: Optional[str], source_filename: str, local_destination_path: str) -> bool:
         """Downloads a file from GCS using the configured storage backend."""
-        if not isinstance(self.storage, FirestoreStorage) or not self.storage.available:
-            logger.error("Cannot download from GCS: Storage backend is not FirestoreStorage or not available.")
+        if isinstance(self.storage, HybridStorage):
+            if not self.storage.firestore_storage.available:
+                logger.error("Cannot download from GCS: Firestore in HybridStorage is not available.")
+                return False
+            key = self._make_key(thread_id, channel_id) # conversation_id for GCS path
+            return self.storage.firestore_storage.download_file_from_gcs(key, source_filename, local_destination_path)
+        elif isinstance(self.storage, FirestoreStorage):
+            if not self.storage.available:
+                logger.error("Cannot download from GCS: FirestoreStorage is not available.")
+                return False
+            key = self._make_key(thread_id, channel_id) # conversation_id for GCS path
+            return self.storage.download_file_from_gcs(key, source_filename, local_destination_path)
+        else:
+            logger.error("Cannot download from GCS: Storage backend is not FirestoreStorage or HybridStorage.")
             return False
-            
-        key = self._make_key(thread_id, channel_id) # conversation_id for GCS path
-        return self.storage.download_file_from_gcs(key, source_filename, local_destination_path)
 
 class FileBasedStorage:
     """ファイルベースのストレージ実装"""
