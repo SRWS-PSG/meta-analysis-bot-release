@@ -34,26 +34,22 @@ Slackで共有されたCSVファイルからメタ解析を実行し、結果を
 
 ## 機能
 
-- ✅ Slackで共有されたCSVファイルを受信 (`MessageHandler`がイベントを捉え、`CsvProcessor`に処理を委譲)
-- ✅ pandasとGemini APIを使用してCSV構造を分析 (`meta_analysis.py`の`analyze_csv`関数がCSVの基本情報抽出、メタ分析への適合性評価、列の役割マッピングを実施)
-- ✅ 収集されたパラメータに基づき、Rのmetaforパッケージを使用してメタ解析を実行 (`meta_analysis.py`の`run_meta_analysis`関数が`RTemplateGenerator`を用いてRスクリプトを生成し、`subprocess`で実行。エラー時はGeminiによるデバッグ・再試行も実施)
-- ✅ フォレストプロット、Rコード、およびGemini APIによる学術論文形式のテキストレポートをSlackチャンネルに返信 (`AnalysisExecutor`が結果ファイルをアップロードし、`ReportHandler`がテキストレポートを生成・投稿)
-- ✅ **スレッド内会話コンテキストの維持** (`ThreadContextManager`による。Herokuでは主にメモリ上で維持)
-- 🚧 **複数の分析タイプ（ペアワイズ、サブグループ、メタ回帰など）** (基本的な対話フローは実装済み、Rスクリプト生成の高度化は進行中)
-- ✅ **非同期処理によるSlackの3秒ルール対応** (`CsvProcessor`によるCSV分析、`AnalysisExecutor`によるメタ分析実行など)
-- ✅ **Geminiを活用した自然言語理解**
-  - `ParameterCollector`がユーザーの自然言語入力から効果量、モデルタイプ、サブグループ列などを抽出 (`gemini_utils.py`の`extract_parameters_from_user_input`利用)
-  - `meta_analysis.py`の`analyze_csv`がCSV適合性分析と列マッピングを実施 (`gemini_utils.py`の`analyze_csv_compatibility_with_mcp_prompts`, `map_csv_columns_to_meta_analysis_roles`利用)
-  - `meta_analysis.py`の`run_meta_analysis`がRスクリプトエラーのデバッグを実施 (`gemini_utils.py`の`regenerate_r_script_with_gemini_debugging`利用)
-  - `ReportHandler`が分析結果から学術的な記述を生成 (`gemini_utils.py`の`generate_academic_writing_suggestion`利用)
-- ✅ **強化された対話フロー**
-  - `ParameterCollector`がGeminiによるパラメータ抽出と不足時の質問生成により、自然な対話を実現
-  - 多層フォールバック戦略（Gemini→手動ダイアログ→基本テンプレート）
-  - 常に詳細レポート＋AI解釈付きで出力を統一
-- ✅ **MCPツールとの統合強化** (現在は直接的なMCPツール連携よりもGemini API活用が主)
-  - テンプレート管理システムによる一貫した分析設定 (`RTemplateGenerator`によるRスクリプト生成)
-  - データ互換性の自動検証機能 (`analyze_csv`による適合性評価)
-- ✅ **エラー処理と再試行メカニズム** (`run_meta_analysis`内でのRスクリプト実行時のGeminiデバッグとリトライ、一般的なエラーハンドリング)
+- ✅ Slackで共有されたCSVファイルの受信と初期分析
+- ✅ pandasとGemini APIによるCSV構造分析、メタ分析への適合性評価、列の役割マッピング
+- ✅ ユーザーとの対話を通じた分析パラメータの収集
+- ✅ Rのmetaforパッケージを使用したメタ解析の実行（ペアワイズ、サブグループ、メタ回帰などに対応予定）
+- ✅ フォレストプロット、Rコード、およびGemini APIによる学術論文形式のテキストレポートの生成と返信
+- ✅ スレッド内での会話コンテキスト維持
+- ✅ 非同期処理によるSlack APIの3秒タイムアウトルールへの対応
+- ✅ Gemini APIを活用した高度な自然言語理解と処理
+    - ユーザー入力からのパラメータ抽出
+    - CSVの適合性分析と列マッピング支援
+    - Rスクリプトエラーのデバッグ支援
+    - 分析結果からの学術的な記述生成
+- ✅ 強化された対話フロー（パラメータ抽出、不足時の質問生成、多層フォールバック戦略）
+- ✅ テンプレートベースでの一貫した分析設定とRスクリプト生成
+- ✅ データ互換性の自動検証
+- ✅ エラー処理とGemini支援による再試行メカニズム
 
 ## アーキテクチャ
 
@@ -201,10 +197,11 @@ Slack Botをセットアップするには、以下の手順に従ってくだ�
     *   **Herokuデプロイ時はHTTP Mode (`SOCKET_MODE=false`または未設定) を使用するため、この設定は不要です。**
 
 6.  **Event Subscriptionsの設定 (HTTPモードの場合):**
-    *   Herokuデプロイ時 (HTTP Mode) は、HerokuがリクエストURLを自動的に提供するため、通常この設定は不要です。ローカルでHTTP Modeをテストする場合に設定します。
-    *   Socket Modeを使用しない場合（`SOCKET_MODE=false`）、アプリ管理画面の左側のナビゲーションから「Event Subscriptions」を選択し、「Enable Events」をオンにします。
-    *   「Request URL」に、ボットがSlackイベントを受信するエンドポイントのURL（例: `https://your-ngrok-url.io/slack/events`）を設定します。
+    *   HerokuにデプロイしてHTTP Mode (`SOCKET_MODE=false`または未設定) を使用する場合、Slack Appの管理画面でEvent Subscriptionsの設定が必要です。
+    *   アプリ管理画面の左側のナビゲーションから「Event Subscriptions」を選択し、「Enable Events」をオンにします。
+    *   「Request URL」に、HerokuアプリケーションのイベントエンドポイントURLを設定します。これは通常、 `https://<YOUR_HEROKU_APP_NAME>.herokuapp.com/slack/events` という形式になります。`<YOUR_HEROKU_APP_NAME>` はご自身のHerokuアプリケーション名に置き換えてください。
     *   「Subscribe to bot events」セクションで、ボットが購読するイベント（例: `app_mention`, `message.channels`, `file_shared`など）を追加します。
+    *   ローカル環境でHTTP Modeをテストする場合は、ngrokなどで払い出された公開URL（例: `https://your-ngrok-url.io/slack/events`）を設定します。
 
 Herokuデプロイ時にConfig Varsに設定が必要な主な環境変数:
 
