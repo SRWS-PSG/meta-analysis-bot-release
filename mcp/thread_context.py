@@ -31,6 +31,26 @@ def clean_env_var(var_name, default=None):
         return value.strip().lstrip('\ufeff').strip()
     return value
 
+# 値を直接受け取ってBOMや空白を除去するヘルパー関数
+def clean_value(value: Optional[str]) -> Optional[str]:
+    if value:
+        return value.strip().lstrip('\ufeff').strip()
+    return value
+
+# シークレットファイルまたは環境変数から値を取得するヘルパー関数
+def get_secret_or_env(secret_file_name: str, env_var_name: str, default: Optional[str] = None) -> Optional[str]:
+    secret_path = f"/secrets/{secret_file_name}"
+    if os.path.exists(secret_path):
+        try:
+            with open(secret_path, 'r', encoding='utf-8') as f:
+                val = f.read().strip()
+                return clean_value(val)
+        except Exception as e:
+            logger.warning(f"シークレットファイル {secret_path} の読み取りに失敗しました: {e}")
+    
+    # 環境変数もフォールバックとして確認
+    return clean_env_var(env_var_name, default)
+
 def convert_firestore_timestamps(obj):
     """
     Firestoreのタイムスタンプオブジェクトを JSON serializable な形式に変換する
@@ -208,17 +228,18 @@ class FirestoreStorage:
     COLL = "threads"  # Firestore collection name for thread contexts
     CONV_COLL = "conversations" # Firestore collection name for conversation logs
 
-    def __init__(self, gcs_bucket_name: Optional[str] = None):
+    def __init__(self, gcs_bucket_name_param: Optional[str] = None): # パラメータ名を変更
         try:
             self.db = get_db()
             self.gcs_client = storage.Client()
-            self.gcs_bucket_name = gcs_bucket_name or clean_env_var("GCS_BUCKET_NAME")
+            # シークレットファイル "gcs_bucket_name" または環境変数 "GCS_BUCKET_NAME" から取得
+            self.gcs_bucket_name = gcs_bucket_name_param or get_secret_or_env("gcs_bucket_name", "GCS_BUCKET_NAME")
             if not self.gcs_bucket_name:
-                logger.warning("GCS_BUCKET_NAME is not set. File operations to GCS will fail.")
+                logger.warning("GCS_BUCKET_NAME が設定されていません（シークレットと環境変数を確認しました）。GCSへのファイル操作は失敗します。")
             self.available = True
-            logger.info(f"FirestoreStorage initialized successfully. GCS Bucket: {self.gcs_bucket_name}")
+            logger.info(f"FirestoreStorage が正常に初期化されました。GCSバケット: {self.gcs_bucket_name}")
         except Exception as e:
-            logger.warning(f"Firestore/GCS client initialization error: {e}. Firestore/GCS storage will be unavailable.")
+            logger.warning(f"Firestore/GCSクライアントの初期化エラー: {e}。Firestore/GCSストレージは利用できません。")
             self.available = False
             self.gcs_client = None
             self.gcs_bucket_name = None
@@ -526,7 +547,8 @@ class ThreadContextManager:
         self.storage = self._init_storage(storage_backend)
         self.expiration_days = expiration_days
         self.expiration_seconds = expiration_days * 86400
-        self.max_history_length = int(clean_env_var("MAX_HISTORY_LENGTH", "20"))
+        # MAX_HISTORY_LENGTH もシークレットまたは環境変数から取得するように変更する可能性を考慮
+        self.max_history_length = int(get_secret_or_env("max_history_length", "MAX_HISTORY_LENGTH", "20"))
         self.enable_firestore_subcollection = isinstance(self.storage, FirestoreStorage)  # Firestoreサブコレクション機能の有効化
         self.gcs_bucket_name = None
         if isinstance(self.storage, FirestoreStorage):
@@ -898,11 +920,12 @@ class ThreadContextManager:
         elif backend == "dynamodb":
             return DynamoDBStorage()
         elif backend == "firestore":
-            return FirestoreStorage(gcs_bucket_name=gcs_bucket_name_env)
+            # FirestoreStorage のコンストラクタは gcs_bucket_name_param を受け取るように変更済み
+            return FirestoreStorage(gcs_bucket_name_param=gcs_bucket_name_env)
         elif backend == "memory": # Explicitly handle memory
             return MemoryStorage()
         else:  # Default to memory storage if backend string is unrecognized
-            logger.warning(f"Unknown storage backend '{backend}', defaulting to memory storage.")
+            logger.warning(f"不明なストレージバックエンド '{backend}' のため、メモリストレージをデフォルトとして使用します。")
             return MemoryStorage()
 
     def upload_file_to_gcs(self, thread_id: str, channel_id: Optional[str], local_file_path: str, destination_filename: str) -> Optional[str]:

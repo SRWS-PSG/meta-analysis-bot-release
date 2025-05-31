@@ -400,10 +400,9 @@ jobs:
           --region=asia-northeast1 \
           --source=. \
           --service-account=app-runtime@${{ secrets.GCP_PROJECT }}.iam.gserviceaccount.com \
-          --set-secrets="/secrets/.env=app-env:latest" \
-          --set-env-vars="GCS_BUCKET_NAME=${{ secrets.GCS_BUCKET_NAME }}" \ # GCSバケット名を設定
-          --add-volume="name=secret-vol,type=secret,secret=app-env" \
-          --add-volume-mount="volume=secret-vol,mount-path=/secrets" \
+          # GCS_BUCKET_NAME 環境変数はGCPコンソール等から手動で設定してください (SecretManager gcs_bucket_name の値を参照)。
+          # app-env (.envファイルの内容) もCloudRun環境では使用しない方針のため、マウント設定を削除。
+          # 必要な変数は個別に環境変数として設定するか、個別のシークレットとして管理してください。
           --min-instances=0 \
           --max-instances=10 \
           --allow-unauthenticated

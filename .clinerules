@@ -280,6 +280,11 @@ regplot(res, xlim=c(10,60), predlim=c(10,60), xlab="Absolute Latitude", refline=
 ## 1️⃣ Cloud Run 専用ショートカット ― 最も手軽に読む
 Cloud Run なら Google Cloud CLI がラッパーを用意しています。
 
+
+```bash
+gcloud config list project
+```
+
 ```bash
 gcloud run services logs read python-app \
   --project=PROJECTID \
