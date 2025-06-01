@@ -480,7 +480,7 @@ map_csv_columns_to_meta_analysis_roles_function = {
             "detected_effect_size": {
                 "type": "string",
                 "description": "列名パターンから検出された効果量のタイプ（例: OR, RR, RD, HR, SMD, MD, yi）。不明な場合はnull。",
-                "enum": ["OR", "RR", "RD", "HR", "SMD", "MD", "COR", "proportion", "IR", "PETO", "ROM", "yi", "RD", None]
+                "enum": ["OR", "RR", "RD", "HR", "SMD", "MD", "COR", "proportion", "IR", "PETO", "ROM", "yi", "unknown"]
             },
             "is_log_transformed": {
                 "type": "boolean",
@@ -489,7 +489,7 @@ map_csv_columns_to_meta_analysis_roles_function = {
             "data_format": {
                 "type": "string",
                 "description": "検出されたデータ形式（例: 2x2_table, pre_calculated）。OR/RRの場合に特に重要。不明な場合はnull。",
-                "enum": ["2x2_table", "pre_calculated", "mixed", None]
+                "enum": ["2x2_table", "pre_calculated", "mixed", "unknown"]
             },
             "detected_columns": {
                 "type": "object",
