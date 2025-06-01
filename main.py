@@ -1,7 +1,7 @@
 import os
 import asyncio
 from slack_bolt import App
-from slack_bolt.adapter.heroku import SlackRequestHandler
+from slack_bolt.adapter.wsgi import SlackRequestHandler
 
 from handlers.csv_handler import register_csv_handlers
 from handlers.analysis_handler import register_analysis_handlers
@@ -23,17 +23,11 @@ register_parameter_handlers(app) # 追加
 # Heroku用のハンドラー
 handler = SlackRequestHandler(app)
 
-# Flask互換のWSGIアプリケーション
-def application(environ, start_response):
-    return handler.handle(environ, start_response)
+# Gunicorn が探す WSGI callable
+application = handler.handle
 
 if __name__ == "__main__":
     if os.environ.get("SOCKET_MODE", "false").lower() == "true":
         # ローカル開発用
         app.start(port=int(os.environ.get("PORT", 3000)))
-    else:
-        # Heroku用
-        port = int(os.environ.get("PORT", 8000))
-        from wsgiref.simple_server import make_server
-        server = make_server("0.0.0.0", port, application)
-        server.serve_forever()
+    # Heroku用の起動ロジックはProcfile経由でGunicornが行うため削除

@@ -1,5 +1,5 @@
 # Slack関連
-slack-bolt==1.18.0
+slack_bolt>=1.18.1,<2
 slack-sdk==3.21.3
 
 # AI/ML
