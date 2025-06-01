@@ -664,9 +664,15 @@ class ParameterCollector:
                 if thinking_message_ts:
                     try: client.chat_delete(channel=channel_id, ts=thinking_message_ts)
                     except Exception as e_del: logger.error(f"Failed to delete 'thinking' message: {e_del}")
-        else:
-            logger.warning(f"Unexpected dialog state or missing collected_params: {dialog_state}")
-            client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text="分析設定の現在の状態を認識できませんでした。")
+        else: # dialog_state.get("state") != "collecting_params" or not collected_params_state
+            debug_message = (
+                f"予期しないダイアログ状態または収集済みパラメータの欠損により、パラメータ収集を継続できませんでした。\n"
+                f"現在のDialog State: {json.dumps(dialog_state, ensure_ascii=False)}\n"
+                f"現在のCollected Params: {json.dumps(collected_params_state, ensure_ascii=False)}\n"
+                f"お手数ですが、最初からやり直す場合は、再度CSVファイルを共有してください。"
+            )
+            logger.warning(f"Unexpected dialog state or missing collected_params in handle_analysis_preference_dialog. Dialog State: {json.dumps(dialog_state, ensure_ascii=False)}, Collected Params: {json.dumps(collected_params_state, ensure_ascii=False)}. Forcing to WAITING_FILE.")
+            client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text=debug_message)
             DialogStateManager.set_dialog_state(context, "WAITING_FILE")
 
         self.context_manager.save_context(thread_ts, context, channel_id)
