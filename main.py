@@ -86,23 +86,19 @@ def main():
 
 # ↓↓↓↓↓↓ ここから修正 ↓↓↓↓↓↓
 from mcp.slack_bot import MetaAnalysisBot
-from slack_bolt.adapter.wsgi import SlackRequestHandler # Flask関連のインポートを削除し、WSGIアダプターをインポート
+from slack_bolt.adapter.wsgi import SlackRequestHandler
 
 # MetaAnalysisBotのインスタンスを作成
-# この時点で環境変数が読み込まれ、基本的なロギングが設定されている必要がある
 try:
     bot_instance = MetaAnalysisBot()
     
     # Gunicornが参照するWSGIアプリケーションインスタンス
     socket_mode_env_check = clean_env_var("SOCKET_MODE", "false").lower() == "true"
     if not socket_mode_env_check:
-        # HTTPモードの場合、純粋なWSGIハンドラをセットアップ
-        wsgi_handler = SlackRequestHandler(bot_instance.app, path="/slack/events")
+        # HTTPモードの場合、SlackRequestHandlerを使用
+        # pathを指定せずにデフォルトの/slack/eventsを使用
+        app = SlackRequestHandler(bot_instance.app) # SlackRequestHandlerインスタンスを直接appに代入
         
-        def application(environ, start_response): # Gunicornが期待するcallable名 (PEP 3333)
-            return wsgi_handler.handle(environ, start_response)
-        
-        app = application # Gunicornはこの 'application' callable を参照 (main:app で指定するため)
         logger.info(f"WSGI handler created for Slack app. Type of app: {type(app)}")
         if callable(app):
             logger.info(f"'app' ({type(app)}) is a callable WSGI application for HTTP mode.")
@@ -110,7 +106,7 @@ try:
             logger.error(f"'app' ({type(app)}) is NOT a callable WSGI application for HTTP mode.")
     else:
         # Socket Modeの場合、gunicornは直接appを参照しない
-        app = None # Socket Modeではgunicornに公開するappは不要
+        app = None
         logger.info("Socket Mode enabled. 'app' is None as gunicorn will not serve it directly.")
 
 except Exception as e:
