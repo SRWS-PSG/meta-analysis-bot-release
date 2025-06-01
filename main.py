@@ -97,7 +97,7 @@ try:
     socket_mode_env_check = clean_env_var("SOCKET_MODE", "false").lower() == "true"
     if not socket_mode_env_check:
         # HTTPモードの場合、純粋なWSGIハンドラをセットアップ
-        wsgi_handler = SlackRequestHandler(bot_instance.app)
+        wsgi_handler = SlackRequestHandler(bot_instance.app, path="/slack/events")
         
         def application(environ, start_response): # Gunicornが期待するcallable名 (PEP 3333)
             return wsgi_handler.handle(environ, start_response)
