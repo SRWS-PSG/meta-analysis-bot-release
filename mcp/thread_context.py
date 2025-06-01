@@ -638,6 +638,11 @@ class ThreadContextManager:
             storage_backend: コンテキスト保存先 ("redis", "dynamodb", "memory")
             expiration_days: コンテキスト有効期限（日数）
         """
+        # Heroku環境でメモリストレージが指定された場合、ファイルストレージに変更
+        if storage_backend == "memory" and os.environ.get("DYNO"):
+            logger.info("Heroku環境でメモリストレージが指定されましたが、ファイルストレージに変更します。")
+            storage_backend = "file"
+            
         self.storage = self._init_storage(storage_backend)
         self.expiration_days = expiration_days
         self.expiration_seconds = expiration_days * 86400

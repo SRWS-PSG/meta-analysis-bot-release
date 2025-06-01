@@ -27,6 +27,42 @@ class MessageHandler:
         self.bot_user_id = bot_user_id # bot_user_id をインスタンス変数として保持
         # self.report_handler = report_handler # report_handlerはAnalysisExecutor経由で呼ばれる
 
+    def _is_bot_message(self, event: dict, message_data: dict) -> bool:
+        """
+        Botからのメッセージかどうかを判定するヘルパーメソッド。
+        より厳密なチェックを行う。
+        """
+        # 1. bot_idフィールドの存在
+        # message_data (eventまたはevent.message) に bot_id があればBotとみなす
+        if message_data.get("bot_id"):
+            logger.debug(f"_is_bot_message: True (bot_id: {message_data.get('bot_id')})")
+            return True
+        
+        # 2. user_idがBot自身 (self.bot_user_id が設定されている場合)
+        # message_data (eventまたはevent.message) の user が bot_user_id と一致すればBot
+        if self.bot_user_id and message_data.get("user") == self.bot_user_id:
+            logger.debug(f"_is_bot_message: True (user_id matches bot_user_id: {self.bot_user_id})")
+            return True
+        
+        # 3. app_idの確認（自アプリからのメッセージか）
+        # message_data (eventまたはevent.message) の app_id が event の api_app_id と一致すればBot
+        # (ただし、event.api_app_id は event_callback のトップレベルにしかない場合がある)
+        # context["api_app_id"] のような形で保持されている値と比較する方が安定する可能性も。
+        # ここでは、event のトップレベルの api_app_id を期待する。
+        # message_data に app_id があり、それが event の api_app_id と一致する場合
+        if message_data.get("app_id") and message_data.get("app_id") == event.get("api_app_id"):
+            logger.debug(f"_is_bot_message: True (app_id: {message_data.get('app_id')} matches event api_app_id: {event.get('api_app_id')})")
+            return True
+
+        # 4. bot_profileの存在確認
+        # message_data (eventまたはevent.message) に bot_profile があればBotとみなす
+        if message_data.get("bot_profile"):
+            logger.debug(f"_is_bot_message: True (bot_profile exists)")
+            return True
+            
+        logger.debug(f"_is_bot_message: False (No bot indicators found for message_data: user={message_data.get('user')}, app_id={message_data.get('app_id')})")
+        return False
+
     def handle_app_mention(self, event, client, context_manager_instance): # context_manager_instance を引数に追加
         channel_id = event.get("channel")
         thread_ts = event.get("thread_ts") or event.get("ts")
@@ -113,24 +149,18 @@ class MessageHandler:
         text = message_data.get("text", "")
         # bot_idフィールドは、Slack APIのイベント構造において、メッセージを投稿したのがBotである場合に設定される
         # アプリケーションが自身の投稿を識別するために使う
-        bot_id_field_in_event = message_data.get("bot_id") 
+        bot_id_field_in_event = message_data.get("bot_id") # これは古いチェックの一部として残すが、新しいメソッドで置き換える
         event_ts = event.get("ts") # イベント自体のタイムスタンプ (重複処理判定用)
 
         # --- ガード条件の強化 ---
-        # 1. bot_id_field_in_event が存在する場合 (多くの場合Botからのメッセージ)
-        if bot_id_field_in_event:
-            logger.info(f"Ignoring message due to 'bot_id' field ('{bot_id_field_in_event}') present in event. Event: {event}")
+        # 新しい _is_bot_message メソッドを使用してBotからのメッセージかどうかを判定
+        if self._is_bot_message(event, message_data):
+            logger.info(f"Ignoring message identified as from bot. Event: {json.dumps(event, ensure_ascii=False, indent=2)}")
             return
         
-        # 2. スレッド情報がない場合 (スレッド外のメッセージは基本的に無視)
+        # スレッド情報がない場合 (スレッド外のメッセージは基本的に無視)
         if not thread_ts:
-            logger.info(f"Ignoring message as it's not in a thread. Event: {event}")
-            return
-
-        # 3. 送信者(user_id)がBot自身(self.bot_user_id)である場合
-        # self.bot_user_id が None の場合はこのチェックをスキップ (auth_test失敗時など)
-        if self.bot_user_id and user_id == self.bot_user_id:
-            logger.info(f"Ignoring message from self (bot_user_id: {self.bot_user_id}, event user_id: {user_id}). Event: {event}")
+            logger.info(f"Ignoring message as it's not in a thread. Event: {json.dumps(event, ensure_ascii=False, indent=2)}")
             return
             
         # --- ここまでガード条件 ---
@@ -155,12 +185,21 @@ class MessageHandler:
                 logger.warning(f"No context and no thread_ts. Ignoring message. User: {user_id}, Text: '{text}'")
                 return
         
-        processed_event_ts_list = context.get("processed_event_ts", [])
-        if event_ts in processed_event_ts_list:
+        # processed_event_ts の管理を強化
+        if "processed_event_ts" not in context:
+            context["processed_event_ts"] = []
+            
+        # 重複イベントチェック (最大100件まで保持してチェック)
+        MAX_PROCESSED_EVENTS = 100 
+        if event_ts in context["processed_event_ts"]:
             logger.info(f"Ignoring already processed event_ts: {event_ts}. User: {user_id}, Text: '{text}'")
             return
         
-        logger.info(f"Processing user message in thread {thread_ts}. User: {user_id}, Text: '{text}'")
+        logger.info(f"Processing user message in thread {thread_ts}. User: {user_id}, Text: '{text}', Event_ts: {event_ts}")
+        context["processed_event_ts"].append(event_ts)
+        if len(context["processed_event_ts"]) > MAX_PROCESSED_EVENTS:
+            context["processed_event_ts"] = context["processed_event_ts"][-MAX_PROCESSED_EVENTS:]
+
 
         event_files = event.get("files", []) # 通常のメッセージイベントの場合
         if subtype == "message_changed" and "files" not in message_data: # message_changedでfilesがトップレベルにある場合も考慮
@@ -180,17 +219,15 @@ class MessageHandler:
                     thread_ts=thread_ts,
                     text="現在別のファイルを処理中です。処理完了後に再度お試しいただくか、別スレッドでご相談ください。"
                 )
-                # このイベントは処理済みとしてマーク
-                processed_event_ts_list.append(event_ts)
-                context["processed_event_ts"] = processed_event_ts_list
+                # このイベントは処理済みとしてマーク (既に上で追加済み)
+                # context["processed_event_ts"].append(event_ts) # 重複追加を避ける
                 self.context_manager.save_context(thread_ts, context, channel_id)
                 return
             else:
                 # waiting_for_file の場合など、app_mention で処理されるはずなのでここでは何もしない
                 logger.info(f"CSV file found in message event (type: {current_dialog_type}), but deferring to app_mention or ignoring. Event ts: {event_ts}")
-                # このイベントは処理済みとしてマーク (応答はしない)
-                processed_event_ts_list.append(event_ts)
-                context["processed_event_ts"] = processed_event_ts_list
+                # このイベントは処理済みとしてマーク (既に上で追加済み、応答はしない)
+                # context["processed_event_ts"].append(event_ts) # 重複追加を避ける
                 self.context_manager.save_context(thread_ts, context, channel_id)
                 return
 
@@ -215,8 +252,7 @@ class MessageHandler:
             # メンションのみのイベントは基本的に無視する（ゴーストメンション対策）
             if is_mention_only:
                 logger.info(f"Ignoring mention-only event. Event ts: {event_ts}")
-                processed_event_ts_list.append(event_ts) # スキップするイベントも記録
-                context["processed_event_ts"] = processed_event_ts_list
+                # context["processed_event_ts"].append(event_ts) # スキップするイベントも記録 (既に上で追加済み)
                 self.context_manager.save_context(thread_ts, context, channel_id)
                 return # 処理をスキップ
             
@@ -231,13 +267,12 @@ class MessageHandler:
             if should_process_as_params:
                 self.parameter_collector.handle_analysis_preference_dialog(text, thread_ts, channel_id, client, context, run_meta_analysis_wrapper_func, check_analysis_job_func)
         elif dialog_type == "post_analysis":
-            self._handle_general_question(text, thread_ts, channel_id, client, context)
+            self._handle_general_question(text, thread_ts, channel_id, client, context, event_ts) # event_ts を渡す
         else:
             logger.warning(f"Unknown dialog type: {dialog_type} for text: '{text}'")
-            self._handle_general_question(text, thread_ts, channel_id, client, context)
+            self._handle_general_question(text, thread_ts, channel_id, client, context, event_ts) # event_ts を渡す
 
-        processed_event_ts_list.append(event_ts)
-        context["processed_event_ts"] = processed_event_ts_list
+        # context["processed_event_ts"].append(event_ts) # 処理済みリストへの追加は関数の冒頭で行うように変更
         self.context_manager.save_context(thread_ts, context, channel_id)
 
     def handle_file_shared(self, event, client):
@@ -277,13 +312,13 @@ class MessageHandler:
                 user_message_content=text, # ユーザーのメッセージ内容
                 bot_response_content=response, # Botの応答内容
                 channel_id=channel_id,
-                user_message_ts=event_ts, # ユーザーメッセージのts
+                user_message_ts=user_event_ts, # ユーザーメッセージのts (引数で受け取る)
                 bot_response_ts=bot_response_message.get("ts") # Botメッセージのts
             )
         else:
             logger.error(f"Failed to send bot response, not updating history. Error: {bot_response_message.get('error')}")
 
-    def _record_bot_question_to_history(self, thread_ts: str, channel_id: str, question_text: str, question_ts: str, context: dict):
+    def _record_bot_question_to_history(self, thread_ts: str, channel_id: str, question_text: str, question_ts: str, context: dict): # user_event_ts は不要
         """Botの質問を会話履歴に記録するヘルパー関数"""
         # ユーザーメッセージは空として記録（Botの質問なので）
         self.context_manager.update_history(
@@ -371,19 +406,18 @@ class MessageHandler:
         thread_ts = message_data.get("thread_ts")
         user_id = message_data.get("user")
         text = message_data.get("text", "")
-        bot_id_field_in_event = message_data.get("bot_id") 
-        event_ts = event.get("ts") 
+        bot_id_field_in_event = message_data.get("bot_id") # これは古いチェックの一部として残すが、新しいメソッドで置き換える
+        event_ts = event.get("ts") # イベント自体のタイムスタンプ (重複処理判定用)
 
-        if bot_id_field_in_event:
-            logger.info(f"Ignoring message due to 'bot_id' field ('{bot_id_field_in_event}') present in event. Event: {event}")
+        # --- ガード条件の強化 ---
+        # 新しい _is_bot_message メソッドを使用してBotからのメッセージかどうかを判定
+        if self._is_bot_message(event, message_data):
+            logger.info(f"Ignoring message identified as from bot. Event: {json.dumps(event, ensure_ascii=False, indent=2)}")
             return
         
+        # スレッド情報がない場合 (スレッド外のメッセージは基本的に無視)
         if not thread_ts:
-            logger.info(f"Ignoring message as it's not in a thread. Event: {event}")
-            return
-
-        if self.bot_user_id and user_id == self.bot_user_id:
-            logger.info(f"Ignoring message from self (bot_user_id: {self.bot_user_id}, event user_id: {user_id}). Event: {event}")
+            logger.info(f"Ignoring message as it's not in a thread. Event: {json.dumps(event, ensure_ascii=False, indent=2)}")
             return
             
         context = self.context_manager.get_context(thread_ts, channel_id)
@@ -403,16 +437,19 @@ class MessageHandler:
                 logger.warning(f"No context and no thread_ts. Ignoring message. User: {user_id}, Text: '{text}'")
                 return
         
-        processed_event_ts_list = context.get("processed_event_ts", [])
-        if event_ts in processed_event_ts_list:
+        # processed_event_ts の管理を強化
+        if "processed_event_ts" not in context:
+            context["processed_event_ts"] = []
+            
+        # 重複イベントチェック (最大100件まで保持してチェック)
+        MAX_PROCESSED_EVENTS = 100 
+        if event_ts in context["processed_event_ts"]:
             logger.info(f"Ignoring already processed event_ts: {event_ts}. User: {user_id}, Text: '{text}'")
             return
         
-        logger.info(f"Processing user message in thread {thread_ts}. User: {user_id}, Text: '{text}'")
-        
-        # ユーザーメッセージを履歴に記録
-        # この時点ではBotの応答はまだないので、user_message_content のみで記録するか、
-        # Botの応答後にまとめて記録する。後者の方が自然。
+        logger.info(f"Processing user message in thread {thread_ts}. User: {user_id}, Text: '{text}', Event_ts: {event_ts}")
+        # 処理済みリストへの追加は、このメッセージの処理が完了した後（save_context直前）に移動
+        # context["processed_event_ts"].append(event_ts) # ここでは追加しない
 
         event_files = event.get("files", [])
         if subtype == "message_changed" and "files" not in message_data:
@@ -429,7 +466,6 @@ class MessageHandler:
             file_id = file_obj.get("id") # ファイルIDを取得
             if file_id and file_id in context.get("processed_file_ids", []):
                 logger.info(f"File {file_id} already processed in message handler (duplicate check), skipping. Event ts: {event_ts}")
-                # このイベントは処理済みとしてマーク (応答はしない)
                 bot_response_text_for_history = None 
                 bot_response_ts_for_history = None
             else:
@@ -439,11 +475,15 @@ class MessageHandler:
                 self.csv_processor.process_csv_file(file_obj, thread_ts, channel_id, client, context)
                 if file_id:
                     context.setdefault("processed_file_ids", []).append(file_id)
-            # CSV処理後は一度returnして、ユーザーの次のアクションを待つ
-            # ただし、このロジックは handle_message の最初のifブロックと重複しているため、
-            # 実際にはこのelseブロック内のcsv_files処理はあまり実行されない可能性がある。
-            # 最初のifブロックでreturnするため。
-        else:
+        elif csv_files: # waiting_for_file 以外の状態でCSVが投げられた場合
+            if current_dialog_type in ["processing_file", "analysis_preference"]:
+                bot_response_text_for_history = "現在別のファイルを処理中です。処理完了後に再度お試しいただくか、別スレッドでご相談ください。"
+                response = client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text=bot_response_text_for_history)
+                bot_response_ts_for_history = response.get("ts")
+            else:
+                logger.info(f"CSV file found in message event (type: {current_dialog_type}), but deferring to app_mention or ignoring. Event ts: {event_ts}")
+                bot_response_text_for_history = None # 応答しない
+        else: # CSVファイルがない場合
             dialog_state = context.get("dialog_state", {})
             dialog_type = dialog_state.get("type")
             
@@ -461,18 +501,9 @@ class MessageHandler:
                         
                 if is_mention_only:
                     logger.info(f"Ignoring mention-only event. Event ts: {event_ts}")
-                    # この場合、Botは応答しないので履歴にはユーザーメッセージのみ（あるいは記録しない）
                 else:
                     logger.info(f"Calling handle_analysis_preference_dialog with text_to_pass: '{text_to_pass}' (original text: '{text}')")
-                    # ParameterCollectorが応答を返す。その応答を履歴に記録する必要がある。
-                    # ParameterCollector内で client.chat_postMessage が呼ばれる。
-                    # その結果(tsとtext)をどうやってここまで持ってくるか？
-                    # → ParameterCollectorが応答メッセージとtsを返すようにするか、
-                    #   あるいは、ParameterCollector内で直接履歴を更新する。
-                    #   後者の方がシンプルかもしれないが、責務分担の観点からは前者。
-                    #   一旦、ParameterCollectorがlast_bot_messageを更新することを期待する。
                     self.parameter_collector.handle_analysis_preference_dialog(text_to_pass, thread_ts, channel_id, client, context, run_meta_analysis_wrapper_func, check_analysis_job_func)
-                    # ParameterCollectorがlast_bot_messageを更新したはずなので、それを取得
                     updated_last_bot_msg = context.get("last_bot_message", {})
                     bot_response_text_for_history = updated_last_bot_msg.get("content")
                     bot_response_ts_for_history = updated_last_bot_msg.get("ts")
@@ -490,30 +521,22 @@ class MessageHandler:
                     updated_last_bot_msg = context.get("last_bot_message", {})
                     bot_response_text_for_history = updated_last_bot_msg.get("content")
                     bot_response_ts_for_history = updated_last_bot_msg.get("ts")
-                # else の場合、check_processing_status内でメッセージが送信される。そのメッセージを履歴に。
-                # check_processing_status がメッセージ内容とtsを返すようにするか、内部で履歴更新。
-                # → ここでは、Botが応答した場合、その内容が last_bot_message に入ることを期待。
                 else:
-                    # check_processing_status がメッセージを投稿した場合、context.last_bot_message が更新されているはず
                     updated_last_bot_msg = context.get("last_bot_message", {})
                     bot_response_text_for_history = updated_last_bot_msg.get("content")
                     bot_response_ts_for_history = updated_last_bot_msg.get("ts")
 
-
             elif dialog_type == "post_analysis":
-                # _handle_general_question がメッセージを投稿し、履歴も更新する
-                self._handle_general_question(text, thread_ts, channel_id, client, context)
-                # _handle_general_question内で履歴更新されるので、ここでは何もしない
-                bot_response_text_for_history = None # 既に記録済み
-            else:
+                self._handle_general_question(text, thread_ts, channel_id, client, context, event_ts)
+                bot_response_text_for_history = None 
+            else: # Unknown dialog type
                 logger.warning(f"Unknown dialog type: {dialog_type} for text: '{text}'")
-                # _handle_general_question がメッセージを投稿し、履歴も更新する
-                self._handle_general_question(text, thread_ts, channel_id, client, context)
-                bot_response_text_for_history = None # 既に記録済み
+                self._handle_general_question(text, thread_ts, channel_id, client, context, event_ts)
+                bot_response_text_for_history = None
 
         # ユーザーメッセージと（あれば）Botの応答を履歴に記録
-        if not (dialog_type == "post_analysis" or (dialog_type == "unknown" and bot_response_text_for_history is None)): # _handle_general_questionが呼ばれるケースは除く
-            if text or bot_response_text_for_history: # どちらかがあれば記録
+        if not (dialog_type == "post_analysis" or (dialog_type == "unknown" and bot_response_text_for_history is None)): 
+            if text or bot_response_text_for_history: 
                  self.context_manager.update_history(
                     thread_id=thread_ts,
                     user_message_content=text if text else None,
@@ -523,8 +546,10 @@ class MessageHandler:
                     bot_response_ts=bot_response_ts_for_history if bot_response_text_for_history else None
                 )
 
-        processed_event_ts_list.append(event_ts)
-        context["processed_event_ts"] = processed_event_ts_list
+        # 処理済みイベントとして記録
+        context["processed_event_ts"].append(event_ts)
+        if len(context["processed_event_ts"]) > MAX_PROCESSED_EVENTS: # MAX_PROCESSED_EVENTS は上で定義
+            context["processed_event_ts"] = context["processed_event_ts"][-MAX_PROCESSED_EVENTS:]
         self.context_manager.save_context(thread_ts, context, channel_id)
 
     def handle_file_shared(self, event, client):

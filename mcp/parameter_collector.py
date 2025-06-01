@@ -42,11 +42,15 @@ class ParameterCollector:
         self.async_runner = async_runner # Store async_runner
 
     def _update_collected_params_and_get_next_question(self, extracted_params_map: dict, collected_params_state: dict, data_summary: dict, thread_id: str, channel_id: str) -> Tuple[bool, Optional[str]]:
-        logger.info(f"Updating collected_params. Current: {collected_params_state}, Extracted: {extracted_params_map}")
+        logger.info(f"Updating collected_params. Current: {json.dumps(collected_params_state, ensure_ascii=False, indent=2)}, Extracted: {json.dumps(extracted_params_map, ensure_ascii=False, indent=2)}")
         
         # コンテキストからgemini_questionsを取得（正しいパス: data_state.gemini_analysis.suggested_questions）
         context = self.context_manager.get_context(thread_id=thread_id, channel_id=channel_id)
-        logger.info(f"DEBUG: parameter_collector - context from context_manager: {json.dumps(context, ensure_ascii=False)}") # DEBUG LOG
+        if not context: # contextがNoneの場合のフォールバック
+            logger.error(f"Context not found for thread {thread_id}, channel {channel_id} in _update_collected_params_and_get_next_question. Cannot proceed with parameter update.")
+            return False, "コンテキストが見つかりません。最初からやり直してください。"
+            
+        logger.debug(f"DEBUG: parameter_collector - context from context_manager: {json.dumps(context, ensure_ascii=False, indent=2)}") # DEBUG LOG
         gemini_analysis_state = context.get("data_state", {}).get("gemini_analysis", {})
         gemini_questions = gemini_analysis_state.get("suggested_questions", [])
 
@@ -65,11 +69,11 @@ class ParameterCollector:
                     if isinstance(value, dict):
                         collected_params_state["optional"]["data_columns"] = value
         
-        logger.info(f"Updated collected_params: {collected_params_state}")
+        logger.info(f"Updated collected_params: {json.dumps(collected_params_state, ensure_ascii=False, indent=2)}")
 
         # Geminiによる自動マッピング結果を取得
         column_mappings_from_context = context.get("data_state", {}).get("column_mappings", {}) # Use already fetched context
-        logger.info(f"DEBUG: parameter_collector - Column mappings from context: {json.dumps(column_mappings_from_context, ensure_ascii=False)}") # DEBUG LOG
+        logger.debug(f"DEBUG: parameter_collector - Column mappings from context: {json.dumps(column_mappings_from_context, ensure_ascii=False, indent=2)}") # DEBUG LOG
 
         # 自動マッピングされたデータ列を collected_params_state["optional"]["data_columns"] に反映
         if "data_columns" not in collected_params_state["optional"]:
@@ -143,9 +147,10 @@ class ParameterCollector:
                         confirmation_parts.append("(効果量または分散/SEの列がまだ特定できていません)")
 
                 confirmation_parts.append("この効果量で分析を進めてよろしいですか？ (はい/いいえ、または別の効果量を指定)")
-                # この質問を「最後に尋ねた質問」として記録しないようにする（ユーザーの自由な回答を期待するため）
-                # context["question_history"]["last_question"] = "\n".join(confirmation_parts) # 更新しない
-                return False, "\n".join(confirmation_parts)
+            # この質問を「最後に尋ねた質問」として記録しないようにする（ユーザーの自由な回答を期待するため）
+            # context["question_history"]["last_question"] = "\n".join(confirmation_parts) # 更新しない
+            logger.info(f"Asking for effect size confirmation: {' '.join(confirmation_parts)}")
+            return False, "\n".join(confirmation_parts)
 
         if not collected_params_state["missing_required"]:
             effect_size = collected_params_state.get("required", {}).get("effect_size")
@@ -259,6 +264,7 @@ class ParameterCollector:
                         f"{note_for_n1_filter}"
                     )
                 collected_params_state["asked_optional"].append("sensitivity_variable")
+                logger.info(f"Asking for sensitivity_variable: {question_text}")
                 return False, question_text
 
             if collected_params_state["optional"].get("sensitivity_variable") and \
@@ -281,6 +287,7 @@ class ParameterCollector:
                     question_text = f"変数「{sensitivity_var}」に限定する値を教えてください。"
                 
                 collected_params_state["asked_optional"].append("sensitivity_value")
+                logger.info(f"Asking for sensitivity_value: {question_text}")
                 return False, question_text
             
             logger.info("All required, data_columns, and optional (or asked) parameters collected. Ready for analysis.")
@@ -291,8 +298,9 @@ class ParameterCollector:
             "effect_size": f"どの効果量（例：OR, RR, SMD, HR, proportion, yi）で分析しますか？\n利用可能な列: {', '.join(data_summary.get('columns', []))}",
             "model_type": "固定効果モデル（fixed）またはランダム効果モデル（random）のどちらを使用しますか？"
         }
-        logger.info(f"Missing required parameter: {next_missing_required}. Asking question.")
-        return False, questions_map.get(next_missing_required, "追加情報が必要です。")
+        question_to_ask = questions_map.get(next_missing_required, "追加情報が必要です。")
+        logger.info(f"Missing required parameter: {next_missing_required}. Asking question: {question_to_ask}")
+        return False, question_to_ask
 
     def _get_all_escalc_roles(self) -> List[str]:
         """escalcで使用可能な全ての列ロールを返す"""
