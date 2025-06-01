@@ -1,162 +1,139 @@
+# main.py ★修正版
 import os
 import logging
+from slack_bolt.adapter.wsgi import SlackRequestHandler
+from mcp.slack_bot import MetaAnalysisBot  # 既存クラス
 
-def clean_env_var(var_name, default=None):
-    """
-    環境変数からBOMと余分な空白を除去
-    Secret Managerから読み込まれた値にBOMが含まれる場合があるため
-    """
-    value = os.environ.get(var_name, default)
-    if value:
-        # BOM（\ufeff）と前後の空白を除去
-        return value.strip().lstrip('\ufeff').strip()
-    return value
-
-# Load environment variables from .env file only for local development
-# Cloud Run環境では環境変数が直接設定されるため、.envファイルは不要
-if os.path.exists('.env') and not os.getenv('GOOGLE_CLOUD_PROJECT'):
-    from dotenv import load_dotenv
-    load_dotenv()
-    print("Loaded environment variables from .env file (local development)")
-else:
-    print("Using environment variables directly (Cloud Run or production)")
-
-# Configure logging with validation
-log_level = clean_env_var("LOG_LEVEL", "INFO").upper()
+# Configure logging (ensure clean_env_var is available or simplify for this context)
+# For simplicity in this snippet, basicConfig is used.
+# Consider re-integrating clean_env_var if needed for LOG_LEVEL.
+log_level_env = os.environ.get("LOG_LEVEL", "INFO").upper()
 valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-if log_level not in valid_levels:
-    print(f"Invalid LOG_LEVEL '{log_level}', using INFO instead")
-    log_level = "INFO"
+if log_level_env not in valid_levels:
+    print(f"Invalid LOG_LEVEL '{log_level_env}', using INFO instead")
+    log_level_env = "INFO"
 
 logging.basicConfig(
-    level=log_level,
+    level=log_level_env,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-def main():
+
+# --- Environment Variable Check ---
+# (Copied and adapted from original main.py for essential checks)
+def clean_env_var(var_name, default=None):
     """
-    Main function to initialize and start the Meta-Analysis Slack Bot.
+    環境変数からBOMと余分な空白を除去
     """
-    # Check SOCKET_MODE setting
-    socket_mode = clean_env_var("SOCKET_MODE", "false").lower() == "true"
-    
-    # Ensure necessary environment variables are set
-    required_env_vars = [
-        "SLACK_BOT_TOKEN",
-        "SLACK_SIGNING_SECRET"
-    ]
-    
-    if socket_mode:
-        required_env_vars.append("SLACK_APP_TOKEN")
-        logger.info("Running in Socket Mode")
-    else:
-        logger.info("Running in HTTP Mode (Cloud Run compatible)")
+    value = os.environ.get(var_name, default)
+    if value:
+        return value.strip().lstrip('\ufeff').strip()
+    return value
 
-    missing_vars = [var for var in required_env_vars if not clean_env_var(var)]
-    if missing_vars:
-        logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
-        if socket_mode:
-            logger.error("For Socket Mode, ensure SLACK_APP_TOKEN is set.")
-        else:
-            logger.error("For HTTP Mode, ensure PORT is set (defaults to 8080 if not specified).")
-        logger.error("Please set them before running the bot. Refer to README.md for setup instructions.")
-        return
+socket_mode_env = clean_env_var("SOCKET_MODE", "false").lower() == "true"
 
-    # Import the bot class only after ensuring env vars might be loaded
-    # and basic logging is set up.
-    try:
-        from mcp.slack_bot import MetaAnalysisBot
-    except ImportError as e:
-        logger.error(f"Failed to import MetaAnalysisBot: {e}")
-        logger.error("Ensure all dependencies are installed and the mcp package is correctly structured.")
-        return
-    except Exception as e:
-        logger.error(f"An unexpected error occurred during import: {e}")
-        return
+if socket_mode_env:
+    logger.info("Socket Mode is configured. This main.py is intended for HTTP/Gunicorn.")
+    # If Socket Mode is true, Gunicorn shouldn't be running this main:app.
+    # The original main() or main_socket_mode_start() would be invoked directly.
+    # This WSGI app definition is for HTTP mode.
+    # Consider exiting or logging a critical error if gunicorn tries to run this in socket mode.
 
-    logger.info("Initializing MetaAnalysisBot...")
-    try:
-        bot = MetaAnalysisBot()
-        logger.info("Starting MetaAnalysisBot...")
-        bot.start()
-    except Exception as e:
-        logger.exception(f"An error occurred while initializing or starting the bot: {e}")
+required_env_vars = ["SLACK_BOT_TOKEN", "SLACK_SIGNING_SECRET"]
+if socket_mode_env: # This check is more for direct execution context
+    required_env_vars.append("SLACK_APP_TOKEN")
+
+missing_vars = [var for var in required_env_vars if not clean_env_var(var)]
+if missing_vars:
+    logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
+    # This error should ideally prevent the app from starting if critical vars are missing.
+    # For Gunicorn, this check happens at module load time.
+    # Raising an exception here might be appropriate to stop Gunicorn.
+    # raise RuntimeError(f"Missing environment variables: {', '.join(missing_vars)}")
 
 
-# ↓↓↓↓↓↓ ここから修正 ↓↓↓↓↓↓
-from mcp.slack_bot import MetaAnalysisBot
-from slack_bolt.adapter.wsgi import SlackRequestHandler
-
-# MetaAnalysisBotのインスタンスを作成
+# Bolt アプリ生成
+# This instantiation might also have dependencies on env vars.
+# Ensure MetaAnalysisBot handles its own necessary env var checks or they are done before this.
 try:
     bot_instance = MetaAnalysisBot()
-    
-    # Gunicornが参照するWSGIアプリケーションインスタンス
-    socket_mode_env_check = clean_env_var("SOCKET_MODE", "false").lower() == "true"
-    if not socket_mode_env_check:
-        # HTTPモードの場合、SlackRequestHandlerを使用
-        # pathを指定せずにデフォルトの/slack/eventsを使用
-        app = SlackRequestHandler(bot_instance.app) # SlackRequestHandlerインスタンスを直接appに代入
-        
-        logger.info(f"WSGI handler created for Slack app. Type of app: {type(app)}")
-        if callable(app):
-            logger.info(f"'app' ({type(app)}) is a callable WSGI application for HTTP mode.")
-        else:
-            logger.error(f"'app' ({type(app)}) is NOT a callable WSGI application for HTTP mode.")
-    else:
-        # Socket Modeの場合、gunicornは直接appを参照しない
-        app = None
-        logger.info("Socket Mode enabled. 'app' is None as gunicorn will not serve it directly.")
-
+    bolt_app = bot_instance.app # Get the Bolt App instance from MetaAnalysisBot
+    handler = SlackRequestHandler(bolt_app)  # path="/slack/events" が既定
+    logger.info("MetaAnalysisBot and SlackRequestHandler initialized successfully for HTTP mode.")
 except Exception as e:
-    logger.exception(f"Failed to initialize MetaAnalysisBot or set up 'app': {e}")
-    # エラーが発生した場合、gunicornが起動できないようにNoneを設定
-    app = None
+    logger.critical(f"Failed to initialize MetaAnalysisBot or SlackRequestHandler: {e}", exc_info=True)
+    # If initialization fails, Gunicorn should not serve a broken app.
+    # Setting app to None or raising an exception can prevent this.
+    bolt_app = None
+    handler = None
+    # raise # Re-raise the exception to stop Gunicorn from starting with a faulty app
 
-def main_socket_mode_start():
+
+def app(environ, start_response):
+    """Gunicorn が呼び出す WSGI アプリ.
+
+    - GET  / -> 200 OK (ヘルスチェック)
+    - POST /slack/events -> Bolt へ委譲
+    - その他 -> 404
     """
-    Main function to initialize and start the Meta-Analysis Slack Bot in Socket Mode.
-    This function is intended to be called when __name__ == "__main__" and SOCKET_MODE is true.
-    """
-    # Check SOCKET_MODE setting
-    # This function should only be called if socket_mode is true,
-    # but we double-check here for safety or direct calls.
-    socket_mode_env = clean_env_var("SOCKET_MODE", "false").lower() == "true"
-    if not socket_mode_env:
-        logger.warning("main_socket_mode_start called, but SOCKET_MODE is not true. Bot will not start in Socket Mode via this path.")
-        return
+    if handler is None: # Check if handler initialization failed
+        logger.error("WSGI app called, but SlackRequestHandler (handler) is None due to initialization failure.")
+        start_response("500 Internal Server Error", [("Content-Type", "text/plain")])
+        return [b"Application initialization failed"]
 
-    # (環境変数チェックはmain()から移動または共通化が必要だが、一旦bot_instanceの初期化に依存)
-    # 必要な環境変数がbot_instanceの初期化時にチェックされている前提
+    path = environ.get("PATH_INFO", "")
+    method = environ.get("REQUEST_METHOD", "")
 
-    if bot_instance is None:
-        logger.error("MetaAnalysisBot instance ('bot_instance') is None. Cannot start in Socket Mode.")
-        return
+    # Log incoming request details for easier debugging on Heroku
+    logger.info(f"Incoming request: Method={method}, Path={path}")
+    # Example of logging headers if needed:
+    # for k, v in environ.items():
+    #     if k.startswith("HTTP_"):
+    #         logger.debug(f"Header: {k}={v}")
 
-    logger.info("Initializing and starting MetaAnalysisBot for Socket Mode...")
-    try:
-        # bot_instance.start() will handle the actual SocketModeHandler start
-        bot_instance.start() 
-    except Exception as e:
-        logger.exception(f"An error occurred while starting the bot in Socket Mode: {e}")
+    if method == "GET" and path == "/":
+        logger.info("Health check endpoint / called.")
+        start_response("200 OK", [("Content-Type", "text/plain")])
+        return [b"OK"]
 
+    if path == "/slack/events":
+        # SlackRequestHandler expects to be called with the WSGI environ and start_response
+        logger.info(f"Routing request to SlackRequestHandler for path: {path}")
+        return handler(environ, start_response)
+
+    logger.warn(f"Path not found: {path}. Responding with 404.")
+    start_response("404 Not Found", [("Content-Type", "text/plain")])
+    return [b"Not Found"]
+
+# ★ローカルデバッグ用 (Socket Modeがfalseの場合のみ意味がある)
 if __name__ == "__main__":
-    # HTTPモードの場合、gunicornはこのファイルをモジュールとしてロードし、
-    # 'app'という名前のWSGIアプリケーションを探す。
-    # Socketモードの場合は、このスクリプトが直接実行される。
-    socket_mode_check = clean_env_var("SOCKET_MODE", "false").lower() == "true"
-    if socket_mode_check:
-        # main()関数はgunicornの起動ポイントと競合するため、
-        # Socket Mode専用の起動関数を呼び出す
-        main_socket_mode_start()
-    elif app is None:
-        # gunicornが起動しようとしたがappの初期化に失敗した場合
-        logger.critical("Failed to initialize the WSGI 'app' instance for gunicorn. Exiting.")
+    if not socket_mode_env: # Only run Werkzeug if not in Socket Mode
+        if handler: # Check if handler was initialized
+            from werkzeug.serving import run_simple
+            port_str = clean_env_var("PORT", "3000")
+            try:
+                port = int(port_str)
+            except ValueError:
+                logger.error(f"Invalid PORT value: '{port_str}'. Defaulting to 3000.")
+                port = 3000
+            logger.info(f"Starting Werkzeug development server on 0.0.0.0:{port} for HTTP mode testing.")
+            run_simple("0.0.0.0", port, app, use_reloader=True, use_debugger=True)
+        else:
+            logger.error("Cannot start Werkzeug server: SlackRequestHandler (handler) failed to initialize.")
     else:
-        # HTTP Mode (gunicorn will use the 'app' instance defined globally)
-        logger.info("Running in HTTP mode. Gunicorn will serve the 'app' instance.")
-        # It's important that 'app' is defined at the module level for gunicorn.
-        # No explicit start needed here as gunicorn handles it.
-        pass
-# ↑↑↑↑↑↑ ここまで修正 ↑↑↑↑↑↑
+        # If Socket Mode is true, this __main__ block should trigger the SocketModeHandler start.
+        # The original main.py had a main_socket_mode_start() or similar.
+        # This needs to be reconciled if direct execution in Socket Mode is still desired.
+        logger.info("Socket Mode is true. To run in Socket Mode, execute the bot's Socket Mode entry point directly.")
+        # Example: bot_instance.start() if bot_instance is available and handles mode switching.
+        # For now, this __main__ is primarily for HTTP testing with Werkzeug.
+        if bot_instance:
+            logger.info("Attempting to start bot in Socket Mode via bot_instance.start()...")
+            # This assumes bot_instance.start() checks SOCKET_MODE and starts SocketModeHandler
+            try:
+                bot_instance.start()
+            except Exception as e:
+                logger.critical(f"Failed to start bot in Socket Mode from __main__: {e}", exc_info=True)
+        else:
+            logger.error("Cannot start in Socket Mode: bot_instance is not available.")
