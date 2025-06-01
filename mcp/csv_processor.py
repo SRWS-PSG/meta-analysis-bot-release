@@ -125,26 +125,12 @@ class CsvProcessor:
                 else: client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text=error_text)
                 return
 
-            # GCSにアップロード
-            gcs_file_path = self.context_manager.upload_file_to_gcs(
-                thread_id=thread_ts,
-                channel_id=channel_id,
-                local_file_path=str(local_csv_path),
-                destination_filename=original_filename
-            )
-
-            if not gcs_file_path:
-                logger.error(f"Failed to upload CSV file {local_csv_path} to GCS.")
-                error_text = "ファイルのクラウドストレージへのアップロードに失敗しました。(Error code: CSP004)"
-                if progress_message_ts: client.chat_update(channel=channel_id, ts=progress_message_ts, text=error_text)
-                else: client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text=error_text)
-                # ローカル一時ファイルは analyze_csv に渡せないので、ここで処理を中断すべきか、
-                # またはローカルパスで分析を続行し、GCSパスはNoneとして記録するか。
-                # 設計上GCS保存が前提なので中断する。
-                return
-            
-            logger.info(f"CSV file uploaded to GCS: {gcs_file_path}")
-            context["gcs_csv_file_path"] = gcs_file_path # GCSパスをコンテキストに保存
+            # GCSへのアップロード処理はHeroku化に伴い削除
+            # gcs_file_path = self.context_manager.upload_file_to_gcs(...)
+            # context["gcs_csv_file_path"] = gcs_file_path 
+            # 代わりにローカルパスを直接使用する
+            logger.info(f"CSV file will be processed from local path: {local_csv_path}")
+            context["local_csv_file_path"] = str(local_csv_path) # ローカルパスをコンテキストに保存
 
             if progress_message_ts:
                 try:
@@ -234,13 +220,12 @@ class CsvProcessor:
                 logger.info(f"DEBUG: csv_processor - column_mappings_from_result: {json.dumps(column_mappings_from_result, ensure_ascii=False)}") # DEBUG LOG
                 logger.info(f"DEBUG: csv_processor - gemini_analysis_from_result: {json.dumps(gemini_analysis_from_result, ensure_ascii=False)}") # DEBUG LOG
                 
-                # data_state にはGCSのパスを保存する
-                # result.get("file_path") はローカルの一時パスを指しているはず
-                local_analyzed_csv_path = str(result.get("file_path"))
+                # data_state にはローカルの一時パスを保存する
+                local_analyzed_csv_path = str(result.get("file_path")) # analyze_csvが返したパス
                 
                 context["data_state"] = {
-                    "file_path": context.get("gcs_csv_file_path"), # GCSのパスを使用
-                    "local_temp_file_path": local_analyzed_csv_path, # ローカルの一時パスも記録（クリーンアップ用）
+                    "file_path": context.get("local_csv_file_path"), # CSV Processorが保存したローカルパス
+                    "local_temp_file_path": local_analyzed_csv_path, # analyze_csvが使用したパス（クリーンアップ用）
                     "summary": result.get("summary"),
                     "suitable_for_meta_analysis": result.get("suitable_for_meta_analysis"),
                     "gemini_analysis": gemini_analysis_from_result,
@@ -267,7 +252,7 @@ class CsvProcessor:
                     client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text=user_message)
                     if local_analyzed_csv_path: # ローカルの一時ファイルをクリーンアップ
                          cleanup_temp_files(local_analyzed_csv_path)
-                    # GCS上のファイルはここでは削除しない
+                    # GCS上のファイルは元々ないので削除処理は不要
                     return
 
                 if not context.get("initial_csv_prompt_sent"):
@@ -314,17 +299,25 @@ class CsvProcessor:
                     self.context_manager.save_context(thread_ts, context, channel_id)
                 
                 context.pop("file_processing_job_id", None)
-                # gcs_csv_file_path は data_state に保存済みなので、ここでは削除しない
+                # local_csv_file_path は data_state に保存済みなので、ここでは削除しない
                 self.context_manager.save_context(thread_ts, context, channel_id)
                 logger.info(f"Thread {thread_ts}: file_processing_job_id removed after CSV analysis completion.")
                 # ローカルの一時CSVファイルは、この後の処理で不要になれば削除されるべき
                 # analyze_csv が返した file_path (local_analyzed_csv_path) は、
                 # suitable_for_meta_analysis が False の場合に cleanup される。(これは既に上の分岐で処理済み)
-                # True の場合は、後続の run_meta_analysis で使われるCSVデータはGCS上のものを使用する想定。
-                # CsvProcessorが作成したローカルの一時CSVファイルはここで削除して良い。
-                if local_analyzed_csv_path and os.path.exists(local_analyzed_csv_path):
-                    logger.info(f"Cleaning up local temp CSV file after successful CSV analysis: {local_analyzed_csv_path}")
+                # True の場合は、後続の run_meta_analysis で使われるCSVデータはローカルのものを使用する想定。
+                # CsvProcessorが最初に保存したローカルの一時CSVファイル (context["local_csv_file_path"]) は、
+                # analyze_csv がそれをコピーして処理したか、直接使ったかによるが、
+                # analyze_csv が返した local_analyzed_csv_path と同じであれば、既に上でクリーンアップされている。
+                # 念のため、CsvProcessorが作成した元のローカルファイルも削除する。
+                original_local_csv_path = context.get("local_csv_file_path")
+                if original_local_csv_path and os.path.exists(original_local_csv_path) and original_local_csv_path != local_analyzed_csv_path:
+                    logger.info(f"Cleaning up original local temp CSV file after successful CSV analysis: {original_local_csv_path}")
+                    cleanup_temp_files(original_local_csv_path)
+                elif local_analyzed_csv_path and os.path.exists(local_analyzed_csv_path): # analyze_csvが返したパスがまだ残っていれば
+                    logger.info(f"Cleaning up local_analyzed_csv_path if it still exists: {local_analyzed_csv_path}")
                     cleanup_temp_files(local_analyzed_csv_path)
+
                 return
             
             elif status["status"] == "failed":

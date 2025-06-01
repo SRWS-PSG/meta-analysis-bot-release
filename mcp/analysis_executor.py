@@ -145,34 +145,26 @@ class AnalysisExecutor:
                     # GCSへのアップロード処理を追加
                     output_dir_from_result = result.get("output_dir")
 
-                    # RスクリプトのGCSアップロードとSlackアップロード
+                    # RスクリプトのSlackアップロード (GCSアップロードは削除)
                     if "r_script_path" in result and os.path.exists(result["r_script_path"]):
                         local_path = result["r_script_path"]
-                        filename = Path(local_path).name
-                        gcs_path = self.context_manager.upload_file_to_gcs(thread_ts, channel_id, local_path, filename)
-                        if gcs_path:
-                            logger.info(f"R script uploaded to GCS: {gcs_path}")
-                            result["gcs_r_script_path"] = gcs_path
-                        else:
-                            logger.error(f"Failed to upload R script to GCS: {local_path}")
+                        # filename = Path(local_path).name # GCS用だったので不要
+                        # gcs_path = self.context_manager.upload_file_to_gcs(...) # 削除
+                        # result["gcs_r_script_path"] = gcs_path # 削除
                         try: 
                             upload_file_to_slack(self.app_client, local_path, channel_id, "Rスクリプト", thread_ts); time.sleep(1)
                         except Exception as e: logger.error(f"RスクリプトのSlackアップロードエラー: {e}")
 
-                    # 生成されたプロットのGCSアップロードとSlackアップロード
-                    result["gcs_generated_plots"] = []
+                    # 生成されたプロットのSlackアップロード (GCSアップロードは削除)
+                    # result["gcs_generated_plots"] = [] # GCS用だったので不要
                     for plot_info in result.get("generated_plots", []):
                         plot_filename = plot_info.get("path") # これはファイル名のはず
                         plot_label = plot_info.get("label", "プロット")
                         if output_dir_from_result and plot_filename:
                             local_plot_full_path = str(Path(output_dir_from_result) / plot_filename)
                             if os.path.exists(local_plot_full_path):
-                                gcs_plot_path = self.context_manager.upload_file_to_gcs(thread_ts, channel_id, local_plot_full_path, plot_filename)
-                                if gcs_plot_path:
-                                    logger.info(f"{plot_label} uploaded to GCS: {gcs_plot_path}")
-                                    result["gcs_generated_plots"].append({"label": plot_label, "gcs_path": gcs_plot_path, "local_path": local_plot_full_path})
-                                else:
-                                    logger.error(f"Failed to upload {plot_label} to GCS: {local_plot_full_path}")
+                                # gcs_plot_path = self.context_manager.upload_file_to_gcs(...) # 削除
+                                # result["gcs_generated_plots"].append(...) # 削除
                                 try:
                                     upload_file_to_slack(self.app_client, local_plot_full_path, channel_id, plot_label.replace("_", " ").title(), thread_ts); time.sleep(1)
                                 except Exception as e: logger.error(f"{plot_label} のSlackアップロードエラー: {e}")
@@ -181,31 +173,24 @@ class AnalysisExecutor:
                         else:
                             logger.warning(f"Could not determine full path for plot: {plot_info}")
                     
-                    # 結果データ (RData) のGCSアップロードとSlackアップロード
+                    # 結果データ (RData) のSlackアップロード (GCSアップロードは削除)
                     if "result_data_path" in result and os.path.exists(result["result_data_path"]):
                         local_rdata_path = result["result_data_path"]
-                        rdata_filename = Path(local_rdata_path).name
-                        gcs_rdata_path = self.context_manager.upload_file_to_gcs(thread_ts, channel_id, local_rdata_path, rdata_filename)
-                        if gcs_rdata_path:
-                            logger.info(f"RData uploaded to GCS: {gcs_rdata_path}")
-                            result["gcs_result_data_path"] = gcs_rdata_path
-                        else:
-                            logger.error(f"Failed to upload RData to GCS: {local_rdata_path}")
+                        # rdata_filename = Path(local_rdata_path).name # GCS用だったので不要
+                        # gcs_rdata_path = self.context_manager.upload_file_to_gcs(...) # 削除
+                        # result["gcs_result_data_path"] = gcs_rdata_path # 削除
                         try:
                             upload_file_to_slack(self.app_client, local_rdata_path, channel_id, "結果データ (result.RData)", thread_ts); time.sleep(1)
                         except Exception as e: logger.error(f"結果データのSlackアップロードエラー: {e}")
                     
-                    # summary.json のGCSアップロード (Slackには通常アップロードしない)
+                    # summary.json の処理 (GCSアップロードは削除)
                     summary_json_path = result.get("structured_summary_json_path")
                     if summary_json_path and os.path.exists(summary_json_path):
-                        summary_filename = Path(summary_json_path).name
-                        gcs_summary_path = self.context_manager.upload_file_to_gcs(thread_ts, channel_id, summary_json_path, summary_filename)
-                        if gcs_summary_path:
-                            logger.info(f"Summary JSON uploaded to GCS: {gcs_summary_path}")
-                            result["gcs_structured_summary_json_path"] = gcs_summary_path
-                        else:
-                            logger.error(f"Failed to upload Summary JSON to GCS: {summary_json_path}")
-                        # Slackへのアップロードは通常不要だが、デバッグ用に残す場合はここに記述
+                        # summary_filename = Path(summary_json_path).name # GCS用だったので不要
+                        # gcs_summary_path = self.context_manager.upload_file_to_gcs(...) # 削除
+                        # result["gcs_structured_summary_json_path"] = gcs_summary_path # 削除
+                        logger.info(f"Summary JSON available at: {summary_json_path}")
+                        # Slackへのアップロードは通常不要
 
                     summary_content_str = result.get("structured_summary_content")
                     # summary_json_path は上で使用済み
