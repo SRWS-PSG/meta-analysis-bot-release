@@ -87,10 +87,31 @@ def app(environ, start_response):
 
     # Log incoming request details for easier debugging on Heroku
     logger.info(f"Incoming request: Method={method}, Path={path}")
-    # Example of logging headers if needed:
-    # for k, v in environ.items():
-    #     if k.startswith("HTTP_"):
-    #         logger.debug(f"Header: {k}={v}")
+
+    if path == "/slack/events":
+        # Log Slack-specific headers and request body for /slack/events
+        logger.info("--- Request to /slack/events ---")
+        for k, v in environ.items():
+            if k.startswith("HTTP_X_SLACK_") or k == "CONTENT_TYPE" or k == "CONTENT_LENGTH":
+                logger.info(f"Header: {k}={v}")
+        
+        try:
+            content_length = int(environ.get('CONTENT_LENGTH', 0))
+            if content_length > 0:
+                request_body = environ['wsgi.input'].read(content_length).decode('utf-8')
+                logger.info(f"Request Body: {request_body}")
+                # Put the body back for the handler to read. This needs careful handling
+                # as wsgi.input is a stream. For simple logging, reading it once might be okay
+                # if the handler re-reads or if Bolt handles this robustly.
+                # A more robust way would be to wrap wsgi.input if multiple reads are needed.
+                # For now, let's assume Bolt's handler will manage.
+                # If issues arise, we might need to reset the stream:
+                # environ['wsgi.input'] = io.BytesIO(request_body.encode('utf-8'))
+            else:
+                logger.info("Request Body: No content or content length is 0.")
+        except Exception as e:
+            logger.error(f"Error reading request body: {e}", exc_info=True)
+        logger.info("--- End of /slack/events request details ---")
 
     if method == "GET" and path == "/":
         logger.info("Health check endpoint / called.")
