@@ -7,3 +7,4 @@ google-genai==1.18.0
 rpy2==3.6.0
 pyreadr==0.5.3
 gunicorn==23.0.0
+Flask==3.0.3
