@@ -1,6 +1,7 @@
 # main.py ★修正版
 import os
 import logging
+import io # ★ ioモジュールをインポート
 from slack_bolt.adapter.wsgi import SlackRequestHandler
 from mcp.slack_bot import MetaAnalysisBot  # 既存クラス
 
@@ -100,13 +101,8 @@ def app(environ, start_response):
             if content_length > 0:
                 request_body = environ['wsgi.input'].read(content_length).decode('utf-8')
                 logger.info(f"Request Body: {request_body}")
-                # Put the body back for the handler to read. This needs careful handling
-                # as wsgi.input is a stream. For simple logging, reading it once might be okay
-                # if the handler re-reads or if Bolt handles this robustly.
-                # A more robust way would be to wrap wsgi.input if multiple reads are needed.
-                # For now, let's assume Bolt's handler will manage.
-                # If issues arise, we might need to reset the stream:
-                # environ['wsgi.input'] = io.BytesIO(request_body.encode('utf-8'))
+                # Put the body back for the handler to read.
+                environ['wsgi.input'] = io.BytesIO(request_body.encode('utf-8')) # ★ ストリームをリセット
             else:
                 logger.info("Request Body: No content or content length is 0.")
         except Exception as e:
