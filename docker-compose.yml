@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  meta-analysis-bot:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - .:/app  # 開発時のホットリロード
+    environment:
+      - SOCKET_MODE=true
+      - PORT=3000
+    command: python main.py  # ローカル開発時はSocket Mode
