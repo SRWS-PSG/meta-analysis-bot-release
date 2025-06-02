@@ -70,6 +70,16 @@ def register_mention_handlers(app: App):
         try:
             logger.info(f"App mention received: {event}")
             
+            # Check if there are blocks or attachments
+            blocks = event.get("blocks", [])
+            attachments = event.get("attachments", [])
+            logger.info(f"Event has {len(blocks)} blocks and {len(attachments)} attachments")
+            
+            # Log the full body for debugging
+            logger.info(f"Full body keys: {list(body.keys()) if body else 'No body'}")
+            if blocks:
+                logger.info(f"First block: {blocks[0] if blocks else 'No blocks'}")
+            
             channel_id = event["channel"]
             user_id = event["user"]
             text = event.get("text", "")
