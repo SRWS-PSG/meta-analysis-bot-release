@@ -880,7 +880,8 @@ if ("{subgroup_col}" %in% names(dat)) {{
 
         generated_plots_r_list = []
         main_forest_plot_path = output_paths.get("forest_plot_path", "forest_plot_overall.png")
-        generated_plots_r_list.append(f'list(label = "forest_plot_overall", path = "{main_forest_plot_path.replace("\\\\", "/")}")')
+        main_forest_plot_path_cleaned = main_forest_plot_path.replace("\\\\", "/")
+        generated_plots_r_list.append(f'list(label = "forest_plot_overall", path = "{main_forest_plot_path_cleaned}")')
         
         if subgroup_columns:
             subgroup_plot_prefix = output_paths.get("forest_plot_subgroup_prefix", "forest_plot_subgroup")
@@ -891,7 +892,8 @@ if ("{subgroup_col}" %in% names(dat)) {{
                 generated_plots_r_list.append(f'list(label = "forest_plot_subgroup_{safe_sg_col_name}", path = "{sg_forest_plot_path}")')
         
         if output_paths.get("funnel_plot_path"):
-            generated_plots_r_list.append(f'list(label = "funnel_plot", path = "{output_paths["funnel_plot_path"].replace("\\\\", "/")}")')
+            funnel_plot_path_cleaned = output_paths["funnel_plot_path"].replace("\\\\", "/")
+            generated_plots_r_list.append(f'list(label = "funnel_plot", path = "{funnel_plot_path_cleaned}")')
         
         if moderators:
             bubble_plot_prefix = output_paths.get("bubble_plot_path_prefix", "bubble_plot")
