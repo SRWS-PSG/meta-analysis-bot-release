@@ -34,14 +34,7 @@ register_report_handlers(app)
 register_parameter_handlers(app) # 追加
 register_mention_handlers(app)
 
-# Add a simple test to verify events are being received
-@app.event("app_mention")
-def test_mention(event, logger):
-    logger.info(f"TEST: App mention event received! Event: {event}")
-    
-@app.event("message")
-def test_message(event, logger):
-    logger.info(f"TEST: Message event received! Event type: {event.get('type')}, subtype: {event.get('subtype')}")
+# テストハンドラーは削除（mention_handlerで処理されるため）
 
 # Heroku用のハンドラー
 handler = SlackRequestHandler(app)

@@ -70,15 +70,28 @@ def register_mention_handlers(app: App):
         try:
             logger.info(f"App mention received: {event}")
             
-            # Check if there are blocks or attachments
+            # Check if there are blocks, attachments, or files
             blocks = event.get("blocks", [])
             attachments = event.get("attachments", [])
-            logger.info(f"Event has {len(blocks)} blocks and {len(attachments)} attachments")
+            files = event.get("files", [])
+            logger.info(f"Event has {len(blocks)} blocks, {len(attachments)} attachments, and {len(files)} files")
             
             # Log the full body for debugging
             logger.info(f"Full body keys: {list(body.keys()) if body else 'No body'}")
+            logger.info(f"Full event keys: {list(event.keys())}")
             if blocks:
                 logger.info(f"First block: {blocks[0] if blocks else 'No blocks'}")
+                # Log all blocks for debugging
+                for i, block in enumerate(blocks):
+                    logger.info(f"Block {i}: type={block.get('type')}, keys={list(block.keys())}")
+                    if block.get('type') == 'rich_text':
+                        elements = block.get('elements', [])
+                        for j, elem in enumerate(elements):
+                            logger.info(f"  Element {j}: type={elem.get('type')}")
+            
+            # Check for files
+            if files:
+                logger.info(f"Files found: {files}")
             
             channel_id = event["channel"]
             user_id = event["user"]
@@ -95,18 +108,24 @@ def register_mention_handlers(app: App):
                 for block in blocks:
                     if block.get("type") == "rich_text":
                         for element in block.get("elements", []):
+                            # Check for both preformatted blocks and sections
                             if element.get("type") == "rich_text_preformatted":
                                 # This is a code block
                                 for elem in element.get("elements", []):
                                     if elem.get("type") == "text":
                                         code_block_text += elem.get("text", "")
+                            elif element.get("type") == "rich_text_section":
+                                # Check for inline code or regular text that might contain CSV
+                                for elem in element.get("elements", []):
+                                    if elem.get("type") == "text":
+                                        # Skip bot mentions
+                                        elem_text = elem.get("text", "")
+                                        if not elem_text.startswith(f"<@{bot_user_id}>"):
+                                            code_block_text += elem_text
                 if code_block_text:
                     logger.info(f"Found code block text: {code_block_text[:100]}...")
-                    # If we have both regular text and code block, combine them
-                    if clean_text and not _contains_csv_data(clean_text):
-                        clean_text = clean_text + "\n" + code_block_text
-                    elif not clean_text:
-                        clean_text = code_block_text
+                    # Always use code block text if it exists
+                    clean_text = code_block_text
             
             logger.info(f"=== App Mention Debug ===")
             logger.info(f"Original text: {repr(text)}")
@@ -114,6 +133,30 @@ def register_mention_handlers(app: App):
             logger.info(f"Clean text: {repr(clean_text)}")
             logger.info(f"Clean text length: {len(clean_text)}")
             logger.info(f"Clean text first 100 chars: {clean_text[:100] if clean_text else 'EMPTY'}")
+            
+            # Check for CSV files
+            csv_files = [f for f in files if f.get("name", "").lower().endswith(".csv")]
+            if csv_files:
+                # CSVファイルが添付されている場合
+                logger.info(f"CSV files found: {[f.get('name') for f in csv_files]}")
+                client.chat_postMessage(
+                    channel=channel_id,
+                    thread_ts=thread_ts,
+                    text="📊 CSVファイルを検出しました。分析を開始します..."
+                )
+                
+                # CSV処理を実行
+                from handlers.csv_handler import process_csv_async
+                import asyncio
+                for csv_file in csv_files:
+                    asyncio.create_task(process_csv_async(
+                        file_info=csv_file,
+                        channel_id=channel_id,
+                        user_id=user_id,
+                        client=client,
+                        logger=logger
+                    ))
+                return
             
             if not clean_text:
                 # メンションのみの場合はヘルプメッセージを表示

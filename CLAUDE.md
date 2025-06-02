@@ -6,6 +6,58 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Meta-Analysis Slack Bot that performs statistical meta-analyses on CSV files shared in Slack channels. It uses Google Gemini AI for natural language processing (Japanese) and generates academic-quality reports in English using R's metafor package.
 
+## 満たすべき要件
+
+### 起動条件
+- ボットが存在するSlackチャンネルでCSVファイルを共有+メンションで起動
+- メンションのみだと起動するがCSV共有をユーザーに依頼する
+- CSV共有のみだと起動しない
+
+### 機能要件
+- ボットはCSVを分析し、適切な列が見つかった場合にメタ解析を実行
+- コード、実行結果の図、結果を保持したRDataは添付でSlackへ、地の文で簡単な解析結果
+- そのあとに解釈レポートを地の文で提供
+- ユーザーは自然な日本語で分析の意図を伝える
+- 結果はスレッド内に共有され、スレッド内で会話コンテキストが維持される
+
+### 対応する解析タイプ
+- **二値アウトカム**: OR (オッズ比)、RR (リスク比)、RD (リスク差)、PETO
+- **連続アウトカム**: SMD (標準化平均差)、MD (平均差)、ROM (平均比)
+- **ハザード比**: HR
+- **単一比率**: proportion
+- **発生率**: IR (incidence rate)
+- **相関**: COR
+- **事前計算された効果量**: yi (分散vi付き)
+- **サブグループ解析**と**メタ回帰**のサポート
+
+### エラーハンドリング
+- CSV形式不正時は日本語でユーザーに通知
+- R実行エラー時はGemini AIによる自動デバッグ（最大3回リトライ）
+- Slackの3秒タイムアウトに対応する非同期処理
+- 解析失敗時は詳細なエラーメッセージを日本語で提供
+
+### セキュリティ・権限要件
+- Slackワークスペースのメンバーであれば誰でも利用可能
+- プライベートチャンネルでも動作（ボットが招待されている場合）
+- 環境変数による認証情報の保護
+- 一時ファイルは処理後に自動削除
+
+### パフォーマンス要件
+- ファイルサイズ制限: 明示的な制限なし（メモリ依存）
+- 同時実行可能な解析数: 5（ThreadPoolExecutorのデフォルト）
+- レスポンス時間: 初回応答は3秒以内、解析完了は非同期
+
+### データ保持
+- コンテキスト保持期間: 48時間（環境変数で設定可能）
+- 会話履歴: 最大20メッセージ（環境変数で設定可能）
+- ストレージバックエンド:
+  - Redis（推奨）: 永続的
+  - Memory: Dyno再起動まで
+  - File: Dyno再起動まで（/tmpは一時的）
+  - DynamoDB/Firestore: 永続的
+
+
+
 ## Essential Commands
 
 ### Local Development
@@ -134,10 +186,78 @@ All prompts stored in `mcp/cache/prompts.json`:
 - Add Redis addon: `heroku addons:create heroku-redis:hobby-dev`
 - Redis URL automatically set as `REDIS_URL` env var
 
+#### デプロイ手順
+```bash
+# Herokuにデプロイ
+git add .
+git commit -m "Your commit message"
+git push heroku main
+
+# ログを確認
+heroku logs --tail
+
+# 環境変数の確認
+heroku config
+```
+
 ### Local Development
 - Uses Socket Mode (no public URL needed)
 - Set `SLACK_APP_TOKEN` in `.env`
 - Easier for testing and debugging
+
+## Testing Guide
+
+### 起動条件のテスト
+
+1. **メンション＋CSVファイル添付**
+   ```
+   @bot [CSVファイルを添付]
+   → ✅ ボットが起動し、CSV分析を開始
+   ```
+
+2. **メンション＋CSVデータ（コードブロック）**
+   ````
+   @bot
+   ```
+   Study,Effect_Size,SE
+   Study1,0.5,0.1
+   Study2,0.8,0.15
+   ```
+   ````
+   → ✅ ボットが起動し、CSV分析を開始
+
+3. **メンションのみ**
+   ```
+   @bot
+   → ✅ ボットが起動し、CSV共有を依頼
+   ```
+
+4. **CSV共有のみ（メンションなし）**
+   ```
+   [CSVファイルを添付]
+   → ❌ ボットは起動しない（仕様通り）
+   ```
+
+### トラブルシューティング
+
+1. **CSVデータが検出されない場合**
+   - rich_textブロックでコードブロックとして投稿されているか確認
+   - 最低2行以上、2列以上のデータが必要
+   - カンマ、タブ、または複数スペースで区切られている必要がある
+
+2. **ボットが反応しない場合**
+   - Herokuログで`App mention received`が記録されているか確認
+   - ボットがチャンネルに招待されているか確認
+   - 環境変数が正しく設定されているか確認
+
+3. **エラーが発生する場合**
+   ```bash
+   # Herokuログで詳細を確認
+   heroku logs --tail --app=your-app-name
+   
+   # 特定の時間帯のログを確認
+   heroku logs --since "2024-01-01T00:00:00Z" --until "2024-01-01T01:00:00Z"
+   ```
 
 ## Important Patterns
 
