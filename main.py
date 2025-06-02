@@ -1,7 +1,14 @@
 import os
 import asyncio
+import logging
 from slack_bolt import App
 from slack_bolt.adapter.wsgi import SlackRequestHandler
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 from handlers.csv_handler import register_csv_handlers
 from handlers.analysis_handler import register_analysis_handlers
@@ -10,10 +17,15 @@ from handlers.parameter_handler import register_parameter_handlers # 追加
 from handlers.mention_handler import register_mention_handlers
 
 # Slack App初期化
+logger = logging.getLogger(__name__)
+logger.info("Initializing Slack app...")
+
 app = App(
     token=os.environ.get("SLACK_BOT_TOKEN"),
     signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
 )
+
+logger.info("Slack app initialized successfully")
 
 # 各ハンドラーを登録
 register_csv_handlers(app)
@@ -21,6 +33,15 @@ register_analysis_handlers(app)
 register_report_handlers(app)
 register_parameter_handlers(app) # 追加
 register_mention_handlers(app)
+
+# Add a simple test to verify events are being received
+@app.event("app_mention")
+def test_mention(event, logger):
+    logger.info(f"TEST: App mention event received! Event: {event}")
+    
+@app.event("message")
+def test_message(event, logger):
+    logger.info(f"TEST: Message event received! Event type: {event.get('type')}, subtype: {event.get('subtype')}")
 
 # Heroku用のハンドラー
 handler = SlackRequestHandler(app)
