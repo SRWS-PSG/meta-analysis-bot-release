@@ -147,10 +147,10 @@ class ParameterCollector:
                         confirmation_parts.append("(効果量または分散/SEの列がまだ特定できていません)")
 
                 confirmation_parts.append("この効果量で分析を進めてよろしいですか？ (はい/いいえ、または別の効果量を指定)")
-            # この質問を「最後に尋ねた質問」として記録しないようにする（ユーザーの自由な回答を期待するため）
-            # context["question_history"]["last_question"] = "\n".join(confirmation_parts) # 更新しない
-            logger.info(f"Asking for effect size confirmation: {' '.join(confirmation_parts)}")
-            return False, "\n".join(confirmation_parts)
+                # この質問を「最後に尋ねた質問」として記録しないようにする（ユーザーの自由な回答を期待するため）
+                # context["question_history"]["last_question"] = "\n".join(confirmation_parts) # 更新しない
+                logger.info(f"Asking for effect size confirmation: {' '.join(confirmation_parts)}")
+                return False, "\n".join(confirmation_parts)
 
         if not collected_params_state["missing_required"]:
             effect_size = collected_params_state.get("required", {}).get("effect_size")
