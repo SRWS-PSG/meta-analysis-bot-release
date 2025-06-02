@@ -4,6 +4,7 @@ Mentionハンドラー
 ボットへのメンションやダイレクトメッセージを処理します。
 """
 import logging
+import re
 from slack_bolt import App
 
 logger = logging.getLogger(__name__)
@@ -19,15 +20,22 @@ def _contains_csv_data(text: str) -> bool:
         logger.info("Less than 2 lines, not CSV")
         return False
     
+    # ファイル名らしき行は除外 (.csv で終わる行)
+    non_filename_lines = [line for line in lines if not line.strip().endswith('.csv')]
+    
     # 複数行あり、カンマ区切りのデータが含まれているかチェック
     csv_like_lines = 0
-    for i, line in enumerate(lines):
+    for i, line in enumerate(non_filename_lines):
         line = line.strip()
         if not line:  # 空行をスキップ
             continue
             
-        # タブやスペースで区切られている場合も考慮
-        has_separator = ',' in line or '\t' in line or '    ' in line  # 複数スペースも区切り文字として考慮
+        # より幅広い区切り文字を検出
+        # 複数の連続スペースを区切り文字として検出
+        has_separator = (',' in line or 
+                        '\t' in line or 
+                        re.search(r'\s{2,}', line) or  # 2つ以上の連続スペース
+                        re.search(r'\s+\d+\s+', line))  # 数字を囲むスペース
         
         if has_separator:
             # 最低でも2つの列があるかチェック
@@ -36,7 +44,10 @@ def _contains_csv_data(text: str) -> bool:
             elif ',' in line:
                 parts = line.split(',')
             else:
-                parts = line.split()  # 複数スペースで分割
+                # 複数スペースで分割
+                parts = re.split(r'\s{2,}', line)
+                if len(parts) == 1:  # 2つ以上のスペースで分割できない場合、単一スペースも試す
+                    parts = line.split()
             
             parts = [p.strip() for p in parts if p.strip()]  # 空要素を除去
             
@@ -44,7 +55,7 @@ def _contains_csv_data(text: str) -> bool:
                 csv_like_lines += 1
                 logger.info(f"Line {i+1} has {len(parts)} parts: {parts[:3]}...")  # 最初の3要素をログ
     
-    threshold = max(2, len(lines) * 0.5)
+    threshold = max(2, len(non_filename_lines) * 0.5)
     is_csv = csv_like_lines >= threshold
     logger.info(f"CSV-like lines: {csv_like_lines}, threshold: {threshold}, is_csv: {is_csv}")
     
