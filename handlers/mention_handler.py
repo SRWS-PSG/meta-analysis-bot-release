@@ -89,6 +89,25 @@ def register_mention_handlers(app: App):
             bot_user_id = client.auth_test()["user_id"]
             clean_text = text.replace(f"<@{bot_user_id}>", "").strip()
             
+            # If there are code blocks in the message, extract the text from them
+            if blocks:
+                code_block_text = ""
+                for block in blocks:
+                    if block.get("type") == "rich_text":
+                        for element in block.get("elements", []):
+                            if element.get("type") == "rich_text_preformatted":
+                                # This is a code block
+                                for elem in element.get("elements", []):
+                                    if elem.get("type") == "text":
+                                        code_block_text += elem.get("text", "")
+                if code_block_text:
+                    logger.info(f"Found code block text: {code_block_text[:100]}...")
+                    # If we have both regular text and code block, combine them
+                    if clean_text and not _contains_csv_data(clean_text):
+                        clean_text = clean_text + "\n" + code_block_text
+                    elif not clean_text:
+                        clean_text = code_block_text
+            
             logger.info(f"=== App Mention Debug ===")
             logger.info(f"Original text: {repr(text)}")
             logger.info(f"Bot user ID: {bot_user_id}")
