@@ -7,6 +7,7 @@ import logging
 import json
 import time
 import os # For os.path.exists
+from pathlib import Path
 
 from mcp.gemini_utils import generate_academic_writing_suggestion
 
@@ -31,9 +32,8 @@ class ReportHandler:
             self.context_manager.save_context(thread_ts, context, channel_id)
             return
 
-        # structured_summary_content (JSON文字列) または gcs_structured_summary_json_path (GCSパス) を確認
+        # structured_summary_content (JSON文字列) を確認
         summary_json_content_str = result.get("structured_summary_content")
-        gcs_summary_json_path = result.get("gcs_structured_summary_json_path")
 
         summary_for_gemini = None
 
@@ -46,28 +46,9 @@ class ReportHandler:
                 logger.info("Using structured_summary_content string from result for report generation.")
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse structured_summary_content string: {e}")
-        elif gcs_summary_json_path:
-            logger.info(f"Attempting to download summary JSON from GCS: {gcs_summary_json_path}")
-            # GCSからサマリーJSONをダウンロード
-            temp_dir = self.context_manager.get_thread_storage_path(thread_ts, channel_id)
-            if temp_dir:
-                local_summary_json_path = Path(temp_dir) / Path(gcs_summary_json_path).name
-                if self.context_manager.download_file_from_gcs(thread_ts, channel_id, Path(gcs_summary_json_path).name, str(local_summary_json_path)):
-                    try:
-                        with open(local_summary_json_path, 'r', encoding='utf-8') as f:
-                            summary_for_gemini = json.load(f)
-                        logger.info(f"Successfully downloaded and parsed summary JSON from GCS path {gcs_summary_json_path} to {local_summary_json_path}")
-                        # 必要であればローカル一時ファイルを削除
-                        # cleanup_temp_files(str(local_summary_json_path)) # ここではまだ使うかもしれないので削除しない
-                    except Exception as e:
-                        logger.error(f"Failed to read or parse downloaded summary JSON from {local_summary_json_path}: {e}")
-                else:
-                    logger.error(f"Failed to download summary JSON from GCS path: {gcs_summary_json_path}")
-            else:
-                logger.error("Failed to get temporary directory for downloading GCS summary JSON.")
         
         if summary_for_gemini is None:
-            logger.warning("No valid summary data (processed_rdata_json, string content, or GCS path) found for report generation.")
+            logger.warning("No valid summary data (processed_rdata_json or string content) found for report generation.")
             client.chat_postMessage(
                 channel=channel_id, 
                 thread_ts=thread_ts, 

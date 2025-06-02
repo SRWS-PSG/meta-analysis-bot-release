@@ -125,10 +125,7 @@ class CsvProcessor:
                 else: client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text=error_text)
                 return
 
-            # GCSへのアップロード処理はHeroku化に伴い削除
-            # gcs_file_path = self.context_manager.upload_file_to_gcs(...)
-            # context["gcs_csv_file_path"] = gcs_file_path 
-            # 代わりにローカルパスを直接使用する
+            # ローカルパスを直接使用する
             logger.info(f"CSV file will be processed from local path: {local_csv_path}")
             context["local_csv_file_path"] = str(local_csv_path) # ローカルパスをコンテキストに保存
 
@@ -252,7 +249,6 @@ class CsvProcessor:
                     client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text=user_message)
                     if local_analyzed_csv_path: # ローカルの一時ファイルをクリーンアップ
                          cleanup_temp_files(local_analyzed_csv_path)
-                    # GCS上のファイルは元々ないので削除処理は不要
                     return
 
                 if not context.get("initial_csv_prompt_sent"):
