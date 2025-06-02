@@ -161,7 +161,8 @@ def register_mention_handlers(app: App):
                         channel_id=channel_id,
                         user_id=user_id,
                         client=client,
-                        logger=logger
+                        logger=logger,
+                        thread_ts=thread_ts
                     ))
                 return
             
@@ -172,8 +173,8 @@ def register_mention_handlers(app: App):
                     "使い方:\n"
                     "1. CSVファイルをアップロードしてください\n"
                     "2. ボットが自動でメタ解析に適したデータかチェックします\n"
-                    "3. 適していれば解析パラメータを設定できます\n"
-                    "4. 解析を実行して結果を確認できます\n\n"
+                    "3. 適していれば解析パラメータを対話で設定し、\n"
+                    "4. 解析を実行してレポートを返却します\n\n"
                     "お困りの場合は、CSVファイルをアップロードしてお試しください！"
                 )
                 
@@ -246,10 +247,6 @@ def register_mention_handlers(app: App):
             # ボット自身のメッセージは無視
             if event.get("bot_id"):
                 return
-                
-            # ファイル共有メッセージは csv_handler で処理されるのでここでは無視
-            if event.get("subtype") == "file_share":
-                return
             
             # スレッド内のメッセージかチェック
             is_thread_message = "thread_ts" in event and event.get("ts") != event.get("thread_ts")
@@ -257,13 +254,51 @@ def register_mention_handlers(app: App):
             # チャンネルタイプを確認
             channel_type = event.get("channel_type")
             
+            # ファイルの確認
+            files = event.get("files", [])
+            
             # DM または スレッド内メッセージの場合に処理
             if channel_type == "im" or is_thread_message:
                 text = event.get("text", "")
                 logger.info(f"Message in thread or DM received: {text[:100]}...")
+                logger.info(f"Files in message: {len(files)} files")
                 
+                # CSVファイルがあるかチェック
+                csv_files = [f for f in files if f.get("name", "").lower().endswith(".csv")]
+                if csv_files:
+                    # CSVファイルが添付されている場合
+                    channel_id = event["channel"]
+                    user_id = event["user"]
+                    thread_ts = event.get("thread_ts", event["ts"])
+                    
+                    logger.info(f"CSV files found in thread: {[f.get('name') for f in csv_files]}")
+                    client.chat_postMessage(
+                        channel=channel_id,
+                        thread_ts=thread_ts,
+                        text="📊 CSVファイルを検出しました。分析を開始します..."
+                    )
+                    
+                    # CSV処理を実行
+                    from handlers.csv_handler import process_csv_async
+                    import asyncio
+                    
+                    try:
+                        loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                    
+                    for csv_file in csv_files:
+                        loop.create_task(process_csv_async(
+                            file_info=csv_file,
+                            channel_id=channel_id,
+                            user_id=user_id,
+                            client=client,
+                            logger=logger,
+                            thread_ts=thread_ts
+                        ))
                 # CSVデータが含まれているかチェック
-                if _contains_csv_data(text):
+                elif _contains_csv_data(text):
                     # CSVデータが含まれている場合は処理する
                     channel_id = event["channel"]
                     user_id = event["user"]

@@ -109,7 +109,7 @@ async def process_csv_text_async(csv_text, channel_id, user_id, thread_ts, clien
             text=error_message
         )
 
-async def process_csv_async(file_info, channel_id, user_id, client, logger):
+async def process_csv_async(file_info, channel_id, user_id, client, logger, thread_ts=None):
     """CSVファイルの非同期分析処理"""
     try:
         logger.info(f"Starting CSV processing for file: {file_info.get('name', 'unknown')}")
@@ -129,10 +129,13 @@ async def process_csv_async(file_info, channel_id, user_id, client, logger):
                 csv_content = csv_content_bytes.decode('shift_jis')
             except UnicodeDecodeError:
                 logger.error("CSVファイルのデコードに失敗しました。")
-                client.chat_postMessage(
-                    channel=channel_id,
-                    text="❌ CSVファイルのエンコーディングが不明で処理できませんでした。"
-                )
+                message_kwargs = {
+                    "channel": channel_id,
+                    "text": "❌ CSVファイルのエンコーディングが不明で処理できませんでした。"
+                }
+                if thread_ts:
+                    message_kwargs["thread_ts"] = thread_ts
+                client.chat_postMessage(**message_kwargs)
                 return
 
         # Gemini APIでCSV分析
@@ -143,11 +146,14 @@ async def process_csv_async(file_info, channel_id, user_id, client, logger):
         
         if not analysis_result.get("is_suitable", False):
             # メタ解析に適さない場合
-            client.chat_postMessage(
-                channel=channel_id,
-                text=f"❌ このCSVファイルはメタ解析に適していないようです。", # 理由はBlockに含める
-                blocks=create_unsuitable_csv_blocks(analysis_result.get('reason', '詳細不明'))
-            )
+            message_kwargs = {
+                "channel": channel_id,
+                "text": f"❌ このCSVファイルはメタ解析に適していないようです。", # 理由はBlockに含める
+                "blocks": create_unsuitable_csv_blocks(analysis_result.get('reason', '詳細不明'))
+            }
+            if thread_ts:
+                message_kwargs["thread_ts"] = thread_ts
+            client.chat_postMessage(**message_kwargs)
             return
         
         # メタデータ作成
@@ -163,12 +169,15 @@ async def process_csv_async(file_info, channel_id, user_id, client, logger):
         # thread_ts はボタンが押されたメッセージのtsなので、parameter_handlerのactionのbodyから取得できる。
 
         # client.chat_postMessage の応答から ts を取得して metadata に追加する方が確実。
-        response_message = client.chat_postMessage(
-            channel=channel_id,
-            text="📊 CSVファイルを分析しました。メタ解析を開始しますか？",
-            blocks=create_analysis_start_blocks(analysis_result)
+        message_kwargs = {
+            "channel": channel_id,
+            "text": "📊 CSVファイルを分析しました。メタ解析を開始しますか？",
+            "blocks": create_analysis_start_blocks(analysis_result)
             # metadata は後で設定するか、parameter_handlerで参照する
-        )
+        }
+        if thread_ts:
+            message_kwargs["thread_ts"] = thread_ts
+        response_message = client.chat_postMessage(**message_kwargs)
         
         if response_message and response_message.get("ok"):
             msg_ts = response_message.get("ts")
@@ -198,10 +207,13 @@ async def process_csv_async(file_info, channel_id, user_id, client, logger):
         else:
             logger.error(f"CSV分析結果メッセージの投稿に失敗しました。Job ID: {job_id}")
             # エラー処理
-            client.chat_postMessage(
-                channel=channel_id,
-                text="❌ CSV分析結果の表示中にエラーが発生しました。"
-            )
+            message_kwargs = {
+                "channel": channel_id,
+                "text": "❌ CSV分析結果の表示中にエラーが発生しました。"
+            }
+            if thread_ts:
+                message_kwargs["thread_ts"] = thread_ts
+            client.chat_postMessage(**message_kwargs)
             return
         
     except Exception as e:
@@ -216,10 +228,13 @@ async def process_csv_async(file_info, channel_id, user_id, client, logger):
         elif "analyze" in str(e).lower():
             error_message += "\n⚠️ CSV分析中にエラーが発生しました。"
         
-        client.chat_postMessage(
-            channel=channel_id,
-            text=error_message
-        )
+        message_kwargs = {
+            "channel": channel_id,
+            "text": error_message
+        }
+        if thread_ts:
+            message_kwargs["thread_ts"] = thread_ts
+        client.chat_postMessage(**message_kwargs)
 
 # download_slack_file のような関数は utils/file_utils.py に実装することを推奨
 # async def download_slack_file(url: str, token: str) -> str:
