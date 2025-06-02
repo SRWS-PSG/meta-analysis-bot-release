@@ -111,14 +111,27 @@ class RedisStorage:
     def __init__(self):
         try:
             import redis
-            self.redis = redis.Redis(
-                host=clean_env_var('REDIS_HOST', 'localhost'),
-                port=int(clean_env_var('REDIS_PORT', '6379')),
-                db=int(clean_env_var('REDIS_DB', '0')),
-                password=clean_env_var('REDIS_PASSWORD', None),
-                decode_responses=True
-            )
+            
+            # HerokuのREDIS_URLがある場合は優先的に使用
+            redis_url = clean_env_var('REDIS_URL', None)
+            if redis_url:
+                self.redis = redis.from_url(redis_url, decode_responses=True)
+                logger.info("Redis接続: REDIS_URLを使用")
+            else:
+                # 個別の設定を使用
+                self.redis = redis.Redis(
+                    host=clean_env_var('REDIS_HOST', 'localhost'),
+                    port=int(clean_env_var('REDIS_PORT', '6379')),
+                    db=int(clean_env_var('REDIS_DB', '0')),
+                    password=clean_env_var('REDIS_PASSWORD', None),
+                    decode_responses=True
+                )
+                logger.info("Redis接続: 個別の設定を使用")
+            
+            # 接続テスト
+            self.redis.ping()
             self.available = True
+            logger.info("Redis接続成功")
         except (ImportError, Exception) as e:
             logger.warning(f"Redis接続エラー: {e}. フォールバックとしてメモリストレージを使用します。")
             self.available = False

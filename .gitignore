@@ -21,6 +21,8 @@ var/
 *.egg
 # Exclude shell scripts but allow GitHub workflows
 *.sh
+claude.yml
+
 
 # 仮想環境
 venv/
