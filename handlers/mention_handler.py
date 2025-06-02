@@ -148,11 +148,8 @@ def register_mention_handlers(app: App):
     
     @app.event("message")
     def handle_direct_message(body, event, client, logger):
-        """ダイレクトメッセージの処理"""
+        """ダイレクトメッセージとスレッド返信の処理"""
         try:
-            # DM（ダイレクトメッセージ）またはボットが参加しているチャンネルでのメッセージ
-            # ボットのmention以外でも反応する場合の処理
-            
             # ボット自身のメッセージは無視
             if event.get("bot_id"):
                 return
@@ -160,26 +157,58 @@ def register_mention_handlers(app: App):
             # ファイル共有メッセージは csv_handler で処理されるのでここでは無視
             if event.get("subtype") == "file_share":
                 return
-                
-            # チャンネルタイプを確認してDMのみ処理
+            
+            # スレッド内のメッセージかチェック
+            is_thread_message = "thread_ts" in event and event.get("ts") != event.get("thread_ts")
+            
+            # チャンネルタイプを確認
             channel_type = event.get("channel_type")
-            if channel_type == "im":  # ダイレクトメッセージ
-                logger.info(f"Direct message received: {event}")
+            
+            # DM または スレッド内メッセージの場合に処理
+            if channel_type == "im" or is_thread_message:
+                text = event.get("text", "")
+                logger.info(f"Message in thread or DM received: {text[:100]}...")
                 
-                help_text = (
-                    "👋 ダイレクトメッセージありがとうございます！\n\n"
-                    "メタ解析ボットは以下の手順でご利用いただけます:\n"
-                    "1. CSVファイルをこのチャットにアップロードしてください\n"
-                    "2. 自動でデータを分析します\n"
-                    "3. メタ解析の設定を行います\n"
-                    "4. 解析を実行して結果を表示します\n\n"
-                    "まずはCSVファイルをアップロードしてお試しください！"
-                )
-                
-                client.chat_postMessage(
-                    channel=event["channel"],
-                    text=help_text
-                )
+                # CSVデータが含まれているかチェック
+                if _contains_csv_data(text):
+                    # CSVデータが含まれている場合は処理する
+                    channel_id = event["channel"]
+                    user_id = event["user"]
+                    thread_ts = event.get("thread_ts", event["ts"])
+                    
+                    client.chat_postMessage(
+                        channel=channel_id,
+                        thread_ts=thread_ts,
+                        text="📊 CSVデータを検出しました。分析を開始します..."
+                    )
+                    
+                    # CSV処理を実行
+                    from handlers.csv_handler import process_csv_text_async
+                    import asyncio
+                    asyncio.create_task(process_csv_text_async(
+                        csv_text=text,
+                        channel_id=channel_id,
+                        user_id=user_id,
+                        thread_ts=thread_ts,
+                        client=client,
+                        logger=logger
+                    ))
+                elif channel_type == "im":
+                    # DMでCSVデータがない場合のみヘルプメッセージ
+                    help_text = (
+                        "👋 ダイレクトメッセージありがとうございます！\n\n"
+                        "メタ解析ボットは以下の手順でご利用いただけます:\n"
+                        "1. CSVファイルをこのチャットにアップロードしてください\n"
+                        "2. 自動でデータを分析します\n"
+                        "3. メタ解析の設定を行います\n"
+                        "4. 解析を実行して結果を表示します\n\n"
+                        "まずはCSVファイルをアップロードしてお試しください！"
+                    )
+                    
+                    client.chat_postMessage(
+                        channel=event["channel"],
+                        text=help_text
+                    )
                 
         except Exception as e:
             logger.error(f"Error handling direct message: {e}")
