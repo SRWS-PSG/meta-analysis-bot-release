@@ -2,7 +2,7 @@ import asyncio # upload_files_to_slack のために追加
 import os # upload_files_to_slack のために追加
 import requests # upload_files_to_slack のために追加
 import logging # upload_files_to_slack のために追加
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__) # upload_files_to_slack のために追加
 
