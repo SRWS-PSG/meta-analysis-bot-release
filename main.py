@@ -7,6 +7,7 @@ from handlers.csv_handler import register_csv_handlers
 from handlers.analysis_handler import register_analysis_handlers
 from handlers.report_handler import register_report_handlers
 from handlers.parameter_handler import register_parameter_handlers # 追加
+from handlers.mention_handler import register_mention_handlers
 
 # Slack App初期化
 app = App(
@@ -19,6 +20,7 @@ register_csv_handlers(app)
 register_analysis_handlers(app)
 register_report_handlers(app)
 register_parameter_handlers(app) # 追加
+register_mention_handlers(app)
 
 # Heroku用のハンドラー
 handler = SlackRequestHandler(app)
