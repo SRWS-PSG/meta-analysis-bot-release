@@ -25,6 +25,71 @@ def register_csv_handlers(app: App):
             logger=logger
         ))
 
+async def process_csv_text_async(csv_text, channel_id, user_id, thread_ts, client, logger):
+    """テキスト形式のCSVデータを処理する"""
+    try:
+        # Gemini APIでCSV分析
+        gemini_client = GeminiClient()
+        analysis_result = await gemini_client.analyze_csv(csv_text)
+        
+        if not analysis_result.get("is_suitable", False):
+            # メタ解析に適さない場合
+            client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text="❌ このCSVデータはメタ解析に適していないようです。",
+                blocks=create_unsuitable_csv_blocks(analysis_result.get('reason', '詳細不明'))
+            )
+            return
+        
+        # メタデータ作成
+        job_id = MetadataManager.create_job_id()
+        
+        response_message = client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text="📊 CSVデータを分析しました。メタ解析を開始しますか？",
+            blocks=create_analysis_start_blocks(analysis_result)
+        )
+        
+        if response_message and response_message.get("ok"):
+            msg_ts = response_message.get("ts")
+            msg_channel = response_message.get("channel")
+
+            metadata_payload = {
+                "job_id": job_id,
+                "csv_analysis": analysis_result,
+                "csv_text": csv_text,  # テキストデータを直接保存
+                "stage": "awaiting_parameters",
+                "user_id": user_id,
+                "response_channel_id": msg_channel,
+                "response_thread_ts": msg_ts
+            }
+            final_metadata = MetadataManager.create_metadata("csv_analyzed", metadata_payload)
+
+            client.chat_update(
+                channel=msg_channel,
+                ts=msg_ts,
+                metadata=final_metadata
+            )
+            logger.info(f"CSV text analysis result message (Job ID: {job_id}) にメタデータを付加しました。ts: {msg_ts}")
+        else:
+            logger.error(f"CSV text analysis result message投稿に失敗しました。Job ID: {job_id}")
+            client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text="❌ CSV分析結果の表示中にエラーが発生しました。"
+            )
+            return
+        
+    except Exception as e:
+        logger.error(f"CSV text processing error: {e}")
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text="❌ CSVデータの処理中にエラーが発生しました。"
+        )
+
 async def process_csv_async(file_info, channel_id, user_id, client, logger):
     """CSVファイルの非同期分析処理"""
     try:

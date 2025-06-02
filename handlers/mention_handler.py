@@ -8,6 +8,25 @@ from slack_bolt import App
 
 logger = logging.getLogger(__name__)
 
+def _contains_csv_data(text: str) -> bool:
+    """テキスト内にCSVデータが含まれているかチェック"""
+    lines = text.strip().split('\n')
+    if len(lines) < 2:
+        return False
+    
+    # 複数行あり、カンマ区切りのデータが含まれているかチェック
+    csv_like_lines = 0
+    for line in lines:
+        # タブやスペースで区切られている場合も考慮
+        if ',' in line or '\t' in line:
+            # 最低でも2つの列があるかチェック
+            parts = line.replace('\t', ',').split(',')
+            if len(parts) >= 2:
+                csv_like_lines += 1
+    
+    # 全体の50%以上の行がCSV形式っぽければCSVと判定
+    return csv_like_lines >= max(2, len(lines) * 0.5)
+
 def register_mention_handlers(app: App):
     """メンション関連のハンドラーを登録"""
     
@@ -44,18 +63,39 @@ def register_mention_handlers(app: App):
                     text=help_text
                 )
             else:
-                # その他のテキストが含まれている場合
-                response_text = (
-                    f"メッセージを受信しました: 「{clean_text}」\n\n"
-                    "現在、このボットはCSVファイルのメタ解析に特化しています。\n"
-                    "CSVファイルをアップロードしていただければ、解析をお手伝いできます！"
-                )
-                
-                client.chat_postMessage(
-                    channel=channel_id,
-                    thread_ts=thread_ts,
-                    text=response_text
-                )
+                # CSVデータが含まれているかチェック
+                if _contains_csv_data(clean_text):
+                    # CSVデータが含まれている場合は処理する
+                    client.chat_postMessage(
+                        channel=channel_id,
+                        thread_ts=thread_ts,
+                        text="📊 CSVデータを検出しました。分析を開始します..."
+                    )
+                    
+                    # CSV処理を実行
+                    from handlers.csv_handler import process_csv_text_async
+                    import asyncio
+                    asyncio.create_task(process_csv_text_async(
+                        csv_text=clean_text,
+                        channel_id=channel_id,
+                        user_id=user_id,
+                        thread_ts=thread_ts,
+                        client=client,
+                        logger=logger
+                    ))
+                else:
+                    # その他のテキストが含まれている場合
+                    response_text = (
+                        f"メッセージを受信しました: 「{clean_text}」\n\n"
+                        "現在、このボットはCSVファイルのメタ解析に特化しています。\n"
+                        "CSVファイルをアップロードするか、CSVデータをテキストとして貼り付けていただければ、解析をお手伝いできます！"
+                    )
+                    
+                    client.chat_postMessage(
+                        channel=channel_id,
+                        thread_ts=thread_ts,
+                        text=response_text
+                    )
                 
         except Exception as e:
             logger.error(f"Error handling app mention: {e}")
