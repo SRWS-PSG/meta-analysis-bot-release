@@ -929,7 +929,8 @@ if ("{subgroup_col}" %in% names(dat)) {{
         script_parts = [self.templates["library_load"]]
         
         # データ読み込み (パスはバックスラッシュをスラッシュに置換)
-        script_parts.append(f"dat <- read.csv('{csv_file_path_in_script.replace('\\\\', '/')}')")
+        csv_path_cleaned = csv_file_path_in_script.replace('\\\\', '/')
+        script_parts.append(f"dat <- read.csv('{csv_path_cleaned}')")
         
         # 研究ラベル(slab)の準備
         data_cols = analysis_params.get("data_columns", {})
