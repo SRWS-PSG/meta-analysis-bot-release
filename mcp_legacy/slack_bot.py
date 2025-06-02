@@ -86,11 +86,11 @@ class MetaAnalysisBot:
         except Exception as e:
             logger.error(f"Unexpected error fetching bot user ID via auth_test: {e}", exc_info=True)
 
-        # Heroku環境では永続ストレージを使用せず、メモリを使用
-        storage_backend_fixed = "memory"
-        self.context_manager = ThreadContextManager(storage_backend=storage_backend_fixed)
+        # ストレージバックエンドを環境変数から取得（デフォルトはredis）
+        storage_backend = os.environ.get("STORAGE_BACKEND", "redis")
+        self.context_manager = ThreadContextManager(storage_backend=storage_backend)
         
-        logger.info(f"Thread context manager initialized with storage_backend={storage_backend_fixed}. Max history will be set from ENV within ThreadContextManager.")
+        logger.info(f"Thread context manager initialized with storage_backend={storage_backend}. Max history will be set from ENV within ThreadContextManager.")
 
         self.async_runner = AsyncAnalysisRunner()
         
