@@ -79,9 +79,12 @@ def register_mention_handlers(app: App):
             bot_user_id = client.auth_test()["user_id"]
             clean_text = text.replace(f"<@{bot_user_id}>", "").strip()
             
-            logger.info(f"Original text: {text}")
+            logger.info(f"=== App Mention Debug ===")
+            logger.info(f"Original text: {repr(text)}")
             logger.info(f"Bot user ID: {bot_user_id}")
-            logger.info(f"Clean text: {clean_text}")
+            logger.info(f"Clean text: {repr(clean_text)}")
+            logger.info(f"Clean text length: {len(clean_text)}")
+            logger.info(f"Clean text first 100 chars: {clean_text[:100] if clean_text else 'EMPTY'}")
             
             if not clean_text:
                 # メンションのみの場合はヘルプメッセージを表示
@@ -102,7 +105,11 @@ def register_mention_handlers(app: App):
                 )
             else:
                 # CSVデータが含まれているかチェック
-                if _contains_csv_data(clean_text):
+                logger.info(f"Checking for CSV data in clean_text...")
+                contains_csv = _contains_csv_data(clean_text)
+                logger.info(f"CSV detection result: {contains_csv}")
+                
+                if contains_csv:
                     # CSVデータが含まれている場合は処理する
                     client.chat_postMessage(
                         channel=channel_id,
