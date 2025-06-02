@@ -24,7 +24,7 @@ register_parameter_handlers(app) # 追加
 handler = SlackRequestHandler(app)
 
 # Gunicorn が探す WSGI callable
-application = handler.handle
+application = handler
 
 if __name__ == "__main__":
     if os.environ.get("SOCKET_MODE", "false").lower() == "true":
