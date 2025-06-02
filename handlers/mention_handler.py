@@ -10,22 +10,45 @@ logger = logging.getLogger(__name__)
 
 def _contains_csv_data(text: str) -> bool:
     """テキスト内にCSVデータが含まれているかチェック"""
+    logger.info(f"CSV detection check for text: {text[:200]}...")  # 最初の200文字をログ
+    
     lines = text.strip().split('\n')
+    logger.info(f"Split into {len(lines)} lines")
+    
     if len(lines) < 2:
+        logger.info("Less than 2 lines, not CSV")
         return False
     
     # 複数行あり、カンマ区切りのデータが含まれているかチェック
     csv_like_lines = 0
-    for line in lines:
+    for i, line in enumerate(lines):
+        line = line.strip()
+        if not line:  # 空行をスキップ
+            continue
+            
         # タブやスペースで区切られている場合も考慮
-        if ',' in line or '\t' in line:
+        has_separator = ',' in line or '\t' in line or '    ' in line  # 複数スペースも区切り文字として考慮
+        
+        if has_separator:
             # 最低でも2つの列があるかチェック
-            parts = line.replace('\t', ',').split(',')
+            if '\t' in line:
+                parts = line.split('\t')
+            elif ',' in line:
+                parts = line.split(',')
+            else:
+                parts = line.split()  # 複数スペースで分割
+            
+            parts = [p.strip() for p in parts if p.strip()]  # 空要素を除去
+            
             if len(parts) >= 2:
                 csv_like_lines += 1
+                logger.info(f"Line {i+1} has {len(parts)} parts: {parts[:3]}...")  # 最初の3要素をログ
     
-    # 全体の50%以上の行がCSV形式っぽければCSVと判定
-    return csv_like_lines >= max(2, len(lines) * 0.5)
+    threshold = max(2, len(lines) * 0.5)
+    is_csv = csv_like_lines >= threshold
+    logger.info(f"CSV-like lines: {csv_like_lines}, threshold: {threshold}, is_csv: {is_csv}")
+    
+    return is_csv
 
 def register_mention_handlers(app: App):
     """メンション関連のハンドラーを登録"""
@@ -44,6 +67,10 @@ def register_mention_handlers(app: App):
             # メンションテキストからボットIDを除去
             bot_user_id = client.auth_test()["user_id"]
             clean_text = text.replace(f"<@{bot_user_id}>", "").strip()
+            
+            logger.info(f"Original text: {text}")
+            logger.info(f"Bot user ID: {bot_user_id}")
+            logger.info(f"Clean text: {clean_text}")
             
             if not clean_text:
                 # メンションのみの場合はヘルプメッセージを表示
