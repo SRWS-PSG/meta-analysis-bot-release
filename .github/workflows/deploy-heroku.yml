@@ -18,10 +18,23 @@ jobs:
         with:
           fetch-depth: 0 # 全履歴を取得（Herokuデプロイに必要）
 
-      - name: Deploy to Heroku
-        uses: akhileshns/heroku-deploy@v3.13.15
-        with:
-          heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
-          heroku_app_name: ${{ secrets.HEROKU_APP_NAME }}
-          heroku_email: ${{ secrets.HEROKU_EMAIL }}
-          branch: main
+      - name: Setup Heroku CLI
+        run: |
+          curl https://cli-assets.heroku.com/install-ubuntu.sh | sh
+          
+      - name: Login to Heroku
+        run: |
+          cat > ~/.netrc << EOF
+          machine api.heroku.com
+            login ${{ secrets.HEROKU_EMAIL }}
+            password ${{ secrets.HEROKU_API_KEY }}
+          machine git.heroku.com
+            login ${{ secrets.HEROKU_EMAIL }}
+            password ${{ secrets.HEROKU_API_KEY }}
+          EOF
+          chmod 600 ~/.netrc
+
+      - name: Add Heroku remote and deploy
+        run: |
+          heroku git:remote --app ${{ secrets.HEROKU_APP_NAME }}
+          git push heroku main
