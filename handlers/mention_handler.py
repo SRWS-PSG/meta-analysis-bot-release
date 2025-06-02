@@ -148,8 +148,15 @@ def register_mention_handlers(app: App):
                 # CSV処理を実行
                 from handlers.csv_handler import process_csv_async
                 import asyncio
+                
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                
                 for csv_file in csv_files:
-                    asyncio.create_task(process_csv_async(
+                    loop.create_task(process_csv_async(
                         file_info=csv_file,
                         channel_id=channel_id,
                         user_id=user_id,
@@ -192,7 +199,14 @@ def register_mention_handlers(app: App):
                     # CSV処理を実行
                     from handlers.csv_handler import process_csv_text_async
                     import asyncio
-                    asyncio.create_task(process_csv_text_async(
+                    
+                    try:
+                        loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                    
+                    loop.create_task(process_csv_text_async(
                         csv_text=clean_text,
                         channel_id=channel_id,
                         user_id=user_id,
@@ -264,7 +278,14 @@ def register_mention_handlers(app: App):
                     # CSV処理を実行
                     from handlers.csv_handler import process_csv_text_async
                     import asyncio
-                    asyncio.create_task(process_csv_text_async(
+                    
+                    try:
+                        loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                    
+                    loop.create_task(process_csv_text_async(
                         csv_text=text,
                         channel_id=channel_id,
                         user_id=user_id,

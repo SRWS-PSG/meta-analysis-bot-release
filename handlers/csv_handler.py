@@ -17,7 +17,14 @@ def register_csv_handlers(app: App):
             return
         
         # 非同期でCSV分析を実行
-        asyncio.create_task(process_csv_async(
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            # イベントループが存在しない場合は新しく作成
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        loop.create_task(process_csv_async(
             file_info=file_info,
             channel_id=event["channel_id"],
             user_id=event["user_id"],
@@ -28,9 +35,13 @@ def register_csv_handlers(app: App):
 async def process_csv_text_async(csv_text, channel_id, user_id, thread_ts, client, logger):
     """テキスト形式のCSVデータを処理する"""
     try:
+        logger.info(f"Starting CSV text processing. Text size: {len(csv_text)} chars")
+        logger.info(f"First 200 chars of CSV text: {csv_text[:200]}...")
+        
         # Gemini APIでCSV分析
         gemini_client = GeminiClient()
         analysis_result = await gemini_client.analyze_csv(csv_text)
+        logger.info(f"Gemini analysis result: is_suitable={analysis_result.get('is_suitable')}, reason={analysis_result.get('reason', 'N/A')[:100]}...")
         
         if not analysis_result.get("is_suitable", False):
             # メタ解析に適さない場合
@@ -83,16 +94,27 @@ async def process_csv_text_async(csv_text, channel_id, user_id, thread_ts, clien
             return
         
     except Exception as e:
-        logger.error(f"CSV text processing error: {e}")
+        logger.error(f"CSV text processing error: {e}", exc_info=True)
+        
+        # より詳細なエラー情報を提供
+        error_message = "❌ CSVデータの処理中にエラーが発生しました。"
+        if "GEMINI_API_KEY" in str(e):
+            error_message += "\n⚠️ Gemini APIキーが設定されていません。"
+        elif "analyze" in str(e).lower():
+            error_message += "\n⚠️ CSV分析中にエラーが発生しました。"
+        
         client.chat_postMessage(
             channel=channel_id,
             thread_ts=thread_ts,
-            text="❌ CSVデータの処理中にエラーが発生しました。"
+            text=error_message
         )
 
 async def process_csv_async(file_info, channel_id, user_id, client, logger):
     """CSVファイルの非同期分析処理"""
     try:
+        logger.info(f"Starting CSV processing for file: {file_info.get('name', 'unknown')}")
+        logger.info(f"File info keys: {list(file_info.keys())}")
+        
         # CSVダウンロード
         csv_content_bytes = await download_slack_file_content_async(
             file_url=file_info["url_private_download"], # プライベートダウンロードURLを使用
@@ -114,8 +136,10 @@ async def process_csv_async(file_info, channel_id, user_id, client, logger):
                 return
 
         # Gemini APIでCSV分析
+        logger.info(f"Analyzing CSV content with Gemini. Content size: {len(csv_content)} chars")
         gemini_client = GeminiClient()
         analysis_result = await gemini_client.analyze_csv(csv_content)
+        logger.info(f"Gemini analysis result: is_suitable={analysis_result.get('is_suitable')}, reason={analysis_result.get('reason', 'N/A')[:100]}...")
         
         if not analysis_result.get("is_suitable", False):
             # メタ解析に適さない場合
@@ -181,10 +205,20 @@ async def process_csv_async(file_info, channel_id, user_id, client, logger):
             return
         
     except Exception as e:
-        logger.error(f"CSV処理エラー: {e}")
+        logger.error(f"CSV処理エラー: {e}", exc_info=True)
+        
+        # より詳細なエラー情報を提供
+        error_message = "❌ CSVファイルの処理中にエラーが発生しました。"
+        if "GEMINI_API_KEY" in str(e):
+            error_message += "\n⚠️ Gemini APIキーが設定されていません。"
+        elif "download" in str(e).lower():
+            error_message += "\n⚠️ ファイルのダウンロードに失敗しました。"
+        elif "analyze" in str(e).lower():
+            error_message += "\n⚠️ CSV分析中にエラーが発生しました。"
+        
         client.chat_postMessage(
             channel=channel_id,
-            text="❌ CSVファイルの処理中にエラーが発生しました。"
+            text=error_message
         )
 
 # download_slack_file のような関数は utils/file_utils.py に実装することを推奨
