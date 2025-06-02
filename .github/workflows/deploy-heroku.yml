@@ -18,17 +18,10 @@ jobs:
         with:
           fetch-depth: 0 # 全履歴を取得（Herokuデプロイに必要）
 
-      - name: Install Heroku CLI
-        run: curl https://cli-assets.heroku.com/install.sh | sh
-
-      - name: Add Heroku remote
-        run: |
-          heroku git:remote --app $HEROKU_APP_NAME
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-
       - name: Deploy to Heroku
-        run: |
-          git push heroku main
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        uses: akhileshns/heroku-deploy@v3.13.15
+        with:
+          heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
+          heroku_app_name: ${{ secrets.HEROKU_APP_NAME }}
+          heroku_email: ${{ secrets.HEROKU_EMAIL }}
+          branch: main
