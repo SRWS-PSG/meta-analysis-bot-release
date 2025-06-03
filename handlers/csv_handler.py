@@ -226,11 +226,17 @@ async def process_csv_async(file_info, channel_id, user_id, client, logger, thre
 
             # メタデータのみを更新 (Slack APIの制限により、メッセージ投稿と同時にはできない場合がある)
             # chat.update を使ってメタデータを付加する
-            client.chat_update(
-                channel=msg_channel,
-                ts=msg_ts,
-                metadata=final_metadata # metadata全体を渡す
-            )
+            try:
+                # chat.updateにはtextまたはblocksが必須
+                client.chat_update(
+                    channel=msg_channel,
+                    ts=msg_ts,
+                    text="📊 CSVファイルを分析しました。メタ解析を開始しますか？",  # 元のメッセージと同じテキスト
+                    blocks=create_analysis_start_blocks(analysis_result),  # 元のメッセージと同じブロック
+                    metadata=final_metadata # metadata全体を渡す
+                )
+            except Exception as update_error:
+                logger.warning(f"Failed to update message with metadata: {update_error}")
             logger.info(f"CSV分析結果メッセージ (Job ID: {job_id}) にメタデータを付加しました。ts: {msg_ts}")
             logger.info(f"CSV processing completed successfully in {time.time() - start_time:.2f} seconds")
         else:
