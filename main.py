@@ -1,6 +1,8 @@
 import os
 import asyncio
 import logging
+import signal
+import sys
 from slack_bolt import App
 from slack_bolt.adapter.wsgi import SlackRequestHandler
 
@@ -52,6 +54,25 @@ register_analysis_handlers(app)
 register_report_handlers(app)
 register_parameter_handlers(app) # 追加
 register_mention_handlers(app)
+
+# グレースフルシャットダウンのハンドラー
+def signal_handler(sig, frame):
+    """シグナルハンドラー"""
+    logger.info(f"Received signal {sig}. Starting graceful shutdown...")
+    
+    # mention_handlerのジョブマネージャーをシャットダウン
+    try:
+        from handlers.mention_handler import shutdown_job_manager
+        shutdown_job_manager()
+    except Exception as e:
+        logger.error(f"Error during job manager shutdown: {e}")
+    
+    logger.info("Graceful shutdown complete")
+    sys.exit(0)
+
+# シグナルハンドラーを登録
+signal.signal(signal.SIGTERM, signal_handler)
+signal.signal(signal.SIGINT, signal_handler)
 
 # テストハンドラーは削除（mention_handlerで処理されるため）
 

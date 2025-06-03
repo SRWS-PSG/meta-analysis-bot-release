@@ -7,9 +7,34 @@ import logging
 import re
 import threading
 import json
+import os
+import signal
+import atexit
+import time
 from slack_bolt import App
+from mcp_legacy.async_processing import AsyncJobManager
 
 logger = logging.getLogger(__name__)
+
+# グローバルジョブマネージャー
+_job_manager = None
+
+def get_job_manager():
+    """ジョブマネージャーのシングルトンを取得"""
+    global _job_manager
+    if _job_manager is None:
+        _job_manager = AsyncJobManager(max_workers=int(os.environ.get('MAX_CSV_WORKERS', '5')))
+        # グレースフルシャットダウンの設定
+        atexit.register(shutdown_job_manager)
+    return _job_manager
+
+def shutdown_job_manager():
+    """ジョブマネージャーをシャットダウン"""
+    global _job_manager
+    if _job_manager:
+        logger.info("Shutting down job manager...")
+        _job_manager.executor.shutdown(wait=True, cancel_futures=False)
+        logger.info("Job manager shutdown complete")
 
 def _contains_csv_data(text: str) -> bool:
     """テキスト内にCSVデータが含まれているかチェック"""
@@ -179,26 +204,45 @@ def register_mention_handlers(app: App):
                 from handlers.csv_handler import process_csv_async
                 import asyncio
                 
-                # Run the async function in a thread to avoid event loop issues
-                import threading
+                job_manager = get_job_manager()
                 
-                def run_async_csv_processing():
+                def run_csv_processing_in_event_loop():
+                    """イベントループ内でCSV処理を実行"""
                     try:
+                        # 新しいイベントループを作成
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
+                        
+                        # 各CSVファイルを処理
                         for csv_file in csv_files:
-                            loop.run_until_complete(process_csv_async(
-                                file_info=csv_file,
-                                channel_id=channel_id,
-                                user_id=user_id,
-                                client=client,
-                                logger=logger,
-                                thread_ts=thread_ts
-                            ))
+                            logger.info(f"Processing CSV file: {csv_file.get('name', 'unknown')} via job manager")
+                            try:
+                                loop.run_until_complete(process_csv_async(
+                                    file_info=csv_file,
+                                    channel_id=channel_id,
+                                    user_id=user_id,
+                                    client=client,
+                                    logger=logger,
+                                    thread_ts=thread_ts
+                                ))
+                            except Exception as file_error:
+                                logger.error(f"Error processing {csv_file.get('name')}: {file_error}", exc_info=True)
+                                # ファイル単位のエラーを通知
+                                try:
+                                    client.chat_postMessage(
+                                        channel=channel_id,
+                                        thread_ts=thread_ts,
+                                        text=f"❌ {csv_file.get('name', 'CSVファイル')}の処理中にエラーが発生しました: {str(file_error)}"
+                                    )
+                                except Exception as notify_error:
+                                    logger.error(f"Failed to notify file error: {notify_error}")
+                        
                         loop.close()
+                        logger.info("CSV processing completed successfully")
+                        
                     except Exception as e:
-                        logger.error(f"Error in CSV processing thread: {e}", exc_info=True)
-                        # エラーをSlackに通知
+                        logger.error(f"Error in CSV processing job: {e}", exc_info=True)
+                        # 全体的なエラーを通知
                         try:
                             client.chat_postMessage(
                                 channel=channel_id,
@@ -208,8 +252,12 @@ def register_mention_handlers(app: App):
                         except Exception as notify_error:
                             logger.error(f"Failed to notify error: {notify_error}")
                 
-                thread = threading.Thread(target=run_async_csv_processing)
-                thread.start()
+                # ジョブをサブミット
+                job_id = job_manager.submit_job(
+                    job_id=f"csv_processing_{channel_id}_{thread_ts}_{int(time.time())}",
+                    func=run_csv_processing_in_event_loop
+                )
+                logger.info(f"CSV processing job submitted with ID: {job_id}")
                 return
             
             if not clean_text:
@@ -247,13 +295,15 @@ def register_mention_handlers(app: App):
                     from handlers.csv_handler import process_csv_text_async
                     import asyncio
                     
-                    # Run the async function in a thread to avoid event loop issues
-                    import threading
+                    job_manager = get_job_manager()
                     
-                    def run_async_csv_text_processing():
+                    def run_csv_text_processing_in_event_loop():
+                        """イベントループ内でCSVテキスト処理を実行"""
                         try:
                             loop = asyncio.new_event_loop()
                             asyncio.set_event_loop(loop)
+                            
+                            logger.info(f"Processing CSV text data via job manager")
                             loop.run_until_complete(process_csv_text_async(
                                 csv_text=clean_text,
                                 channel_id=channel_id,
@@ -262,9 +312,12 @@ def register_mention_handlers(app: App):
                                 client=client,
                                 logger=logger
                             ))
+                            
                             loop.close()
+                            logger.info("CSV text processing completed successfully")
+                            
                         except Exception as e:
-                            logger.error(f"Error in CSV text processing thread: {e}", exc_info=True)
+                            logger.error(f"Error in CSV text processing job: {e}", exc_info=True)
                             # エラーをSlackに通知
                             try:
                                 client.chat_postMessage(
@@ -275,8 +328,12 @@ def register_mention_handlers(app: App):
                             except Exception as notify_error:
                                 logger.error(f"Failed to notify error: {notify_error}")
                     
-                    thread = threading.Thread(target=run_async_csv_text_processing)
-                    thread.start()
+                    # ジョブをサブミット
+                    job_id = job_manager.submit_job(
+                        job_id=f"csv_text_processing_{channel_id}_{thread_ts}_{int(time.time())}",
+                        func=run_csv_text_processing_in_event_loop
+                    )
+                    logger.info(f"CSV text processing job submitted with ID: {job_id}")
                 else:
                     # その他のテキストが含まれている場合
                     response_text = (
@@ -344,26 +401,41 @@ def register_mention_handlers(app: App):
                     from handlers.csv_handler import process_csv_async
                     import asyncio
                     
-                    # Run the async function in a thread to avoid event loop issues
-                    import threading
+                    job_manager = get_job_manager()
                     
-                    def run_async_csv_processing():
+                    def run_dm_csv_processing_in_event_loop():
+                        """ダイレクトメッセージ内のCSV処理を実行"""
                         try:
                             loop = asyncio.new_event_loop()
                             asyncio.set_event_loop(loop)
+                            
                             for csv_file in csv_files:
-                                loop.run_until_complete(process_csv_async(
-                                    file_info=csv_file,
-                                    channel_id=channel_id,
-                                    user_id=user_id,
-                                    client=client,
-                                    logger=logger,
-                                    thread_ts=thread_ts
-                                ))
+                                logger.info(f"Processing CSV file in DM: {csv_file.get('name', 'unknown')}")
+                                try:
+                                    loop.run_until_complete(process_csv_async(
+                                        file_info=csv_file,
+                                        channel_id=channel_id,
+                                        user_id=user_id,
+                                        client=client,
+                                        logger=logger,
+                                        thread_ts=thread_ts
+                                    ))
+                                except Exception as file_error:
+                                    logger.error(f"Error processing {csv_file.get('name')} in DM: {file_error}", exc_info=True)
+                                    try:
+                                        client.chat_postMessage(
+                                            channel=channel_id,
+                                            thread_ts=thread_ts,
+                                            text=f"❌ {csv_file.get('name', 'CSVファイル')}の処理中にエラーが発生しました: {str(file_error)}"
+                                        )
+                                    except Exception as notify_error:
+                                        logger.error(f"Failed to notify file error in DM: {notify_error}")
+                            
                             loop.close()
+                            logger.info("DM CSV processing completed successfully")
+                            
                         except Exception as e:
-                            logger.error(f"Error in CSV processing thread (DM): {e}", exc_info=True)
-                            # エラーをSlackに通知
+                            logger.error(f"Error in DM CSV processing job: {e}", exc_info=True)
                             try:
                                 client.chat_postMessage(
                                     channel=channel_id,
@@ -373,8 +445,12 @@ def register_mention_handlers(app: App):
                             except Exception as notify_error:
                                 logger.error(f"Failed to notify error: {notify_error}")
                     
-                    thread = threading.Thread(target=run_async_csv_processing)
-                    thread.start()
+                    # ジョブをサブミット
+                    job_id = job_manager.submit_job(
+                        job_id=f"dm_csv_processing_{channel_id}_{thread_ts}_{int(time.time())}",
+                        func=run_dm_csv_processing_in_event_loop
+                    )
+                    logger.info(f"DM CSV processing job submitted with ID: {job_id}")
                 # CSVデータが含まれているかチェック
                 elif _contains_csv_data(text):
                     # CSVデータが含まれている場合は処理する
@@ -392,13 +468,15 @@ def register_mention_handlers(app: App):
                     from handlers.csv_handler import process_csv_text_async
                     import asyncio
                     
-                    # Run the async function in a thread to avoid event loop issues
-                    import threading
+                    job_manager = get_job_manager()
                     
-                    def run_async_csv_text_processing():
+                    def run_dm_csv_text_processing_in_event_loop():
+                        """ダイレクトメッセージ内のCSVテキスト処理を実行"""
                         try:
                             loop = asyncio.new_event_loop()
                             asyncio.set_event_loop(loop)
+                            
+                            logger.info("Processing CSV text data in DM via job manager")
                             loop.run_until_complete(process_csv_text_async(
                                 csv_text=text,
                                 channel_id=channel_id,
@@ -407,10 +485,12 @@ def register_mention_handlers(app: App):
                                 client=client,
                                 logger=logger
                             ))
+                            
                             loop.close()
+                            logger.info("DM CSV text processing completed successfully")
+                            
                         except Exception as e:
-                            logger.error(f"Error in CSV text processing thread (DM): {e}", exc_info=True)
-                            # エラーをSlackに通知
+                            logger.error(f"Error in DM CSV text processing job: {e}", exc_info=True)
                             try:
                                 client.chat_postMessage(
                                     channel=channel_id,
@@ -420,8 +500,12 @@ def register_mention_handlers(app: App):
                             except Exception as notify_error:
                                 logger.error(f"Failed to notify error: {notify_error}")
                     
-                    thread = threading.Thread(target=run_async_csv_text_processing)
-                    thread.start()
+                    # ジョブをサブミット
+                    job_id = job_manager.submit_job(
+                        job_id=f"dm_csv_text_processing_{channel_id}_{thread_ts}_{int(time.time())}",
+                        func=run_dm_csv_text_processing_in_event_loop
+                    )
+                    logger.info(f"DM CSV text processing job submitted with ID: {job_id}")
                 elif channel_type == "im":
                     # DMでCSVデータがない場合のみヘルプメッセージ
                     help_text = (

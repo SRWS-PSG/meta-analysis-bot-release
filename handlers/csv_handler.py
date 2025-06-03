@@ -1,10 +1,14 @@
 import asyncio
 import threading
+import time
+import logging
 from slack_bolt import App
 from core.metadata_manager import MetadataManager
 from core.gemini_client import GeminiClient
 from utils.slack_utils import create_analysis_start_blocks, create_unsuitable_csv_blocks # create_unsuitable_csv_blocks をインポート
 from utils.file_utils import download_slack_file_content_async # download_slack_file_content_async をインポート
+
+logger = logging.getLogger(__name__)
 
 def register_csv_handlers(app: App):
     """CSV関連のハンドラーを登録"""
@@ -129,10 +133,13 @@ async def process_csv_text_async(csv_text, channel_id, user_id, thread_ts, clien
 
 async def process_csv_async(file_info, channel_id, user_id, client, logger, thread_ts=None):
     """CSVファイルの非同期分析処理"""
+    start_time = time.time()
     try:
         logger.info(f"=== CSV FILE PROCESSING STARTED ===")
         logger.info(f"Starting CSV processing for file: {file_info.get('name', 'unknown')}")
         logger.info(f"File info keys: {list(file_info.keys())}")
+        logger.info(f"Channel ID: {channel_id}, User ID: {user_id}, Thread TS: {thread_ts}")
+        logger.info(f"Processing in thread: {threading.current_thread().name}")
         
         # CSVダウンロード
         csv_content_bytes = await download_slack_file_content_async(
@@ -225,6 +232,7 @@ async def process_csv_async(file_info, channel_id, user_id, client, logger, thre
                 metadata=final_metadata # metadata全体を渡す
             )
             logger.info(f"CSV分析結果メッセージ (Job ID: {job_id}) にメタデータを付加しました。ts: {msg_ts}")
+            logger.info(f"CSV processing completed successfully in {time.time() - start_time:.2f} seconds")
         else:
             logger.error(f"CSV分析結果メッセージの投稿に失敗しました。Job ID: {job_id}")
             # エラー処理
@@ -238,7 +246,8 @@ async def process_csv_async(file_info, channel_id, user_id, client, logger, thre
             return
         
     except Exception as e:
-        logger.error(f"CSV処理エラー: {e}", exc_info=True)
+        elapsed_time = time.time() - start_time
+        logger.error(f"CSV処理エラー after {elapsed_time:.2f} seconds: {e}", exc_info=True)
         
         # より詳細なエラー情報を提供
         error_message = "❌ CSVファイルの処理中にエラーが発生しました。"
