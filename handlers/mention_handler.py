@@ -5,6 +5,8 @@ Mentionハンドラー
 """
 import logging
 import re
+import threading
+import json
 from slack_bolt import App
 
 logger = logging.getLogger(__name__)
@@ -68,7 +70,14 @@ def register_mention_handlers(app: App):
     def handle_app_mention(body, event, client, logger):
         """ボットがメンションされた時の処理"""
         try:
-            logger.info(f"App mention received: {event}")
+            logger.info("=== APP MENTION EVENT RECEIVED ===")
+            logger.info(f"Event timestamp: {event.get('ts')}")
+            logger.info(f"Event type: {event.get('type')}")
+            logger.info(f"Channel: {event.get('channel')}")
+            logger.info(f"User: {event.get('user')}")
+            
+            # Log the full event in DEBUG mode
+            logger.debug(f"Full event object: {json.dumps(event, ensure_ascii=False, indent=2)}")
             
             # Check if there are blocks, attachments, or files
             blocks = event.get("blocks", [])
@@ -105,18 +114,23 @@ def register_mention_handlers(app: App):
             # If there are code blocks in the message, extract the text from them
             if blocks:
                 code_block_text = ""
-                for block in blocks:
+                for i, block in enumerate(blocks):
+                    logger.debug(f"Processing block {i}: type={block.get('type')}")
                     if block.get("type") == "rich_text":
-                        for element in block.get("elements", []):
+                        for j, element in enumerate(block.get("elements", [])):
+                            logger.debug(f"  Processing element {j}: type={element.get('type')}")
                             # Check for both preformatted blocks and sections
                             if element.get("type") == "rich_text_preformatted":
                                 # This is a code block
-                                for elem in element.get("elements", []):
+                                logger.info(f"Found rich_text_preformatted block at block[{i}].element[{j}]")
+                                for k, elem in enumerate(element.get("elements", [])):
                                     if elem.get("type") == "text":
-                                        code_block_text += elem.get("text", "")
+                                        text_content = elem.get("text", "")
+                                        logger.debug(f"    Text element {k}: {text_content[:50]}...")
+                                        code_block_text += text_content
                             elif element.get("type") == "rich_text_section":
                                 # Check for inline code or regular text that might contain CSV
-                                for elem in element.get("elements", []):
+                                for k, elem in enumerate(element.get("elements", [])):
                                     if elem.get("type") == "text":
                                         # Skip bot mentions
                                         elem_text = elem.get("text", "")
@@ -126,6 +140,22 @@ def register_mention_handlers(app: App):
                     logger.info(f"Found code block text: {code_block_text[:100]}...")
                     # Always use code block text if it exists
                     clean_text = code_block_text
+                else:
+                    logger.info("No code blocks found in rich_text elements")
+            
+            # Fallback: Check if the original text contains code block markers
+            if not clean_text or (not _contains_csv_data(clean_text) and "```" in text):
+                logger.info("Checking for code blocks in original text field...")
+                # Extract text between ``` markers
+                import re
+                code_block_matches = re.findall(r'```(?:\w+)?\n?(.*?)```', text, re.DOTALL)
+                if code_block_matches:
+                    logger.info(f"Found {len(code_block_matches)} code blocks in text field")
+                    # Use the first code block
+                    potential_csv = code_block_matches[0].strip()
+                    if _contains_csv_data(potential_csv):
+                        clean_text = potential_csv
+                        logger.info(f"Using code block from text field: {clean_text[:100]}...")
             
             logger.info(f"=== App Mention Debug ===")
             logger.info(f"Original text: {repr(text)}")
@@ -149,21 +179,37 @@ def register_mention_handlers(app: App):
                 from handlers.csv_handler import process_csv_async
                 import asyncio
                 
-                try:
-                    loop = asyncio.get_event_loop()
-                except RuntimeError:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
+                # Run the async function in a thread to avoid event loop issues
+                import threading
                 
-                for csv_file in csv_files:
-                    loop.create_task(process_csv_async(
-                        file_info=csv_file,
-                        channel_id=channel_id,
-                        user_id=user_id,
-                        client=client,
-                        logger=logger,
-                        thread_ts=thread_ts
-                    ))
+                def run_async_csv_processing():
+                    try:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        for csv_file in csv_files:
+                            loop.run_until_complete(process_csv_async(
+                                file_info=csv_file,
+                                channel_id=channel_id,
+                                user_id=user_id,
+                                client=client,
+                                logger=logger,
+                                thread_ts=thread_ts
+                            ))
+                        loop.close()
+                    except Exception as e:
+                        logger.error(f"Error in CSV processing thread: {e}", exc_info=True)
+                        # エラーをSlackに通知
+                        try:
+                            client.chat_postMessage(
+                                channel=channel_id,
+                                thread_ts=thread_ts,
+                                text=f"❌ CSV処理中にエラーが発生しました: {str(e)}"
+                            )
+                        except Exception as notify_error:
+                            logger.error(f"Failed to notify error: {notify_error}")
+                
+                thread = threading.Thread(target=run_async_csv_processing)
+                thread.start()
                 return
             
             if not clean_text:
@@ -201,20 +247,36 @@ def register_mention_handlers(app: App):
                     from handlers.csv_handler import process_csv_text_async
                     import asyncio
                     
-                    try:
-                        loop = asyncio.get_event_loop()
-                    except RuntimeError:
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
+                    # Run the async function in a thread to avoid event loop issues
+                    import threading
                     
-                    loop.create_task(process_csv_text_async(
-                        csv_text=clean_text,
-                        channel_id=channel_id,
-                        user_id=user_id,
-                        thread_ts=thread_ts,
-                        client=client,
-                        logger=logger
-                    ))
+                    def run_async_csv_text_processing():
+                        try:
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            loop.run_until_complete(process_csv_text_async(
+                                csv_text=clean_text,
+                                channel_id=channel_id,
+                                user_id=user_id,
+                                thread_ts=thread_ts,
+                                client=client,
+                                logger=logger
+                            ))
+                            loop.close()
+                        except Exception as e:
+                            logger.error(f"Error in CSV text processing thread: {e}", exc_info=True)
+                            # エラーをSlackに通知
+                            try:
+                                client.chat_postMessage(
+                                    channel=channel_id,
+                                    thread_ts=thread_ts,
+                                    text=f"❌ CSVデータ処理中にエラーが発生しました: {str(e)}"
+                                )
+                            except Exception as notify_error:
+                                logger.error(f"Failed to notify error: {notify_error}")
+                    
+                    thread = threading.Thread(target=run_async_csv_text_processing)
+                    thread.start()
                 else:
                     # その他のテキストが含まれている場合
                     response_text = (
@@ -282,21 +344,37 @@ def register_mention_handlers(app: App):
                     from handlers.csv_handler import process_csv_async
                     import asyncio
                     
-                    try:
-                        loop = asyncio.get_event_loop()
-                    except RuntimeError:
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
+                    # Run the async function in a thread to avoid event loop issues
+                    import threading
                     
-                    for csv_file in csv_files:
-                        loop.create_task(process_csv_async(
-                            file_info=csv_file,
-                            channel_id=channel_id,
-                            user_id=user_id,
-                            client=client,
-                            logger=logger,
-                            thread_ts=thread_ts
-                        ))
+                    def run_async_csv_processing():
+                        try:
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            for csv_file in csv_files:
+                                loop.run_until_complete(process_csv_async(
+                                    file_info=csv_file,
+                                    channel_id=channel_id,
+                                    user_id=user_id,
+                                    client=client,
+                                    logger=logger,
+                                    thread_ts=thread_ts
+                                ))
+                            loop.close()
+                        except Exception as e:
+                            logger.error(f"Error in CSV processing thread (DM): {e}", exc_info=True)
+                            # エラーをSlackに通知
+                            try:
+                                client.chat_postMessage(
+                                    channel=channel_id,
+                                    thread_ts=thread_ts,
+                                    text=f"❌ CSV処理中にエラーが発生しました: {str(e)}"
+                                )
+                            except Exception as notify_error:
+                                logger.error(f"Failed to notify error: {notify_error}")
+                    
+                    thread = threading.Thread(target=run_async_csv_processing)
+                    thread.start()
                 # CSVデータが含まれているかチェック
                 elif _contains_csv_data(text):
                     # CSVデータが含まれている場合は処理する
@@ -314,20 +392,36 @@ def register_mention_handlers(app: App):
                     from handlers.csv_handler import process_csv_text_async
                     import asyncio
                     
-                    try:
-                        loop = asyncio.get_event_loop()
-                    except RuntimeError:
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
+                    # Run the async function in a thread to avoid event loop issues
+                    import threading
                     
-                    loop.create_task(process_csv_text_async(
-                        csv_text=text,
-                        channel_id=channel_id,
-                        user_id=user_id,
-                        thread_ts=thread_ts,
-                        client=client,
-                        logger=logger
-                    ))
+                    def run_async_csv_text_processing():
+                        try:
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            loop.run_until_complete(process_csv_text_async(
+                                csv_text=text,
+                                channel_id=channel_id,
+                                user_id=user_id,
+                                thread_ts=thread_ts,
+                                client=client,
+                                logger=logger
+                            ))
+                            loop.close()
+                        except Exception as e:
+                            logger.error(f"Error in CSV text processing thread (DM): {e}", exc_info=True)
+                            # エラーをSlackに通知
+                            try:
+                                client.chat_postMessage(
+                                    channel=channel_id,
+                                    thread_ts=thread_ts,
+                                    text=f"❌ CSVデータ処理中にエラーが発生しました: {str(e)}"
+                                )
+                            except Exception as notify_error:
+                                logger.error(f"Failed to notify error: {notify_error}")
+                    
+                    thread = threading.Thread(target=run_async_csv_text_processing)
+                    thread.start()
                 elif channel_type == "im":
                     # DMでCSVデータがない場合のみヘルプメッセージ
                     help_text = (

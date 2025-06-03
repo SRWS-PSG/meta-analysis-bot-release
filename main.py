@@ -5,10 +5,17 @@ from slack_bolt import App
 from slack_bolt.adapter.wsgi import SlackRequestHandler
 
 # Configure logging
+log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=getattr(logging, log_level, logging.INFO),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    force=True  # Force reconfiguration of the root logger
 )
+
+# Set specific loggers to DEBUG for troubleshooting
+logging.getLogger('handlers.mention_handler').setLevel(logging.DEBUG)
+logging.getLogger('handlers.csv_handler').setLevel(logging.DEBUG)
+logging.getLogger('core.gemini_client').setLevel(logging.DEBUG)
 
 from handlers.csv_handler import register_csv_handlers
 from handlers.analysis_handler import register_analysis_handlers
@@ -26,6 +33,18 @@ app = App(
 )
 
 logger.info("Slack app initialized successfully")
+
+# Add middleware to log all events (for debugging)
+@app.middleware
+def log_request(logger, body, next):
+    """Log all incoming requests for debugging"""
+    logger.debug(f"=== INCOMING REQUEST ===")
+    logger.debug(f"Request type: {body.get('type')}")
+    if body.get('event'):
+        logger.debug(f"Event type: {body['event'].get('type')}")
+        logger.debug(f"Event subtype: {body['event'].get('subtype')}")
+    logger.debug(f"Body keys: {list(body.keys())}")
+    return next()
 
 # 各ハンドラーを登録
 register_csv_handlers(app)

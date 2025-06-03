@@ -1,24 +1,33 @@
 import os
 import json
 import asyncio
+import logging
 import google.generativeai as genai
 from typing import Dict, Any
+
+logger = logging.getLogger(__name__)
 
 class GeminiClient:
     """Gemini APIクライアント（統合版）"""
     
     def __init__(self):
+        logger.info("Initializing GeminiClient...")
         # APIキーが設定されていない場合のエラーハンドリングを追加
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
+            logger.error("GEMINI_API_KEY not found in environment variables")
             raise ValueError("環境変数 GEMINI_API_KEY が設定されていません。")
+        logger.info("GEMINI_API_KEY found, configuring...")
         genai.configure(api_key=api_key)
         
         self.model_name = os.environ.get("GEMINI_MODEL_NAME", "gemini-1.5-flash") # モデル名を修正
+        logger.info(f"Using model: {self.model_name}")
         self.model = genai.GenerativeModel(self.model_name)
+        logger.info("GeminiClient initialized successfully")
     
     async def analyze_csv(self, csv_content: str) -> Dict[str, Any]:
         """CSV内容を分析してメタ解析への適合性を評価"""
+        logger.info(f"analyze_csv called with content length: {len(csv_content)}")
         # プロンプトを改善し、より堅牢なJSON出力を目指す
         prompt = f"""
         以下のCSVデータの最初の50行と列名を分析し、メタ解析に適しているかを評価してください。
@@ -55,9 +64,12 @@ class GeminiClient:
         """
         
         try:
+            logger.info("Sending request to Gemini API...")
             response = await self.model.generate_content_async(prompt)
+            logger.info("Received response from Gemini API")
             # Geminiからの応答がマークダウン形式のJSONブロック(` ```json ... ``` `)で返ってくる場合があるため、それをパースする
             raw_response_text = response.text
+            logger.info(f"Raw response length: {len(raw_response_text)}")
             if raw_response_text.strip().startswith("```json"):
                 json_str = raw_response_text.strip()[7:-3].strip()
             elif raw_response_text.strip().startswith("```"): # 他の言語指定の場合も考慮
@@ -65,8 +77,11 @@ class GeminiClient:
             else:
                 json_str = raw_response_text.strip()
             
-            return json.loads(json_str)
+            result = json.loads(json_str)
+            logger.info(f"Successfully parsed JSON response: is_suitable={result.get('is_suitable')}")
+            return result
         except Exception as e:
+            logger.error(f"Error in analyze_csv: {e}", exc_info=True)
             # エラー時はフォールバック用の情報を返す
             return {
                 "is_suitable": False,
