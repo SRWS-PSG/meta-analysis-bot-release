@@ -1,51 +1,207 @@
 import asyncio
-import json # view submission payload parsing
+import json
+import time
 from slack_bolt import App
 from slack_sdk.errors import SlackApiError
 from core.metadata_manager import MetadataManager
-from utils.slack_utils import create_parameter_modal_blocks
-# analysis_handler から run_analysis_async をインポートする必要がある
+from utils.slack_utils import create_parameter_modal_blocks, create_simple_parameter_selection_blocks
 from handlers.analysis_handler import run_analysis_async 
-from utils.file_utils import get_r_output_dir # run_analysis_async に渡すため
+from utils.file_utils import get_r_output_dir
+
+# Legacy imports for natural language parameter collection
+from mcp_legacy.parameter_collector import ParameterCollector
+from mcp_legacy.gemini_utils import extract_parameters_from_user_input
+from mcp_legacy.thread_context import ThreadContextManager
+from mcp_legacy.dialog_state_manager import DialogStateManager
+
+# Global instances for legacy parameter collection
+_context_manager = None
+_parameter_collector = None
+
+def get_context_manager():
+    """ThreadContextManagerのシングルトンを取得"""
+    global _context_manager
+    if _context_manager is None:
+        _context_manager = ThreadContextManager()
+    return _context_manager
+
+def get_parameter_collector():
+    """ParameterCollectorのシングルトンを取得"""
+    global _parameter_collector
+    if _parameter_collector is None:
+        context_manager = get_context_manager()
+        _parameter_collector = ParameterCollector(context_manager, None)  # async_runnerは後で設定
+    return _parameter_collector
 
 def register_parameter_handlers(app: App):
     """パラメータ収集と解析開始に関連するハンドラーを登録"""
 
     @app.action("configure_analysis_parameters")
     async def handle_configure_parameters_action(ack, body, client, logger):
-        """「パラメータを設定して解析」ボタンが押されたときの処理"""
+        """「パラメータを設定して解析」ボタンが押されたときの処理 - Legacyスタイル"""
         await ack()
         try:
-            trigger_id = body["trigger_id"]
             # 元のメッセージのmetadataからCSV分析結果を取得
             original_message_payload = MetadataManager.extract_from_body(body)
             
             if not original_message_payload or "csv_analysis" not in original_message_payload:
-                logger.error("configure_analysis_parameters: 元のメッセージからcsv_analysisが見つかりません。")
-                # ユーザーにエラー通知も検討
+                logger.error("configure_analysis_parameters: CSV分析情報が見つかりません")
+                await client.chat_postMessage(
+                    channel=body["channel"]["id"],
+                    thread_ts=body["message"]["ts"],
+                    text="❌ 解析設定の取得に失敗しました。もう一度CSVファイルをアップロードしてください。"
+                )
                 return
 
-            # モーダルに渡すためのview_idやprivate_metadataの準備
-            # private_metadataに元のメッセージのpayloadをJSON文字列として渡す
-            # これにより、モーダル送信時に元のコンテキストを参照できる
-            private_metadata_str = json.dumps(original_message_payload)
-
-            await client.views_open(
-                trigger_id=trigger_id,
-                view={
-                    "type": "modal",
-                    "callback_id": "analysis_params_submission",
-                    "title": {"type": "plain_text", "text": "解析パラメータ設定"},
-                    "submit": {"type": "plain_text", "text": "解析開始"},
-                    "close": {"type": "plain_text", "text": "キャンセル"},
-                    "blocks": create_parameter_modal_blocks(original_message_payload["csv_analysis"]),
-                    "private_metadata": private_metadata_str # payload全体を渡す
+            # Legacyスタイルのコンテキスト管理を初期化
+            context_manager = get_context_manager()
+            parameter_collector = get_parameter_collector()
+            
+            channel_id = body["channel"]["id"]
+            thread_ts = body["message"]["ts"]
+            user_id = body["user"]["id"]
+            
+            # Legacyコンテキストを初期化
+            context = {
+                "data_state": {
+                    "gemini_analysis": original_message_payload["csv_analysis"],
+                    "column_mappings": original_message_payload["csv_analysis"].get("detected_columns", {}),
+                    "data_summary": {
+                        "columns": list(original_message_payload["csv_analysis"].get("detected_columns", {}).keys())
+                    }
+                },
+                "collected_params": {
+                    "required": {},
+                    "optional": {},
+                    "missing_required": ["effect_size", "model_type"],
+                    "asked_optional": []
                 }
+            }
+            
+            # DialogStateを設定
+            DialogStateManager.set_dialog_state(context, "COLLECTING_PARAMETERS")
+            context_manager.save_context(thread_ts, context, channel_id)
+            
+            # 最初のパラメータ収集質問を開始
+            await client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text="📋 解析パラメータを設定します。\n\nどのような効果量で解析しますか？\n例：「オッズ比でお願いします」「リスク比で」「Petoオッズ比で」"
             )
+            
         except SlackApiError as e:
-            logger.error(f"モーダル表示エラー: {e.response['error']}")
+            logger.error(f"Legacyパラメータ収集開始エラー: {e.response.get('error', str(e))}")
         except Exception as e:
-            logger.error(f"パラメータ設定アクション処理中に予期せぬエラー: {e}")
+            logger.error(f"Legacyパラメータ収集開始中に予期せぬエラー: {e}", exc_info=True)
+
+    @app.event("message")
+    async def handle_parameter_message(body, event, client, logger):
+        """パラメータ収集中のメッセージ処理"""
+        # ボット自身のメッセージは無視
+        if event.get("bot_id") or event.get("subtype") == "bot_message":
+            return
+            
+        # スレッド内のメッセージかどうかチェック
+        thread_ts = event.get("thread_ts")
+        if not thread_ts:
+            return  # スレッド外のメッセージは無視
+            
+        channel_id = event.get("channel")
+        user_id = event.get("user")
+        text = event.get("text", "")
+        
+        try:
+            context_manager = get_context_manager()
+            parameter_collector = get_parameter_collector()
+            
+            # コンテキストを取得
+            context = context_manager.get_context(thread_id=thread_ts, channel_id=channel_id)
+            if not context:
+                return  # コンテキストがない場合は無視
+            
+            # パラメータ収集中かどうかチェック
+            dialog_state = DialogStateManager.get_dialog_state(context)
+            if dialog_state != "COLLECTING_PARAMETERS":
+                return  # パラメータ収集中ではない
+            
+            logger.info(f"Processing parameter collection message: {text[:100]}...")
+            
+            # Geminiでパラメータを抽出
+            data_summary = context.get("data_state", {}).get("data_summary", {})
+            collection_context = collected_params_state
+            
+            # Legacyのgemini_utilsを使用
+            extraction_result = extract_parameters_from_user_input(
+                user_input=text,
+                data_summary=data_summary,
+                conversation_history=None,
+                collection_context=collection_context
+            )
+            
+            extracted_params = extraction_result.get("extracted_params", {}) if extraction_result else {}
+            logger.info(f"Extracted parameters: {extracted_params}")
+            
+            # 現在の収集状態を取得
+            collected_params_state = context.get("collected_params", {})
+            data_summary = context.get("data_state", {}).get("data_summary", {})
+            
+            # パラメータを更新し、次の質問を取得
+            is_complete, next_question = parameter_collector._update_collected_params_and_get_next_question(
+                extracted_params, collected_params_state, data_summary, thread_ts, channel_id
+            )
+            
+            # コンテキストを保存
+            context["collected_params"] = collected_params_state
+            context_manager.save_context(thread_ts, context, channel_id)
+            
+            if is_complete:
+                # パラメータ収集完了
+                await client.chat_postMessage(
+                    channel=channel_id,
+                    thread_ts=thread_ts,
+                    text="✅ パラメータ収集が完了しました！解析を開始します..."
+                )
+                
+                # 解析を実行
+                analysis_params = {
+                    "measure": collected_params_state["required"].get("effect_size", "OR"),
+                    "method": "REML" if collected_params_state["required"].get("model_type") == "random" else "FE",
+                    "model_type": collected_params_state["required"].get("model_type", "random")
+                }
+                
+                # ダイアログ状態を更新
+                DialogStateManager.set_dialog_state(context, "RUNNING_ANALYSIS")
+                context_manager.save_context(thread_ts, context, channel_id)
+                
+                # 解析を非同期で実行
+                original_payload = context.get("data_state", {})
+                await run_analysis_async(
+                    original_payload,
+                    analysis_params,
+                    channel_id,
+                    thread_ts,
+                    client,
+                    logger
+                )
+                
+            elif next_question:
+                # 次の質問を送信
+                await client.chat_postMessage(
+                    channel=channel_id,
+                    thread_ts=thread_ts,
+                    text=next_question
+                )
+            
+        except Exception as e:
+            logger.error(f"Parameter message processing error: {e}", exc_info=True)
+            await client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=f"❌ パラメータ処理中にエラーが発生しました: {str(e)}"
+            )
+
+    # Legacyスタイルの自然言語処理に変更したため、以下のハンドラーは不要
+    # select_effect_size, select_model_type, start_analysis_with_selected_params, cancel_parameter_selection
 
 
     @app.view("analysis_params_submission")

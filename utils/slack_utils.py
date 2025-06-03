@@ -85,6 +85,73 @@ def create_unsuitable_csv_blocks(reason: str) -> List[Dict[str, Any]]:
         }
     ]
 
+def create_simple_parameter_selection_blocks(csv_analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """モーダルではなくシンプルなメッセージでパラメータ選択用のBlocksを作成"""
+    suggested_analysis = csv_analysis.get("suggested_analysis", {})
+    suggested_effect_type = suggested_analysis.get("effect_type_suggestion", "OR")
+    
+    # 二値アウトカムの場合の効果量選択肢
+    effect_size_options = [
+        {"text": {"type": "plain_text", "text": "OR (オッズ比)"}, "value": "OR"},
+        {"text": {"type": "plain_text", "text": "RR (リスク比)"}, "value": "RR"},
+        {"text": {"type": "plain_text", "text": "RD (リスク差)"}, "value": "RD"},
+        {"text": {"type": "plain_text", "text": "PETO (Petoオッズ比)"}, "value": "PETO"}
+    ]
+    
+    # モデルタイプ選択肢
+    model_options = [
+        {"text": {"type": "plain_text", "text": "REML (推奨)"}, "value": "REML"},
+        {"text": {"type": "plain_text", "text": "DL (DerSimonian-Laird)"}, "value": "DL"},
+        {"text": {"type": "plain_text", "text": "FE (固定効果)"}, "value": "FE"}
+    ]
+    
+    return [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*効果量タイプを選択してください:*\n推奨: `{suggested_effect_type}`"
+            },
+            "accessory": {
+                "type": "static_select",
+                "placeholder": {"type": "plain_text", "text": "効果量を選択"},
+                "action_id": "select_effect_size",
+                "initial_option": next((opt for opt in effect_size_options if opt["value"] == suggested_effect_type), effect_size_options[0]),
+                "options": effect_size_options
+            }
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*統計モデルを選択してください:*"
+            },
+            "accessory": {
+                "type": "static_select",
+                "placeholder": {"type": "plain_text", "text": "モデルを選択"},
+                "action_id": "select_model_type",
+                "initial_option": model_options[0],  # REMLをデフォルト
+                "options": model_options
+            }
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "🚀 解析開始"},
+                    "style": "primary",
+                    "action_id": "start_analysis_with_selected_params"
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "❌ キャンセル"},
+                    "action_id": "cancel_parameter_selection"
+                }
+            ]
+        }
+    ]
+
 def create_analysis_result_blocks(analysis_result_from_r: Dict[str, Any]) -> List[Dict[str, Any]]:
     """解析結果表示用のSlack Blocksを作成"""
     summary = analysis_result_from_r.get("summary", {})
