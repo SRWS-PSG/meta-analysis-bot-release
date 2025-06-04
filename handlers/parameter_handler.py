@@ -467,8 +467,12 @@ def register_parameter_handlers(app: App):
             logger.error(f"Error processing natural language parameters: {e}", exc_info=True)
             await say(f"❌ パラメータ処理中にエラーが発生しました: {str(e)}")
     
-    # メッセージハンドラーを登録（Botメンション以外のスレッド内メッセージ）
-    @app.message(lambda message: message.get("thread_ts") is not None and not message.get("text", "").startswith("<@"))
+    # メッセージハンドラーを登録（スレッド内の全メッセージ）
+    @app.message()
     async def handle_thread_message(message, say, client, logger):
         """スレッド内のメッセージを処理"""
-        await handle_natural_language_parameters(message, say, client, logger)
+        # スレッド内でかつBotメンション以外のメッセージのみ処理
+        if (message.get("thread_ts") and 
+            not message.get("text", "").startswith("<@") and
+            message.get("bot_id") is None):  # Botメッセージは除外
+            await handle_natural_language_parameters(message, say, client, logger)
