@@ -21,6 +21,8 @@ This is a Meta-Analysis Slack Bot that performs statistical meta-analyses on CSV
 - そのあとに解釈レポートを地の文で提供
 - ユーザーは自然な日本語で分析の意図を伝える
 - 結果はスレッド内に共有され、スレッド内で会話コンテキストが維持される
+- **パラメータ収集はGemini AIが対話的に行い、キーワードマッチングは使用しない**
+- **Geminiが会話の文脈を理解し、必要な情報が揃うまで適切な質問を続ける**
 
 ### 対応する解析タイプ
 - **二値アウトカム**: OR (オッズ比)、RR (リスク比)、RD (リスク差)、PETO
@@ -96,6 +98,38 @@ docker cp [CONTAINER_ID]:/app/filename.ext ./filename.ext
 # 1. Upload CSV file to Slack channel with bot mention
 # 2. Follow Japanese prompts to configure analysis
 # 3. Verify forest plot and report generation
+```
+
+## Natural Language Parameter Collection
+
+The bot uses Gemini AI for intelligent parameter collection through natural conversation:
+
+### How it works
+1. **No Button UI**: After CSV analysis, the bot immediately starts a natural language conversation
+2. **Context-Aware Dialogue**: Gemini maintains conversation history and understands context
+3. **Continuous Collection**: Gemini continues asking questions until all required parameters are collected
+4. **No Keyword Matching**: The system doesn't rely on simple keyword matching - it understands intent
+
+### Key Components
+- `utils/gemini_dialogue.py`: Orchestrates the Gemini-driven conversation
+- `utils/conversation_state.py`: Maintains thread-specific conversation state
+- `handlers/parameter_handler.py`: Handles message events and coordinates with Gemini
+
+### Example Flow
+```
+User: @bot [uploads CSV]
+Bot: CSVファイルを分析しました！
+     • 効果量候補列: Intervention_Events, Control_Events
+     • 推奨効果量: OR
+     
+     解析パラメータを自然な日本語で教えてください。
+
+User: オッズ比
+Bot: オッズ比で解析しますね。次に、統計モデルはランダム効果モデルと固定効果モデルのどちらを使用しますか？
+
+User: ランダムで
+Bot: 承知しました。ランダム効果モデルで解析を行います。
+     パラメータ収集が完了しました。解析を開始します...
 ```
 
 ## Architecture

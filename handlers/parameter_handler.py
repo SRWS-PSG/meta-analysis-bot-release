@@ -387,7 +387,7 @@ def register_parameter_handlers(app: App):
     
     # 自然言語パラメータ収集用のメッセージハンドラー
     async def handle_natural_language_parameters(message, say, client, logger):
-        """自然言語でのパラメータ入力を処理"""
+        """自然言語でのパラメータ入力を処理（Gemini駆動の継続的対話）"""
         try:
             channel_id = message["channel"]
             thread_ts = message.get("thread_ts")
@@ -414,54 +414,71 @@ def register_parameter_handlers(app: App):
                     if isinstance(candidates, list):
                         csv_columns.extend(candidates)
             
-            # Geminiでパラメータを抽出
-            extracted_params = await extract_parameters_from_text(
-                user_text=user_text,
+            # 会話履歴を準備
+            if not hasattr(state, "conversation_history"):
+                state.conversation_history = []
+            
+            # ユーザーの入力を履歴に追加
+            state.conversation_history.append({
+                "role": "user",
+                "content": user_text
+            })
+            
+            # Geminiでパラメータを抽出して応答を生成
+            from utils.gemini_dialogue import process_user_input_with_gemini
+            
+            response = await process_user_input_with_gemini(
+                user_input=user_text,
                 csv_columns=csv_columns,
-                current_params=state.collected_params
+                current_params=state.collected_params,
+                conversation_history=state.conversation_history,
+                csv_analysis=state.csv_analysis
             )
             
-            if extracted_params:
+            if response:
                 # パラメータを更新
-                state.update_params(extracted_params)
+                if response.get("extracted_params"):
+                    state.update_params(response["extracted_params"])
+                    logger.info(f"Updated parameters: {response['extracted_params']}")
+                
+                # Geminiの応答を送信
+                bot_message = response.get("bot_message")
+                if bot_message:
+                    await say(bot_message)
+                    # ボットの応答を履歴に追加
+                    state.conversation_history.append({
+                        "role": "assistant",
+                        "content": bot_message
+                    })
+                
+                # 解析準備完了チェック
+                if response.get("is_ready_to_analyze"):
+                    await say("🚀 パラメータ収集が完了しました。解析を開始します...")
+                    
+                    # 解析パラメータを構築
+                    analysis_params = {
+                        "measure": state.collected_params.get("effect_size", "OR"),
+                        "method": state.collected_params.get("method", "REML"),
+                        "model_type": state.collected_params.get("model_type", "random")
+                    }
+                    
+                    # 解析を実行
+                    await run_analysis_async(
+                        state.file_info,
+                        analysis_params,
+                        channel_id,
+                        thread_ts,
+                        client,
+                        logger
+                    )
+                    
+                    # 状態をリセット
+                    state.state = "COMPLETED"
+                
                 save_state(state)
-                
-                logger.info(f"Updated parameters: {extracted_params}")
-                
-                # 確認メッセージを送信
-                param_str = ", ".join([f"{k}: {v}" for k, v in extracted_params.items() if v])
-                await say(f"✅ パラメータを更新しました: {param_str}")
-            
-            # 次に必要なパラメータを確認
-            next_question = get_next_question(state.collected_params)
-            
-            if next_question:
-                # まだ収集が必要
-                await say(next_question)
             else:
-                # 収集完了 - 解析を開始
-                await say("🚀 パラメータ収集が完了しました。解析を開始します...")
-                
-                # 解析パラメータを構築
-                analysis_params = {
-                    "measure": state.collected_params.get("effect_size", "OR"),
-                    "method": state.collected_params.get("method", "REML"),
-                    "model_type": state.collected_params.get("model_type", "random")
-                }
-                
-                # 解析を実行
-                await run_analysis_async(
-                    state.file_info,
-                    analysis_params,
-                    channel_id,
-                    thread_ts,
-                    client,
-                    logger
-                )
-                
-                # 状態をリセット
-                state.state = "COMPLETED"
-                save_state(state)
+                logger.error("Failed to get response from Gemini")
+                await say("申し訳ございません。応答の生成に失敗しました。もう一度お試しください。")
                 
         except Exception as e:
             logger.error(f"Error processing natural language parameters: {e}", exc_info=True)
