@@ -117,14 +117,22 @@ def get_next_question(current_params: Dict[str, Any]) -> Optional[str]:
     Returns:
         次の質問テキスト、または完了時はNone
     """
+    logger.info(f"Checking next question for params: {current_params}")
+    
     if not current_params.get("effect_size"):
         return "どのような効果量で解析しますか？\n例：「オッズ比でお願いします」「リスク比で」「Petoオッズ比で」"
     
     if not current_params.get("model_type"):
         return "統計モデルはどちらを使用しますか？\n例：「ランダム効果モデルで」「固定効果で」"
     
-    if not current_params.get("method"):
-        return "統計手法を指定しますか？（省略可能）\n例：「REML法で」「DL法で」\n※指定しない場合はREMLを使用します"
+    # methodは省略可能なので、基本的なパラメータ（effect_size, model_type）が揃ったら完了とする
+    if current_params.get("effect_size") and current_params.get("model_type"):
+        logger.info("All required parameters collected")
+        return None
+    
+    # methodの質問は一旦削除して、基本パラメータのみで解析開始
+    # if not current_params.get("method"):
+    #     return "統計手法を指定しますか？（省略可能）\n例：「REML法で」「DL法で」\n※指定しない場合はREMLを使用します"
     
     # すべて収集済み
     return None
