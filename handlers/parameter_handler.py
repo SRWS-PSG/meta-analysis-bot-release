@@ -7,6 +7,8 @@ from core.metadata_manager import MetadataManager
 from utils.slack_utils import create_parameter_modal_blocks, create_simple_parameter_selection_blocks
 from handlers.analysis_handler import run_analysis_async 
 from utils.file_utils import get_r_output_dir
+from utils.parameter_extraction import extract_parameters_from_text, get_next_question
+from utils.conversation_state import get_or_create_state, save_state
 
 # Simplified parameter collection approach
 
@@ -34,19 +36,20 @@ def register_parameter_handlers(app: App):
                 return
 
             csv_analysis = original_message_payload["csv_analysis"]
+            channel_id = body["channel"]["id"]
+            thread_ts = body["message"]["ts"]
             
-            # シンプルなメッセージで選択肢を提示
-            response_blocks = create_simple_parameter_selection_blocks(csv_analysis)
+            # 会話状態を初期化
+            state = get_or_create_state(thread_ts, channel_id)
+            state.csv_analysis = csv_analysis
+            state.file_info = original_message_payload
+            save_state(state)
             
-            # メタデータを新しいメッセージに保存
-            metadata = MetadataManager.create_metadata("parameter_selection", original_message_payload)
-            
+            # 自然言語でのパラメータ収集を開始
             await client.chat_postMessage(
-                channel=body["channel"]["id"],
-                thread_ts=body["message"]["ts"],
-                text="📋 解析パラメータを設定してください",
-                blocks=response_blocks,
-                metadata=metadata
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text="🤖 解析パラメータを自然な日本語で教えてください。\n\n例：\n・「オッズ比でランダム効果モデルで解析してください」\n・「リスク比で固定効果モデルでお願いします」\n・「SMDでREML法を使って解析してください」"
             )
             
         except SlackApiError as e:
@@ -381,3 +384,91 @@ def register_parameter_handlers(app: App):
         
         # 必要であれば、関連するmetadataをクリアする処理などをここに追加
         # (例: 特定のストレージからこのjob_idの情報を削除する)
+    
+    # 自然言語パラメータ収集用のメッセージハンドラー
+    async def handle_natural_language_parameters(message, say, client, logger):
+        """自然言語でのパラメータ入力を処理"""
+        try:
+            channel_id = message["channel"]
+            thread_ts = message.get("thread_ts")
+            user_text = message["text"]
+            
+            # スレッド内でのみ処理
+            if not thread_ts:
+                return
+            
+            # 会話状態を取得
+            state = get_or_create_state(thread_ts, channel_id)
+            
+            # パラメータ収集中でない場合はスキップ
+            if state.state != "COLLECTING_PARAMETERS":
+                return
+            
+            logger.info(f"Processing natural language parameter input: {user_text}")
+            
+            # CSVの列名リストを取得
+            csv_columns = []
+            if state.csv_analysis and "detected_columns" in state.csv_analysis:
+                detected_cols = state.csv_analysis["detected_columns"]
+                for candidates in detected_cols.values():
+                    if isinstance(candidates, list):
+                        csv_columns.extend(candidates)
+            
+            # Geminiでパラメータを抽出
+            extracted_params = await extract_parameters_from_text(
+                user_text=user_text,
+                csv_columns=csv_columns,
+                current_params=state.collected_params
+            )
+            
+            if extracted_params:
+                # パラメータを更新
+                state.update_params(extracted_params)
+                save_state(state)
+                
+                logger.info(f"Updated parameters: {extracted_params}")
+                
+                # 確認メッセージを送信
+                param_str = ", ".join([f"{k}: {v}" for k, v in extracted_params.items() if v])
+                await say(f"✅ パラメータを更新しました: {param_str}")
+            
+            # 次に必要なパラメータを確認
+            next_question = get_next_question(state.collected_params)
+            
+            if next_question:
+                # まだ収集が必要
+                await say(next_question)
+            else:
+                # 収集完了 - 解析を開始
+                await say("🚀 パラメータ収集が完了しました。解析を開始します...")
+                
+                # 解析パラメータを構築
+                analysis_params = {
+                    "measure": state.collected_params.get("effect_size", "OR"),
+                    "method": state.collected_params.get("method", "REML"),
+                    "model_type": state.collected_params.get("model_type", "random")
+                }
+                
+                # 解析を実行
+                await run_analysis_async(
+                    state.file_info,
+                    analysis_params,
+                    channel_id,
+                    thread_ts,
+                    client,
+                    logger
+                )
+                
+                # 状態をリセット
+                state.state = "COMPLETED"
+                save_state(state)
+                
+        except Exception as e:
+            logger.error(f"Error processing natural language parameters: {e}", exc_info=True)
+            await say(f"❌ パラメータ処理中にエラーが発生しました: {str(e)}")
+    
+    # メッセージハンドラーを登録（Botメンション以外のスレッド内メッセージ）
+    @app.message(lambda message: message.get("thread_ts") is not None and not message.get("text", "").startswith("<@"))
+    async def handle_thread_message(message, say, client, logger):
+        """スレッド内のメッセージを処理"""
+        await handle_natural_language_parameters(message, say, client, logger)

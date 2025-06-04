@@ -16,6 +16,7 @@ This is a Meta-Analysis Slack Bot that performs statistical meta-analyses on CSV
 
 ### 機能要件
 - ボットはCSVを分析し、適切な列が見つかった場合にメタ解析を実行
+- すべてチャット内で完結させて、別のページへの遷移はしない
 - コード、実行結果の図、結果を保持したRDataは添付でSlackへ、地の文で簡単な解析結果
 - そのあとに解釈レポートを地の文で提供
 - ユーザーは自然な日本語で分析の意図を伝える

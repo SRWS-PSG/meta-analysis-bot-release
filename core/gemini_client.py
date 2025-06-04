@@ -3,7 +3,7 @@ import json
 import asyncio
 import logging
 import google.generativeai as genai
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +131,54 @@ class GeminiClient:
                 "limitations": [],
                 "summary": "解釈レポートの生成に失敗しました。"
             }
+    
+    async def extract_structured_data(self, prompt: str, response_schema: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        構造化データを抽出する汎用メソッド
+        
+        Args:
+            prompt: Geminiに送信するプロンプト
+            response_schema: 期待するレスポンスのスキーマ
+            
+        Returns:
+            抽出されたデータの辞書、またはエラー時はNone
+        """
+        try:
+            # スキーマ情報をプロンプトに追加
+            enhanced_prompt = f"""{prompt}
+
+以下のJSONスキーマに従って、必ず有効なJSON形式で回答してください：
+{json.dumps(response_schema, ensure_ascii=False, indent=2)}
+
+注意：
+- レスポンスは純粋JSONのみで、他のテキストは含めないでください
+- ```json マーカーなどは使用しないでください
+- 適切な値がない場合はフィールドを省略してください"""
+            
+            logger.info(f"Sending structured data extraction request to Gemini")
+            response = await self.model.generate_content_async(enhanced_prompt)
+            raw_response_text = response.text.strip()
+            
+            # JSONマーカーを削除
+            if raw_response_text.startswith("```json"):
+                json_str = raw_response_text[7:-3].strip()
+            elif raw_response_text.startswith("```"):
+                json_str = raw_response_text[3:-3].strip()
+            else:
+                json_str = raw_response_text
+            
+            # JSONとしてパース
+            result = json.loads(json_str)
+            logger.info(f"Successfully extracted structured data: {result}")
+            return result
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error in structured data extraction: {e}")
+            logger.error(f"Raw response: {raw_response_text[:500]}...")
+            return None
+        except Exception as e:
+            logger.error(f"Error in structured data extraction: {e}", exc_info=True)
+            return None
 
 # 動作確認用の簡単なコード (直接実行された場合)
 if __name__ == '__main__':
