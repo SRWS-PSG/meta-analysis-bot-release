@@ -8,37 +8,17 @@ from utils.slack_utils import create_parameter_modal_blocks, create_simple_param
 from handlers.analysis_handler import run_analysis_async 
 from utils.file_utils import get_r_output_dir
 
-# Legacy imports for natural language parameter collection
-from mcp_legacy.parameter_collector import ParameterCollector
-from mcp_legacy.gemini_utils import extract_parameters_from_user_input
-from mcp_legacy.thread_context import ThreadContextManager
-from mcp_legacy.dialog_state_manager import DialogStateManager
+# Simplified parameter collection approach
 
-# Global instances for legacy parameter collection
-_context_manager = None
-_parameter_collector = None
-
-def get_context_manager():
-    """ThreadContextManagerのシングルトンを取得"""
-    global _context_manager
-    if _context_manager is None:
-        _context_manager = ThreadContextManager()
-    return _context_manager
-
-def get_parameter_collector():
-    """ParameterCollectorのシングルトンを取得"""
-    global _parameter_collector
-    if _parameter_collector is None:
-        context_manager = get_context_manager()
-        _parameter_collector = ParameterCollector(context_manager, None)  # async_runnerは後で設定
-    return _parameter_collector
+# Simple state management using thread_ts as key
+_parameter_states = {}
 
 def register_parameter_handlers(app: App):
     """パラメータ収集と解析開始に関連するハンドラーを登録"""
 
     @app.action("configure_analysis_parameters")
     async def handle_configure_parameters_action(ack, body, client, logger):
-        """「パラメータを設定して解析」ボタンが押されたときの処理 - Legacyスタイル"""
+        """「パラメータを設定して解析」ボタンが押されたときの処理"""
         await ack()
         try:
             # 元のメッセージのmetadataからCSV分析結果を取得
@@ -53,155 +33,137 @@ def register_parameter_handlers(app: App):
                 )
                 return
 
-            # Legacyスタイルのコンテキスト管理を初期化
-            context_manager = get_context_manager()
-            parameter_collector = get_parameter_collector()
+            csv_analysis = original_message_payload["csv_analysis"]
             
-            channel_id = body["channel"]["id"]
-            thread_ts = body["message"]["ts"]
-            user_id = body["user"]["id"]
+            # シンプルなメッセージで選択肢を提示
+            response_blocks = create_simple_parameter_selection_blocks(csv_analysis)
             
-            # Legacyコンテキストを初期化
-            context = {
-                "data_state": {
-                    "gemini_analysis": original_message_payload["csv_analysis"],
-                    "column_mappings": original_message_payload["csv_analysis"].get("detected_columns", {}),
-                    "data_summary": {
-                        "columns": list(original_message_payload["csv_analysis"].get("detected_columns", {}).keys())
-                    }
-                },
-                "collected_params": {
-                    "required": {},
-                    "optional": {},
-                    "missing_required": ["effect_size", "model_type"],
-                    "asked_optional": []
-                }
-            }
+            # メタデータを新しいメッセージに保存
+            metadata = MetadataManager.create_metadata("parameter_selection", original_message_payload)
             
-            # DialogStateを設定
-            DialogStateManager.set_dialog_state(context, "COLLECTING_PARAMETERS")
-            context_manager.save_context(thread_ts, context, channel_id)
-            
-            # 最初のパラメータ収集質問を開始
             await client.chat_postMessage(
-                channel=channel_id,
-                thread_ts=thread_ts,
-                text="📋 解析パラメータを設定します。\n\nどのような効果量で解析しますか？\n例：「オッズ比でお願いします」「リスク比で」「Petoオッズ比で」"
+                channel=body["channel"]["id"],
+                thread_ts=body["message"]["ts"],
+                text="📋 解析パラメータを設定してください",
+                blocks=response_blocks,
+                metadata=metadata
             )
             
         except SlackApiError as e:
-            logger.error(f"Legacyパラメータ収集開始エラー: {e.response.get('error', str(e))}")
+            logger.error(f"パラメータ選択メッセージ投稿エラー: {e.response.get('error', str(e))}")
         except Exception as e:
-            logger.error(f"Legacyパラメータ収集開始中に予期せぬエラー: {e}", exc_info=True)
+            logger.error(f"パラメータ設定アクション処理中に予期せぬエラー: {e}", exc_info=True)
 
-    @app.event("message")
-    async def handle_parameter_message(body, event, client, logger):
-        """パラメータ収集中のメッセージ処理"""
-        # ボット自身のメッセージは無視
-        if event.get("bot_id") or event.get("subtype") == "bot_message":
-            return
-            
-        # スレッド内のメッセージかどうかチェック
-        thread_ts = event.get("thread_ts")
-        if not thread_ts:
-            return  # スレッド外のメッセージは無視
-            
-        channel_id = event.get("channel")
-        user_id = event.get("user")
-        text = event.get("text", "")
-        
+    @app.action("select_effect_size")
+    async def handle_effect_size_selection(ack, body, client, logger):
+        """効果量タイプ選択時の処理"""
+        await ack()
+        # メタデータを更新して選択された値を保存
         try:
-            context_manager = get_context_manager()
-            parameter_collector = get_parameter_collector()
+            selected_value = body["actions"][0]["selected_option"]["value"]
+            logger.info(f"Effect size selected: {selected_value}")
             
-            # コンテキストを取得
-            context = context_manager.get_context(thread_id=thread_ts, channel_id=channel_id)
-            if not context:
-                return  # コンテキストがない場合は無視
+            # メタデータを更新
+            original_payload = MetadataManager.extract_from_body(body)
+            if original_payload:
+                original_payload["selected_effect_size"] = selected_value
+                updated_metadata = MetadataManager.create_metadata("parameter_selection", original_payload)
+                
+                # メッセージを更新して選択を反映
+                await client.chat_update(
+                    channel=body["channel"]["id"],
+                    ts=body["message"]["ts"],
+                    text="📋 解析パラメータを設定してください",
+                    blocks=body["message"]["blocks"],  # 元のブロックを保持
+                    metadata=updated_metadata
+                )
+        except Exception as e:
+            logger.error(f"Effect size selection error: {e}", exc_info=True)
+    
+    @app.action("select_model_type")
+    async def handle_model_type_selection(ack, body, client, logger):
+        """モデルタイプ選択時の処理"""
+        await ack()
+        try:
+            selected_value = body["actions"][0]["selected_option"]["value"]
+            logger.info(f"Model type selected: {selected_value}")
             
-            # パラメータ収集中かどうかチェック
-            dialog_state = DialogStateManager.get_dialog_state(context)
-            if dialog_state != "COLLECTING_PARAMETERS":
-                return  # パラメータ収集中ではない
+            # メタデータを更新
+            original_payload = MetadataManager.extract_from_body(body)
+            if original_payload:
+                original_payload["selected_model_type"] = selected_value
+                updated_metadata = MetadataManager.create_metadata("parameter_selection", original_payload)
+                
+                await client.chat_update(
+                    channel=body["channel"]["id"],
+                    ts=body["message"]["ts"],
+                    text="📋 解析パラメータを設定してください",
+                    blocks=body["message"]["blocks"],
+                    metadata=updated_metadata
+                )
+        except Exception as e:
+            logger.error(f"Model type selection error: {e}", exc_info=True)
+    
+    @app.action("start_analysis_with_selected_params")
+    async def handle_start_analysis_with_selected_params(ack, body, client, logger):
+        """選択されたパラメータで解析開始"""
+        await ack()
+        try:
+            original_payload = MetadataManager.extract_from_body(body)
+            if not original_payload:
+                await client.chat_postMessage(
+                    channel=body["channel"]["id"],
+                    thread_ts=body["message"]["ts"],
+                    text="❌ パラメータ情報が見つかりません。もう一度試してください。"
+                )
+                return
             
-            logger.info(f"Processing parameter collection message: {text[:100]}...")
+            # 選択されたパラメータを取得
+            effect_size = original_payload.get("selected_effect_size", "OR")
+            model_type = original_payload.get("selected_model_type", "REML")
             
-            # Geminiでパラメータを抽出
-            data_summary = context.get("data_state", {}).get("data_summary", {})
-            collection_context = collected_params_state
-            
-            # Legacyのgemini_utilsを使用
-            extraction_result = extract_parameters_from_user_input(
-                user_input=text,
-                data_summary=data_summary,
-                conversation_history=None,
-                collection_context=collection_context
+            await client.chat_postMessage(
+                channel=body["channel"]["id"],
+                thread_ts=body["message"]["ts"],
+                text=f"🚀 解析を開始します...\n・効果量: {effect_size}\n・モデル: {model_type}"
             )
             
-            extracted_params = extraction_result.get("extracted_params", {}) if extraction_result else {}
-            logger.info(f"Extracted parameters: {extracted_params}")
+            # 解析を実行
+            analysis_params = {
+                "measure": effect_size,
+                "method": model_type,
+                "model_type": "random" if model_type != "FE" else "fixed"
+            }
             
-            # 現在の収集状態を取得
-            collected_params_state = context.get("collected_params", {})
-            data_summary = context.get("data_state", {}).get("data_summary", {})
-            
-            # パラメータを更新し、次の質問を取得
-            is_complete, next_question = parameter_collector._update_collected_params_and_get_next_question(
-                extracted_params, collected_params_state, data_summary, thread_ts, channel_id
+            # 非同期で解析を実行
+            await run_analysis_async(
+                original_payload,
+                analysis_params,
+                body["channel"]["id"],
+                body["message"]["ts"],
+                client,
+                logger
             )
-            
-            # コンテキストを保存
-            context["collected_params"] = collected_params_state
-            context_manager.save_context(thread_ts, context, channel_id)
-            
-            if is_complete:
-                # パラメータ収集完了
-                await client.chat_postMessage(
-                    channel=channel_id,
-                    thread_ts=thread_ts,
-                    text="✅ パラメータ収集が完了しました！解析を開始します..."
-                )
-                
-                # 解析を実行
-                analysis_params = {
-                    "measure": collected_params_state["required"].get("effect_size", "OR"),
-                    "method": "REML" if collected_params_state["required"].get("model_type") == "random" else "FE",
-                    "model_type": collected_params_state["required"].get("model_type", "random")
-                }
-                
-                # ダイアログ状態を更新
-                DialogStateManager.set_dialog_state(context, "RUNNING_ANALYSIS")
-                context_manager.save_context(thread_ts, context, channel_id)
-                
-                # 解析を非同期で実行
-                original_payload = context.get("data_state", {})
-                await run_analysis_async(
-                    original_payload,
-                    analysis_params,
-                    channel_id,
-                    thread_ts,
-                    client,
-                    logger
-                )
-                
-            elif next_question:
-                # 次の質問を送信
-                await client.chat_postMessage(
-                    channel=channel_id,
-                    thread_ts=thread_ts,
-                    text=next_question
-                )
             
         except Exception as e:
-            logger.error(f"Parameter message processing error: {e}", exc_info=True)
+            logger.error(f"Analysis start error: {e}", exc_info=True)
             await client.chat_postMessage(
-                channel=channel_id,
-                thread_ts=thread_ts,
-                text=f"❌ パラメータ処理中にエラーが発生しました: {str(e)}"
+                channel=body["channel"]["id"],
+                thread_ts=body["message"]["ts"],
+                text=f"❌ 解析開始中にエラーが発生しました: {str(e)}"
             )
+    
+    @app.action("cancel_parameter_selection")
+    async def handle_cancel_parameter_selection(ack, body, client, logger):
+        """パラメータ選択キャンセル"""
+        await ack()
+        await client.chat_postMessage(
+            channel=body["channel"]["id"],
+            thread_ts=body["message"]["ts"],
+            text="❌ パラメータ設定をキャンセルしました。"
+        )
 
-    # Legacyスタイルの自然言語処理に変更したため、以下のハンドラーは不要
-    # select_effect_size, select_model_type, start_analysis_with_selected_params, cancel_parameter_selection
+    # 以下は今後のLegacy実装用に予約
 
 
     @app.view("analysis_params_submission")

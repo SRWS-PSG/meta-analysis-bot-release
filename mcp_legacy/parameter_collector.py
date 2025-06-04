@@ -9,8 +9,8 @@ import time # 追加
 from typing import Dict, Any, Optional, List, Tuple
 import pandas as pd # pandas をインポート
 
-from mcp.gemini_utils import extract_parameters_from_user_input
-from mcp.dialog_state_manager import DialogStateManager # Assuming DialogStateManager is in its own file
+from mcp_legacy.gemini_utils import extract_parameters_from_user_input
+from mcp_legacy.dialog_state_manager import DialogStateManager
 
 logger = logging.getLogger(__name__)
 
