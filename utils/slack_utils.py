@@ -165,3 +165,52 @@ async def upload_files_to_slack(files_to_upload: List[Dict[str, str]], channel_i
             # 個々のファイルアップロード失敗は全体を止めない
     
     return uploaded_file_infos
+
+def upload_file_to_slack(client, file_path, channel_id, title, thread_ts=None):
+    """新しいfiles.getUploadURLExternal APIを使用してファイルをSlackにアップロードする"""
+    try:
+        get_url_response = client.files_getUploadURLExternal(
+            filename=os.path.basename(file_path),
+            length=os.path.getsize(file_path),
+        )
+    except Exception as e:
+        logger.error(f"files.getUploadURLExternalの呼び出し中にエラー: {e}")
+        raise
+
+    with open(file_path, 'rb') as f:
+        file_content = f.read()
+    
+    try:
+        upload_response = requests.post(
+            get_url_response["upload_url"],
+            data=file_content,
+            headers={"Content-Type": "application/octet-stream"},
+            allow_redirects=True
+        )
+        upload_response.raise_for_status()
+    except Exception as e:
+        logger.error(f"ファイルコンテンツのアップロード中にエラー: {e}")
+        raise
+        
+    files_data = [{
+        "id": get_url_response["file_id"],
+        "title": title,
+    }]
+
+    try:
+        complete_response = client.files_completeUploadExternal(
+            files=files_data,
+            channel_id=channel_id,
+            thread_ts=thread_ts,
+            initial_comment=f"{title}をアップロードしました。"
+        )
+        return complete_response
+    except Exception as e:
+        logger.error(f"files.completeUploadExternalの呼び出し中にエラー: {e}")
+        # Attempt to delete the file if completion fails to avoid orphaned uploads
+        try:
+            client.files_delete(file=get_url_response["file_id"])
+            logger.info(f"アップロード完了失敗後、ファイル {get_url_response['file_id']} を削除しました。")
+        except Exception as delete_e:
+            logger.error(f"アップロード完了失敗後のファイル削除中にエラー: {delete_e}")
+        raise

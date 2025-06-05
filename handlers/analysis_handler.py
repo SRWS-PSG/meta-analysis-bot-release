@@ -3,7 +3,7 @@ import json # 追加
 from slack_bolt import App
 from core.metadata_manager import MetadataManager
 from core.r_executor import RAnalysisExecutor # コメント解除
-from utils.slack_utils import create_analysis_result_blocks, upload_files_to_slack # upload_files_to_slack をインポート (後で作成)
+from utils.slack_utils import create_analysis_result_message, upload_files_to_slack
 from utils.file_utils import get_r_output_dir, cleanup_temp_dir_async, save_content_to_temp_file # file_utils から関数をインポート
 
 # upload_files_to_slack は utils.slack_utils に作成するが、ここでは一旦ダミーを定義しておく
@@ -158,11 +158,11 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
             "r_log": analysis_result_from_r.get("stdout","") + "\n" + analysis_result_from_r.get("stderr","")
         }
 
+        result_message = create_analysis_result_message(display_result_for_blocks)
         client.chat_postMessage(
             channel=channel_id,
             thread_ts=thread_ts,
-            text="✅ メタ解析が完了しました！",
-            blocks=create_analysis_result_blocks(display_result_for_blocks), # 整形したデータを渡す
+            text=result_message,
             metadata=completion_metadata
         )
         
