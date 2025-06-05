@@ -2,7 +2,7 @@ import asyncio # generate_report_async のために追加
 from slack_bolt import App
 from core.metadata_manager import MetadataManager
 from core.gemini_client import GeminiClient
-from utils.slack_utils import create_report_blocks
+from utils.slack_utils import create_report_message
 
 def register_report_handlers(app: App):
     """レポート生成関連のハンドラーを登録"""
@@ -55,11 +55,11 @@ async def generate_report_async(payload, channel_id, thread_ts, client, logger):
             "analysis_summary": payload.get("result_summary") # 元の解析サマリーも参照用に保持
         })
         
+        report_text = create_report_message(interpretation)
         client.chat_postMessage(
             channel=channel_id,
             thread_ts=thread_ts,
-            text="📋 **解釈レポート**",
-            blocks=create_report_blocks(interpretation),
+            text=report_text,
             metadata=report_metadata
         )
         
