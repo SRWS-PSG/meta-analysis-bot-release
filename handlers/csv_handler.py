@@ -97,6 +97,10 @@ async def process_csv_text_async(csv_text, channel_id, user_id, thread_ts, clien
             # パラメータ収集状態に移行
             from utils.conversation_state import DialogState
             state.update_state(DialogState.ANALYSIS_PREFERENCE)
+            
+            # ボットの初期メッセージを会話履歴に追加
+            state.add_conversation("assistant", analysis_summary)
+            
             save_state(state)
             logger.info(f"CSV text analysis result message (Job ID: {job_id}) にメタデータを付加しました。ts: {msg_ts}")
         else:
@@ -214,6 +218,10 @@ async def process_csv_async(file_info, channel_id, user_id, client, logger, thre
             # パラメータ収集状態に移行
             from utils.conversation_state import DialogState
             state.update_state(DialogState.ANALYSIS_PREFERENCE)
+            
+            # ボットの初期メッセージを会話履歴に追加
+            state.add_conversation("assistant", analysis_summary)
+            
             save_state(state)
             logger.info(f"CSV分析完了、自然言語パラメータ収集を開始しました (Job ID: {job_id}) ts: {msg_ts}")
             logger.info(f"CSV processing completed successfully in {time.time() - start_time:.2f} seconds")

@@ -416,15 +416,17 @@ def register_parameter_handlers(app: App):
                     if isinstance(candidates, list):
                         csv_columns.extend(candidates)
             
-            # 会話履歴を準備
-            if not hasattr(state, "conversation_history"):
-                state.conversation_history = []
+            # 会話履歴の確認とログ
+            logger.info(f"Conversation history before adding user input: {len(state.conversation_history)} messages")
+            if state.conversation_history:
+                logger.info(f"Last message in history: role={state.conversation_history[-1].get('role')}, content={state.conversation_history[-1].get('content')[:100]}...")
             
             # ユーザーの入力を履歴に追加
             state.conversation_history.append({
                 "role": "user",
                 "content": user_text
             })
+            logger.info(f"Added user input to conversation history. New length: {len(state.conversation_history)}")
             
             # Geminiでパラメータを抽出して応答を生成
             from utils.gemini_dialogue import process_user_input_with_gemini

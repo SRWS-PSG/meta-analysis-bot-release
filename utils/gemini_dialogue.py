@@ -31,6 +31,10 @@ async def process_user_input_with_gemini(
     try:
         gemini_client = GeminiClient()
         
+        # デバッグ用ログ
+        logger.info(f"Gemini dialogue processing - conversation history length: {len(conversation_history)}")
+        logger.info(f"Current collected params: {json.dumps(current_params, ensure_ascii=False)}")
+        
         # プロンプトの構築
         prompt = f"""
 あなたはメタ解析のパラメータ収集を支援する専門家です。
