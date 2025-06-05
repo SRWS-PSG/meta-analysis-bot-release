@@ -261,9 +261,7 @@ class TestAnalysisExecution:
         
         for package in required_packages:
             # When: パッケージ確認スクリプト実行
-            check_script = f'if (!require({package}, quietly=TRUE)) stop("Package {package} not found")
-cat("OK")
-'
+            check_script = f'if (!require({package}, quietly=TRUE)) stop("Package {package} not found")\ncat("OK")\n'
             
             executor = RExecutor()
             result = executor.execute_script(check_script)
