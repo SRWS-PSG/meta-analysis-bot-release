@@ -275,10 +275,13 @@ All prompts stored in `mcp/cache/prompts.json`:
 
 #### デプロイ手順
 ```bash
-# Herokuにデプロイ
+# Herokuにデプロイ（変更を反映するには必須）
 git add .
 git commit -m "Your commit message"
 git push heroku main
+
+# GitHubへのプッシュ（バックアップ・バージョン管理用）
+git push origin main
 
 # ログを確認
 heroku logs --tail
@@ -286,6 +289,8 @@ heroku logs --tail
 # 環境変数の確認
 heroku config
 ```
+
+**重要**: コード変更を本番環境に反映するには、`git push heroku main`が必要です。GitHubへのプッシュのみでは変更は反映されません。
 
 ### Local Development
 - Uses Socket Mode (no public URL needed)
