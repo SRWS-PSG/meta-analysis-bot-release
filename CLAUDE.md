@@ -11,8 +11,9 @@ This is a Meta-Analysis Slack Bot that performs statistical meta-analyses on CSV
 
 ### 起動条件
 - ボットが存在するSlackチャンネルでCSVファイルを共有+メンションで起動
+- メンション+CSVデータをコードブロックで投稿しても起動
 - メンションのみだと起動するがCSV共有をユーザーに依頼する
-- CSV共有のみだと起動しない
+- CSV共有のみだと起動しない（file_sharedイベントは監視しない）
 
 ### 機能要件
 - ボットはCSVを分析し、適切な列が見つかった場合にメタ解析を実行
@@ -23,25 +24,35 @@ This is a Meta-Analysis Slack Bot that performs statistical meta-analyses on CSV
 - 結果はスレッド内に共有され、スレッド内で会話コンテキストが維持される
 - **パラメータ収集はGemini AIが対話的に行い、キーワードマッチングは使用しない**
 - **Geminiが会話の文脈を理解し、必要な情報が揃うまで適切な質問を続ける**
+- **Gemini Function Callingを使用してパラメータを構造化データとして抽出**
+- **CSV列の自動マッピング（効果量タイプの自動検出を含む）**
+- **ログ変換データの自動検出**
 - 十分なコンテキストがそろったら、それを元にRのコードを作り、実行
 - 戻り値の図、データを返す
-- データを元にレポートを作成してスレッドにテキストとして返す
+- **英語の学術論文形式（Methods・Results）のレポートを生成**
+- **日本語での要約と解釈も提供**
+- **解析環境情報（Rバージョン、metaforバージョン）の記録**
 
 ### 対応する解析タイプ
 - **二値アウトカム**: OR (オッズ比)、RR (リスク比)、RD (リスク差)、PETO
 - **連続アウトカム**: SMD (標準化平均差)、MD (平均差)、ROM (平均比)
-- **ハザード比**: HR
-- **単一比率**: proportion
-- **発生率**: IR (incidence rate)
-- **相関**: COR
+- **ハザード比**: HR（ログ変換データの自動検出対応）
+- **単一比率**: PLO、PR、PAS、PFT、PRAW
+- **発生率**: IR (incidence rate)、IRLN、IRS、IRFT
+- **相関**: COR（相関係数）
 - **事前計算された効果量**: yi (分散vi付き)
-- **サブグループ解析**と**メタ回帰**のサポート
+- **サブグループ解析**（統計的検定付き）
+- **メタ回帰**（複数のモデレータ対応）
+- **感度分析**（フィルタリング条件付き）
 
 ### エラーハンドリング
 - CSV形式不正時は日本語でユーザーに通知
 - R実行エラー時はGemini AIによる自動デバッグ（最大3回リトライ）
+- **エラーパターンマッチングによる具体的な修正提案**
+- **指数バックオフによるリトライ機構**
 - Slackの3秒タイムアウトに対応する非同期処理
 - 解析失敗時は詳細なエラーメッセージを日本語で提供
+- **異なるエラータイプに応じた専用エラーハンドラー**
 
 ### セキュリティ・権限要件
 - Slackワークスペースのメンバーであれば誰でも利用可能
@@ -57,11 +68,12 @@ This is a Meta-Analysis Slack Bot that performs statistical meta-analyses on CSV
 ### データ保持
 - コンテキスト保持期間: 48時間（環境変数で設定可能）
 - 会話履歴: 最大20メッセージ（環境変数で設定可能）
-- ストレージバックエンド:
-  - Redis（推奨）: 永続的
-  - Memory: Dyno再起動まで
+- **非同期ジョブのステータス追跡**
+- ストレージバックエンド（`STORAGE_BACKEND`環境変数で設定）:
+  - Redis（デフォルト）: 永続的、`REDIS_URL`環境変数で接続
+  - Memory: Dyno再起動まで（Heroku Eco Dynos向け）
   - File: Dyno再起動まで（/tmpは一時的）
-  - DynamoDB/Firestore: 永続的
+  - DynamoDB: 永続的、AWSクレデンシャル必要
 
 
 
@@ -122,17 +134,37 @@ The bot uses Gemini AI for intelligent parameter collection through natural conv
 ```
 User: @bot [uploads CSV]
 Bot: CSVファイルを分析しました！
-     • 効果量候補列: Intervention_Events, Control_Events
-     • 推奨効果量: OR
+     データセット概要:
+     • 研究数: 15件
+     • 効果量候補: Intervention_Events, Control_Events (二値アウトカム)
+     • 推奨効果量: OR（オッズ比）
+     • サブグループ候補: Region, Year
      
-     解析パラメータを自然な日本語で教えてください。
+     解析パラメータを自然な日本語で教えてください。例：「オッズ比でランダム効果モデルを使って解析して」
 
-User: オッズ比
-Bot: オッズ比で解析しますね。次に、統計モデルはランダム効果モデルと固定効果モデルのどちらを使用しますか？
+User: オッズ比で、地域別のサブグループ解析もお願い
+Bot: 承知しました！オッズ比で解析し、地域別のサブグループ解析も行います。
+     統計モデルはランダム効果モデルと固定効果モデルのどちらを使用しますか？
 
 User: ランダムで
-Bot: 承知しました。ランダム効果モデルで解析を行います。
-     パラメータ収集が完了しました。解析を開始します...
+Bot: ランダム効果モデルで解析を行います。
+     
+     収集したパラメータ:
+     • 効果量: OR（オッズ比）
+     • モデル: ランダム効果モデル（REML）
+     • サブグループ: Region
+     
+     解析を開始します...
+
+[数秒後]
+Bot: 📊 メタ解析が完了しました！
+     
+     【解析結果サマリー】
+     • 統合オッズ比: 1.45 (95% CI: 1.12-1.88), p=0.005
+     • 異質性: I²=45.2%, Q-test p=0.032
+     • サブグループ解析: 地域間で有意差あり (p=0.018)
+     
+     [ファイル添付: forest_plot.png, funnel_plot.png, analysis.R, results.RData]
 ```
 
 ## Architecture
@@ -179,19 +211,32 @@ The bot uses `AsyncAnalysisRunner` to handle Slack's 3-second timeout:
 
 ### State Management
 - Uses `ThreadContextManager` for conversation persistence
-- Dialog states managed by `DialogStateManager`
+- Dialog states managed by `DialogStateManager`:
+  - `waiting_for_file`: CSVファイル待機中
+  - `processing_file`: CSVファイル処理中
+  - `analysis_preference`: パラメータ収集中
+  - `analysis_running`: 解析実行中
+  - `post_analysis`: 解析完了後
 - Storage backend configurable via `STORAGE_BACKEND` env var:
   - `redis` (default): Persistent storage with Redis
   - `memory`: In-memory storage (ephemeral)
   - `file`: File-based storage (uses /tmp on Heroku, ephemeral)
+  - `dynamodb`: AWS DynamoDB (persistent)
 
 ### R Script Generation
 Templates in `r_template_generator.py` support:
-- Binary outcomes (OR, RR, RD)
-- Continuous outcomes (SMD, MD)
-- Proportions (PRAW, PLN, PAS, etc.)
-- Pre-calculated effect sizes
-- Subgroup analysis and meta-regression
+- Binary outcomes (OR, RR, RD, PETO)
+- Continuous outcomes (SMD, MD, ROM)
+- Proportions (PLO, PR, PAS, PFT, PRAW)
+- Incidence rates (IR, IRLN, IRS, IRFT)
+- Hazard ratios with log transformation detection
+- Correlations (COR)
+- Pre-calculated effect sizes (yi/vi)
+- Subgroup analysis with statistical tests (Q-test)
+- Meta-regression with multiple moderators
+- Dynamic plot sizing based on study count
+- Comprehensive JSON output with all statistics
+- Multiple plot types (forest, funnel, bubble)
 
 ## Common Development Tasks
 
@@ -219,11 +264,14 @@ All prompts stored in `mcp/cache/prompts.json`:
 
 ### Heroku (Production)
 - Uses HTTP mode with event subscriptions
-- Requires public URL for Slack events
+- Requires public URL for Slack events: `https://<app-name>.herokuapp.com/slack/events`
 - Configure buildpacks: `heroku/python` and `r`
 - Set all environment variables in Heroku dashboard
 - Add Redis addon: `heroku addons:create heroku-redis:hobby-dev`
 - Redis URL automatically set as `REDIS_URL` env var
+- **Note**: For Heroku Eco Dynos, recommend `STORAGE_BACKEND=memory` to avoid Redis costs
+- **R buildpack**: Automatically installs R and metafor package
+- **Temporary files**: Use `/tmp/` directory (cleared on dyno restart)
 
 #### デプロイ手順
 ```bash
@@ -297,6 +345,41 @@ heroku config
    # 特定の時間帯のログを確認
    heroku logs --since "2024-01-01T00:00:00Z" --until "2024-01-01T01:00:00Z"
    ```
+
+## Advanced AI Features
+
+### Gemini AI Integration
+The bot leverages Google Gemini AI for sophisticated natural language processing:
+
+1. **CSV Analysis & Column Mapping**
+   - Automatic detection of meta-analysis compatible columns
+   - Intelligent mapping of CSV columns to metafor parameters
+   - Effect size type auto-detection from column names
+   - Log transformation detection for hazard ratios
+
+2. **Parameter Collection**
+   - Continuous dialogue using Gemini Function Calling
+   - Context-aware conversation management
+   - No reliance on keyword matching
+   - Structured parameter extraction to Pydantic models
+
+3. **R Script Generation & Debugging**
+   - Dynamic R script generation based on parameters
+   - Self-debugging with error pattern recognition
+   - Up to 3 automatic retry attempts with fixes
+   - Comprehensive error analysis and resolution
+
+4. **Report Generation**
+   - Academic paper format (Methods & Results sections)
+   - Bilingual output (English primary, Japanese summary)
+   - Statistical interpretation and clinical significance
+   - Analysis environment documentation
+
+5. **Advanced Features**
+   - Multi-turn conversation with context retention
+   - Handling of ambiguous user inputs
+   - Intelligent question generation for missing parameters
+   - Support for complex analysis requests
 
 ## Important Patterns
 

@@ -17,7 +17,15 @@ PARAMETER_EXTRACTION_SCHEMA = {
         "effect_size": {
             "type": "string",
             "description": "効果量の種類。ユーザーが「オッズ比」と言えば'OR'、「リスク比」は'RR'、「リスク差」は'RD'、「Petoオッズ比」は'PETO'と解釈",
-            "enum": ["OR", "RR", "RD", "PETO", "SMD", "MD", "HR", "COR", "proportion", "IR", "ROM", "yi"]
+            "enum": [
+                "OR", "RR", "RD", "PETO",  # 二値アウトカム
+                "SMD", "MD", "ROM",        # 連続アウトカム  
+                "HR",                      # ハザード比
+                "PLO", "PR", "PAS", "PFT", "PRAW",  # 単一比率
+                "IR", "IRLN", "IRS", "IRFT",        # 発生率
+                "COR",                     # 相関
+                "yi"                       # 事前計算された効果量
+            ]
         },
         "model_type": {
             "type": "string", 
@@ -77,12 +85,33 @@ async def extract_parameters_from_text(
         
         prompt_parts.extend([
             "\n以下の対応で解釈してください:",
+            "【二値アウトカム】",
             "- オッズ比、OR → effect_size: 'OR'",
             "- リスク比、RR → effect_size: 'RR'", 
             "- リスク差、RD → effect_size: 'RD'",
             "- Petoオッズ比、PETO → effect_size: 'PETO'",
+            "【連続アウトカム】",
+            "- 標準化平均差、SMD → effect_size: 'SMD'",
+            "- 平均差、MD → effect_size: 'MD'",
+            "- 平均比、ROM → effect_size: 'ROM'",
+            "【ハザード比】",
+            "- ハザード比、HR → effect_size: 'HR'",
+            "【単一比率】",
+            "- プロポーション、比率、proportion → effect_size: 'PLO'",
+            "- 単純比率 → effect_size: 'PR'",
+            "- Freeman-Tukey変換 → effect_size: 'PFT'",
+            "- 生比率 → effect_size: 'PRAW'",
+            "【発生率】",
+            "- 発生率、incidence rate → effect_size: 'IR'",
+            "- ログ変換発生率 → effect_size: 'IRLN'",
+            "【相関】",
+            "- 相関係数、correlation → effect_size: 'COR'",
+            "【その他】",
+            "- 事前計算済み効果量 → effect_size: 'yi'",
+            "【モデルタイプ】",
             "- ランダム効果、変量効果 → model_type: 'random'",
             "- 固定効果 → model_type: 'fixed'",
+            "【統計手法】",
             "- REML法 → method: 'REML'",
             "- DL法、DerSimonian-Laird → method: 'DL'",
             "\nユーザーが明示的に指定したパラメータのみを抽出してください。"
@@ -120,7 +149,7 @@ def get_next_question(current_params: Dict[str, Any]) -> Optional[str]:
     logger.info(f"Checking next question for params: {current_params}")
     
     if not current_params.get("effect_size"):
-        return "どのような効果量で解析しますか？\n例：「オッズ比でお願いします」「リスク比で」「Petoオッズ比で」"
+        return "どのような効果量で解析しますか？\n\n例：\n• 「オッズ比でお願いします」（二値アウトカム）\n• 「標準化平均差で」（連続アウトカム）\n• 「ハザード比で」（生存時間解析）\n• 「比率で」（単一比率）\n• 「相関係数で」（相関解析）"
     
     if not current_params.get("model_type"):
         return "統計モデルはどちらを使用しますか？\n例：「ランダム効果モデルで」「固定効果で」"

@@ -5,7 +5,7 @@ import logging
 from slack_bolt import App
 from core.metadata_manager import MetadataManager
 from core.gemini_client import GeminiClient
-from utils.slack_utils import create_unsuitable_csv_blocks # create_unsuitable_csv_blocks をインポート
+from utils.slack_utils import create_unsuitable_csv_message, create_analysis_start_message
 from utils.file_utils import download_slack_file_content_async # download_slack_file_content_async をインポート
 from utils.conversation_state import get_or_create_state, save_state
 
@@ -65,8 +65,7 @@ async def process_csv_text_async(csv_text, channel_id, user_id, thread_ts, clien
             client.chat_postMessage(
                 channel=channel_id,
                 thread_ts=thread_ts,
-                text="❌ このCSVデータはメタ解析に適していないようです。",
-                blocks=create_unsuitable_csv_blocks(analysis_result.get('reason', '詳細不明'))
+                text=create_unsuitable_csv_message(analysis_result.get('reason', '詳細不明'))
             )
             return
         
@@ -74,21 +73,7 @@ async def process_csv_text_async(csv_text, channel_id, user_id, thread_ts, clien
         job_id = MetadataManager.create_job_id()
         
         # 直接自然言語パラメータ収集を開始
-        detected_cols = analysis_result.get("detected_columns", {})
-        effect_candidates = detected_cols.get("effect_size_candidates", [])
-        variance_candidates = detected_cols.get("variance_candidates", [])
-        suggested_analysis = analysis_result.get("suggested_analysis", {})
-        suggested_effect_type = suggested_analysis.get("effect_type_suggestion", "OR")
-        
-        analysis_summary = f"📊 CSVデータを分析しました！\n\n" + \
-                          f"• 効果量候補列: {', '.join(effect_candidates[:3]) if effect_candidates else 'N/A'}\n" + \
-                          f"• 分散/SE候補列: {', '.join(variance_candidates[:3]) if variance_candidates else 'N/A'}\n" + \
-                          f"• 推奨効果量: {suggested_effect_type}\n\n" + \
-                          "🤖 解析パラメータを自然な日本語で教えてください。\n\n" + \
-                          "例：\n" + \
-                          "• 'オッズ比でランダム効果モデルで解析してください'\n" + \
-                          "• 'リスク比で固定効果モデルでお願いします'\n" + \
-                          "• 'SMDでREML法を使って解析してください'"
+        analysis_summary = create_analysis_start_message(analysis_result)
         
         response_message = client.chat_postMessage(
             channel=channel_id,
@@ -187,8 +172,7 @@ async def process_csv_async(file_info, channel_id, user_id, client, logger, thre
             # メタ解析に適さない場合
             message_kwargs = {
                 "channel": channel_id,
-                "text": f"❌ このCSVファイルはメタ解析に適していないようです。", # 理由はBlockに含める
-                "blocks": create_unsuitable_csv_blocks(analysis_result.get('reason', '詳細不明'))
+                "text": create_unsuitable_csv_message(analysis_result.get('reason', '詳細不明'))
             }
             if thread_ts:
                 message_kwargs["thread_ts"] = thread_ts
@@ -199,21 +183,7 @@ async def process_csv_async(file_info, channel_id, user_id, client, logger, thre
         job_id = MetadataManager.create_job_id()
         
         # 直接自然言語パラメータ収集を開始
-        detected_cols = analysis_result.get("detected_columns", {})
-        effect_candidates = detected_cols.get("effect_size_candidates", [])
-        variance_candidates = detected_cols.get("variance_candidates", [])
-        suggested_analysis = analysis_result.get("suggested_analysis", {})
-        suggested_effect_type = suggested_analysis.get("effect_type_suggestion", "OR")
-        
-        analysis_summary = f"📊 CSVファイルを分析しました！\n\n" + \
-                          f"• 効果量候補列: {', '.join(effect_candidates[:3]) if effect_candidates else 'N/A'}\n" + \
-                          f"• 分散/SE候補列: {', '.join(variance_candidates[:3]) if variance_candidates else 'N/A'}\n" + \
-                          f"• 推奨効果量: {suggested_effect_type}\n\n" + \
-                          "🤖 解析パラメータを自然な日本語で教えてください。\n\n" + \
-                          "例：\n" + \
-                          "• 'オッズ比でランダム効果モデルで解析してください'\n" + \
-                          "• 'リスク比で固定効果モデルでお願いします'\n" + \
-                          "• 'SMDでREML法を使って解析してください'"
+        analysis_summary = create_analysis_start_message(analysis_result)
         
         message_kwargs = {
             "channel": channel_id,
