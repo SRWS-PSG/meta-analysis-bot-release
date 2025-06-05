@@ -402,7 +402,8 @@ def register_parameter_handlers(app: App):
             state = get_or_create_state(thread_ts, channel_id)
             
             # パラメータ収集中でない場合はスキップ
-            if state.state != "COLLECTING_PARAMETERS":
+            if state.state != "analysis_preference":
+                logger.info(f"State is {state.state}, not analysis_preference. Skipping message processing.")
                 return
             
             logger.info(f"Processing natural language parameter input: {user_text}")
@@ -489,8 +490,17 @@ def register_parameter_handlers(app: App):
     @app.message()
     async def handle_thread_message(message, say, client, logger):
         """スレッド内のメッセージを処理"""
+        logger.info(f"=== MESSAGE HANDLER CALLED ===")
+        logger.info(f"Message: {message.get('text', '')}")
+        logger.info(f"Thread TS: {message.get('thread_ts')}")
+        logger.info(f"Bot ID: {message.get('bot_id')}")
+        logger.info(f"User: {message.get('user')}")
+        
         # スレッド内でかつBotメンション以外のメッセージのみ処理
         if (message.get("thread_ts") and 
             not message.get("text", "").startswith("<@") and
             message.get("bot_id") is None):  # Botメッセージは除外
+            logger.info(f"Processing message: {message.get('text', '')}")
             await handle_natural_language_parameters(message, say, client, logger)
+        else:
+            logger.info(f"Skipping message - thread_ts: {message.get('thread_ts')}, starts_with_mention: {message.get('text', '').startswith('<@')}, bot_id: {message.get('bot_id')}")
