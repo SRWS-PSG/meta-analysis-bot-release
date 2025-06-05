@@ -486,21 +486,5 @@ def register_parameter_handlers(app: App):
             logger.error(f"Error processing natural language parameters: {e}", exc_info=True)
             await say(f"❌ パラメータ処理中にエラーが発生しました: {str(e)}")
     
-    # メッセージハンドラーを登録（スレッド内の全メッセージ）
-    @app.message()
-    async def handle_thread_message(message, say, client, logger):
-        """スレッド内のメッセージを処理"""
-        logger.info(f"=== MESSAGE HANDLER CALLED ===")
-        logger.info(f"Message: {message.get('text', '')}")
-        logger.info(f"Thread TS: {message.get('thread_ts')}")
-        logger.info(f"Bot ID: {message.get('bot_id')}")
-        logger.info(f"User: {message.get('user')}")
-        
-        # スレッド内でかつBotメンション以外のメッセージのみ処理
-        if (message.get("thread_ts") and 
-            not message.get("text", "").startswith("<@") and
-            message.get("bot_id") is None):  # Botメッセージは除外
-            logger.info(f"Processing message: {message.get('text', '')}")
-            await handle_natural_language_parameters(message, say, client, logger)
-        else:
-            logger.info(f"Skipping message - thread_ts: {message.get('thread_ts')}, starts_with_mention: {message.get('text', '').startswith('<@')}, bot_id: {message.get('bot_id')}")
+    # メッセージハンドラーは統一ハンドラーから呼び出されるため、ここでは登録しない
+    # 代わりに、main.pyで統一されたメッセージハンドラーを登録
