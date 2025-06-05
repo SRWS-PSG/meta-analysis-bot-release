@@ -55,87 +55,11 @@ register_report_handlers(app)
 register_parameter_handlers(app) # 追加
 register_mention_handlers(app)
 
-# 統一メッセージハンドラー（legacy style）
-@app.event("message")
-def handle_unified_message(event, client):
-    """統一されたメッセージハンドラー - legacyスタイル"""
-    logger.info(f"=== UNIFIED MESSAGE HANDLER ===")
-    logger.info(f"Event type: {event.get('type')}, subtype: {event.get('subtype')}")
-    logger.info(f"Text: {event.get('text', '')}")
-    logger.info(f"Thread TS: {event.get('thread_ts')}")
-    logger.info(f"Channel: {event.get('channel')}")
-    logger.info(f"User: {event.get('user')}")
-    logger.info(f"Bot ID: {event.get('bot_id')}")
-    
-    # Botメッセージは無視
-    if event.get('bot_id'):
-        logger.info("Ignoring bot message")
-        return
-    
-    # スレッド内のメッセージのみ処理
-    thread_ts = event.get('thread_ts')
-    if not thread_ts:
-        logger.info("Not a thread message, ignoring")
-        return
-    
-    channel_id = event.get('channel')
-    text = event.get('text', '')
-    
-    # メンション除去
-    user_text = text
-    if text.startswith('<@'):
-        # メンションを除去
-        import re
-        user_text = re.sub(r'<@[^>]+>\s*', '', text).strip()
-    
-    # 会話状態を確認
-    from utils.conversation_state import get_state
-    state = get_state(thread_ts, channel_id)
-    
-    if not state:
-        logger.info(f"No conversation state found for {channel_id}:{thread_ts}")
-        return
-    
-    logger.info(f"Current state: {state.state}")
-    
-    # analysis_preference状態でパラメータ収集を処理
-    if state.state == "analysis_preference":
-        logger.info(f"Processing parameter input: {user_text}")
-        
-        # パラメータ収集を実行
-        import asyncio
-        import threading
-        
-        def run_parameter_processing():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            async def process_params():
-                from handlers.parameter_handler import handle_natural_language_parameters
-                
-                # message オブジェクトを構築
-                message = {
-                    'channel': channel_id,
-                    'thread_ts': thread_ts,
-                    'text': user_text,
-                    'user': event.get('user'),
-                    'ts': event.get('ts')
-                }
-                
-                # say 関数を定義
-                async def say(text):
-                    client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text=text)
-                
-                await handle_natural_language_parameters(message, say, client, logger)
-            
-            loop.run_until_complete(process_params())
-            loop.close()
-        
-        # 別スレッドで実行
-        thread = threading.Thread(target=run_parameter_processing)
-        thread.start()
-    else:
-        logger.info(f"State {state.state} does not require parameter processing")
+# 統一メッセージハンドラーはmention_handler.pyのhandle_direct_messageに統合されました
+# 重複を避けるためコメントアウト
+# @app.event("message")
+# def handle_unified_message(event, client):
+#     # この機能はmention_handler.pyのhandle_direct_messageに移動しました
 
 # グレースフルシャットダウンのハンドラー
 def signal_handler(sig, frame):

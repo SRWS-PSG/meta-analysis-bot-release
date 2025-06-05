@@ -506,22 +506,66 @@ def register_mention_handlers(app: App):
                         func=run_dm_csv_text_processing_in_event_loop
                     )
                     logger.info(f"DM CSV text processing job submitted with ID: {job_id}")
-                elif channel_type == "im":
-                    # DMでCSVデータがない場合のみヘルプメッセージ
-                    help_text = (
-                        "👋 ダイレクトメッセージありがとうございます！\n\n"
-                        "メタ解析ボットは以下の手順でご利用いただけます:\n"
-                        "1. CSVファイルをこのチャットにアップロードしてください\n"
-                        "2. 自動でデータを分析します\n"
-                        "3. メタ解析の設定を行います\n"
-                        "4. 解析を実行して結果を表示します\n\n"
-                        "まずはCSVファイルをアップロードしてお試しください！"
-                    )
+                else:
+                    # CSVファイルがない場合、パラメータ収集の対話を処理する可能性がある
+                    # 会話状態をチェック
+                    from utils.conversation_state import get_state
+                    state = get_state(thread_ts, channel_id)
                     
-                    client.chat_postMessage(
-                        channel=event["channel"],
-                        text=help_text
-                    )
+                    if state and state.state == "analysis_preference":
+                        # パラメータ収集中の場合
+                        logger.info(f"Processing parameter collection in thread {thread_ts}: {text}")
+                        
+                        # パラメータ収集を非同期で実行
+                        import asyncio
+                        from handlers.parameter_handler import handle_natural_language_parameters
+                        
+                        def run_parameter_processing():
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            
+                            async def process_params():
+                                # message オブジェクトを構築
+                                message = {
+                                    'channel': channel_id,
+                                    'thread_ts': thread_ts,
+                                    'text': text,
+                                    'user': user_id,
+                                    'ts': event.get('ts')
+                                }
+                                
+                                # say 関数を定義
+                                async def say(text):
+                                    client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, text=text)
+                                
+                                await handle_natural_language_parameters(message, say, client, logger)
+                            
+                            loop.run_until_complete(process_params())
+                            loop.close()
+                        
+                        # ジョブとして実行
+                        job_manager = get_job_manager()
+                        job_id = job_manager.submit_job(
+                            job_id=f"param_collection_{channel_id}_{thread_ts}_{int(time.time())}",
+                            func=run_parameter_processing
+                        )
+                        logger.info(f"Parameter collection job submitted with ID: {job_id}")
+                    elif channel_type == "im":
+                        # DMでCSVデータがない場合のみヘルプメッセージ
+                        help_text = (
+                            "👋 ダイレクトメッセージありがとうございます！\n\n"
+                            "メタ解析ボットは以下の手順でご利用いただけます:\n"
+                            "1. CSVファイルをこのチャットにアップロードしてください\n"
+                            "2. 自動でデータを分析します\n"
+                            "3. メタ解析の設定を行います\n"
+                            "4. 解析を実行して結果を表示します\n\n"
+                            "まずはCSVファイルをアップロードしてお試しください！"
+                        )
+                        
+                        client.chat_postMessage(
+                            channel=event["channel"],
+                            text=help_text
+                        )
                 
         except Exception as e:
             logger.error(f"Error handling direct message: {e}")
