@@ -45,6 +45,7 @@ class ConversationState:
         self.collected_params = {}
         self.csv_analysis = {}
         self.file_info = {}
+        self.async_job_status = {}
         
     def update_params(self, params: Dict[str, Any]):
         """パラメータを更新"""
@@ -67,10 +68,22 @@ class ConversationState:
         if len(self.conversation_history) > MAX_HISTORY_LENGTH:
             self.conversation_history = self.conversation_history[-MAX_HISTORY_LENGTH:]
         self.updated_at = datetime.now()
+    
+    def limit_history(self, max_messages: int):
+        """会話履歴を指定件数に制限"""
+        if len(self.conversation_history) > max_messages:
+            self.conversation_history = self.conversation_history[-max_messages:]
+        self.updated_at = datetime.now()
         
     def is_expired(self) -> bool:
         """状態が期限切れかチェック"""
         return datetime.now() - self.updated_at > timedelta(hours=STATE_EXPIRY_HOURS)
+    
+    def is_valid(self, retention_hours: Optional[int] = None) -> bool:
+        """状態が有効かチェック（カスタム保持期間対応）"""
+        if retention_hours is None:
+            retention_hours = STATE_EXPIRY_HOURS
+        return datetime.now() - self.created_at <= timedelta(hours=retention_hours)
         
     def is_ready_for_analysis(self) -> bool:
         """解析実行可能かチェック"""
@@ -90,7 +103,8 @@ class ConversationState:
             "file_info": self.file_info,
             "conversation_history": self.conversation_history,
             "job_status": self.job_status,
-            "analysis_params": self.analysis_params
+            "analysis_params": self.analysis_params,
+            "async_job_status": self.async_job_status
         }
         
     @classmethod
@@ -106,11 +120,16 @@ class ConversationState:
         state.conversation_history = data.get('conversation_history', [])
         state.job_status = data.get('job_status')
         state.analysis_params = data.get('analysis_params', {})
+        state.async_job_status = data.get('async_job_status', {})
         return state
 
 # ストレージバックエンドの初期化
 _storage_backend = None
 _memory_store = {}
+
+def get_storage_backend():
+    """ストレージバックエンドを取得（テスト用に公開）"""
+    return _get_storage_backend()
 
 def _get_storage_backend():
     """ストレージバックエンドを取得"""
@@ -298,3 +317,5 @@ def cleanup_expired_states():
             
     except Exception as e:
         logger.error(f"Error during cleanup: {e}")
+        
+    return expired_count

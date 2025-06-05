@@ -28,6 +28,7 @@ claude.yml
 venv/
 ENV/
 env/
+test_env/
 
 # R
 .Rproj.user

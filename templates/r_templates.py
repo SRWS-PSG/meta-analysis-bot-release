@@ -86,6 +86,10 @@ dat <- escalc(measure="{measure}", n1i={n1i}, n2i={n2i}, m1i={m1i}, m2i={m2i}, s
 # 割合の効果量計算
 dat <- escalc(measure="{measure}", xi={events}, ni={total}, data=dat{slab_param_string})
 """,
+            "escalc_correlation": """
+# 相関の効果量計算
+dat <- escalc(measure="{measure}", ri={ri}, ni={ni}, data=dat{slab_param_string})
+""",
              "escalc_precalculated": """
 # 事前計算された効果量を使用 (yi, vi)
 # この場合、escalcは不要なことが多いが、もし追加処理が必要ならここに記述
@@ -611,8 +615,8 @@ if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) &
                 sd1i=data_cols["sd1i"], sd2i=data_cols["sd2i"],
                 slab_param_string=slab_param_string
             )
-        elif measure in ["PLO", "IR", "PR"]: 
-            if measure == "IR":
+        elif measure in ["PLO", "IR", "PR", "PAS", "PFT", "PRAW", "IRLN", "IRS", "IRFT"]: 
+            if measure in ["IR", "IRLN", "IRS", "IRFT"]:
                 required_cols = ["proportion_events", "proportion_time"]
                 if not all(data_cols.get(col) for col in required_cols):
                     logger.error(f"発生率 ({measure}) の効果量計算に必要な列が不足しています: {required_cols}")
@@ -632,6 +636,28 @@ if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) &
                 measure=escalc_measure, events=data_cols["proportion_events"],
                 total=data_cols["proportion_total"], slab_param_string=slab_param_string
             )
+        elif measure == "COR": # 相関係数
+            required_cols = ["ri", "ni"]
+            if not all(data_cols.get(col) for col in required_cols):
+                logger.error(f"相関 ({measure}) の効果量計算に必要な列が不足しています: {required_cols}")
+                return "# Error: Missing columns for correlation effect size calculation"
+            return self._safe_format(
+                self.templates["escalc_correlation"],
+                measure=measure, ri=data_cols["ri"], ni=data_cols["ni"],
+                slab_param_string=slab_param_string
+            )
+        elif measure == "HR": # ハザード比（ログ変換データの自動検出対応）
+            # HRの場合、ログ変換済みかどうかを自動検出
+            yi_col = data_cols.get("yi")
+            vi_col = data_cols.get("vi") 
+            if yi_col and vi_col:
+                # ログ変換済みの場合は事前計算として扱う
+                logger.info("HR: ログ変換済みデータとして検出、事前計算効果量として処理")
+                return self.templates["escalc_precalculated"]
+            else:
+                # 生のHRデータの場合（現在未実装、将来的に対応予定）
+                logger.warning("HR: 生のハザード比データは現在未対応です。ログ変換済みのyiとviを使用してください。")
+                return "# Warning: Raw hazard ratio data not supported. Please use log-transformed yi and vi columns."
         elif measure == "PRE": # "yi" から "PRE" に変更 (パラメータ設定モーダルと合わせる)
             if not (data_cols.get("yi") and data_cols.get("vi")):
                 logger.error("事前計算された効果量を使用するには 'yi' と 'vi' 列が必要です。")
