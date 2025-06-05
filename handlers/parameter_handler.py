@@ -4,7 +4,8 @@ import time
 from slack_bolt import App
 from slack_sdk.errors import SlackApiError
 from core.metadata_manager import MetadataManager
-from utils.slack_utils import create_parameter_modal_blocks, create_simple_parameter_selection_blocks
+# Removed unused imports: create_parameter_modal_blocks, create_simple_parameter_selection_blocks
+# These are no longer needed due to migration to natural language interaction
 from handlers.analysis_handler import run_analysis_async 
 from utils.file_utils import get_r_output_dir
 from utils.parameter_extraction import extract_parameters_from_text, get_next_question
