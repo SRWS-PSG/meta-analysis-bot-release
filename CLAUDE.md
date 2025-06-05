@@ -290,7 +290,7 @@ heroku logs --tail
 heroku config
 ```
 
-**重要**: コード変更を本番環境に反映するには、`git push heroku main`が必要です。GitHubへのプッシュのみでは変更は反映されません。
+**重要**: コード変更を本番環境に反映するには、Githubへのpushが必要です。
 
 ### Local Development
 - Uses Socket Mode (no public URL needed)
