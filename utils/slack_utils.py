@@ -107,13 +107,12 @@ def create_analysis_start_message(analysis_result: Dict[str, Any], initial_param
 • 推奨効果量: {suggested_effect_type}
 • 推奨モデル: {suggested_model_type}{auto_detected_params}
 
-**解析パラメータを自然な日本語で教えてください。**
+**解析パラメータを教えてください。**
 
 例：
 • 「オッズ比でランダム効果モデルを使って解析して」
-• 「リスク比で固定効果モデルでお願いします」
 • 「SMDでREML法を使って、地域別のサブグループ解析も行って」
-• 「推奨設定のまま解析開始」（自動検出済みパラメータを使用）
+• 「このまま解析開始」（自動検出済みパラメータを使用）
 
 どのような解析をご希望ですか？"""
 
@@ -229,11 +228,11 @@ async def upload_files_to_slack(files_to_upload: List[Dict[str, str]], channel_i
             continue
 
         try:
-            # Slack SDKの files_upload_v2 を使用
+            # Slack SDKの files_upload_v2 を使用（fileパラメータで指定）
             response = await asyncio.to_thread(
                 client.files_upload_v2,
                 channel=channel_id,
-                filepath=file_path,
+                file=file_path,
                 title=file_title,
                 initial_comment=f"{file_title} ({job_id})",
                 thread_ts=thread_ts
