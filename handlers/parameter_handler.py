@@ -97,6 +97,60 @@ async def handle_natural_language_parameters(message, say, client, logger):
                     "model_type": state.collected_params.get("model_type", "random")
                 }
                 
+                # 初期検出された列マッピングを追加
+                if state.csv_analysis and "detected_columns" in state.csv_analysis:
+                    detected_cols = state.csv_analysis["detected_columns"]
+                    data_columns = {}
+                    
+                    # 二値アウトカム用の列マッピング
+                    if detected_cols.get("binary_intervention_events"):
+                        data_columns["ai"] = detected_cols["binary_intervention_events"][0]
+                    if detected_cols.get("binary_intervention_total"):
+                        # bi = total - events の計算用
+                        data_columns["n1i"] = detected_cols["binary_intervention_total"][0]
+                    if detected_cols.get("binary_control_events"):
+                        data_columns["ci"] = detected_cols["binary_control_events"][0]
+                    if detected_cols.get("binary_control_total"):
+                        # di = total - events の計算用
+                        data_columns["n2i"] = detected_cols["binary_control_total"][0]
+                    
+                    # 連続アウトカム用の列マッピング
+                    if detected_cols.get("continuous_intervention_mean"):
+                        data_columns["m1i"] = detected_cols["continuous_intervention_mean"][0]
+                    if detected_cols.get("continuous_intervention_sd"):
+                        data_columns["sd1i"] = detected_cols["continuous_intervention_sd"][0]
+                    if detected_cols.get("continuous_intervention_n"):
+                        data_columns["n1i"] = detected_cols["continuous_intervention_n"][0]
+                    if detected_cols.get("continuous_control_mean"):
+                        data_columns["m2i"] = detected_cols["continuous_control_mean"][0]
+                    if detected_cols.get("continuous_control_sd"):
+                        data_columns["sd2i"] = detected_cols["continuous_control_sd"][0]
+                    if detected_cols.get("continuous_control_n"):
+                        data_columns["n2i"] = detected_cols["continuous_control_n"][0]
+                    
+                    # 事前計算済み効果量用の列マッピング
+                    if detected_cols.get("effect_size_candidates"):
+                        data_columns["yi"] = detected_cols["effect_size_candidates"][0]
+                    if detected_cols.get("variance_candidates"):
+                        data_columns["vi"] = detected_cols["variance_candidates"][0]
+                    
+                    # 単一群比率用の列マッピング
+                    if detected_cols.get("proportion_events"):
+                        data_columns["proportion_events"] = detected_cols["proportion_events"][0]
+                    if detected_cols.get("proportion_total"):
+                        data_columns["proportion_total"] = detected_cols["proportion_total"][0]
+                    
+                    # 研究ID列
+                    if detected_cols.get("study_id_candidates"):
+                        data_columns["study_label"] = detected_cols["study_id_candidates"][0]
+                    
+                    # 列マッピングが見つかった場合のみ追加
+                    if data_columns:
+                        analysis_params["data_columns"] = data_columns
+                        logger.info(f"Added data_columns to analysis_params: {data_columns}")
+                
+                logger.info(f"Final analysis_params: {analysis_params}")
+                
                 # 解析を実行
                 from utils.file_utils import get_r_output_dir
                 job_id = state.file_info.get("job_id", "unknown_job")
