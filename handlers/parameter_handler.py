@@ -402,7 +402,8 @@ def register_parameter_handlers(app: App):
             state = get_or_create_state(thread_ts, channel_id)
             
             # パラメータ収集中でない場合はスキップ
-            if state.state != "analysis_preference":
+            from utils.conversation_state import DialogState
+            if state.state != DialogState.ANALYSIS_PREFERENCE:
                 logger.info(f"State is {state.state}, not analysis_preference. Skipping message processing.")
                 return
             
