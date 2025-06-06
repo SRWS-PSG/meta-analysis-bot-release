@@ -407,7 +407,47 @@ The bot leverages Google Gemini AI for sophisticated natural language processing
 
 ### 2025年6月6日の修正内容
 
-#### 1. Redis SSL証明書エラー
+#### 1. 解析結果の表示でN/A値が表示される問題
+**問題**: メタ解析完了後、結果サマリーで統合効果量や信頼区間が "N/A" と表示される
+```
+**【解析結果サマリー】**
+• 統合効果量: N/A
+• 95%信頼区間: N/A - N/A
+• 異質性: I²=N/A%
+• 研究数: N/A件
+```
+
+**原因**: `utils/slack_utils.py`の`create_analysis_result_message`関数でRスクリプトの出力フィールド名との不整合
+
+**Rスクリプトの実際の出力**:
+```json
+{
+  "overall_analysis": {
+    "k": 10,
+    "estimate": 1.45,
+    "ci_lb": 1.12,
+    "ci_ub": 1.88,
+    "I2": 45.2
+  }
+}
+```
+
+**修正**: 正しいフィールド名の使用 (`utils/slack_utils.py:97-133`)
+```python
+# Before (間違い)
+pooled_effect = summary.get('pooled_effect', summary.get('estimate', 'N/A'))
+ci_lower = summary.get('ci_lower', summary.get('ci_lb', 'N/A'))
+num_studies = summary.get('num_studies', 'N/A')
+
+# After (修正済み)
+pooled_effect = summary.get('estimate', 'N/A')  # Rが出力する実際のフィールド名
+ci_lower = summary.get('ci_lb', 'N/A')          # Rが出力する実際のフィールド名  
+num_studies = summary.get('k', 'N/A')           # Rが出力する実際のフィールド名
+```
+
+**コミット**: fb57b9a (2025-01-06)
+
+#### 2. Redis SSL証明書エラー
 **問題**: Heroku RedisのSSL接続で証明書検証エラーが発生
 ```
 Failed to initialize Redis: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain
