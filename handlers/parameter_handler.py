@@ -98,13 +98,21 @@ async def handle_natural_language_parameters(message, say, client, logger):
                 }
                 
                 # 解析を実行
+                from utils.file_utils import get_r_output_dir
+                job_id = state.file_info.get("job_id", "unknown_job")
+                r_output_dir = get_r_output_dir(job_id)
+                
                 await run_analysis_async(
-                    state.file_info,
-                    analysis_params,
-                    channel_id,
-                    thread_ts,
-                    client,
-                    logger
+                    payload=state.file_info,
+                    user_parameters=analysis_params,
+                    channel_id=channel_id,
+                    thread_ts=thread_ts,
+                    user_id=state.file_info.get("user_id", "unknown_user"),
+                    client=client,
+                    logger=logger,
+                    r_output_dir=r_output_dir,
+                    original_file_url=state.file_info.get("file_url"),
+                    original_file_name=state.file_info.get("original_filename", "data.csv")
                 )
                 
                 # 状態をリセット
