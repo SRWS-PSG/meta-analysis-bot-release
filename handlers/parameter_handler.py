@@ -93,7 +93,7 @@ async def handle_natural_language_parameters(message, say, client, logger):
                 # 解析パラメータを構築
                 analysis_params = {
                     "measure": state.collected_params.get("effect_size", "OR"),
-                    "method": state.collected_params.get("method", "REML"),
+                    "model": state.collected_params.get("method") or "REML",  # R template uses "model" not "method"
                     "model_type": state.collected_params.get("model_type", "random")
                 }
                 
@@ -133,6 +133,13 @@ async def handle_natural_language_parameters(message, say, client, logger):
                         data_columns["yi"] = detected_cols["effect_size_candidates"][0]
                     if detected_cols.get("variance_candidates"):
                         data_columns["vi"] = detected_cols["variance_candidates"][0]
+                    
+                    # HR解析の場合、log_hrとse_log_hrがyiとviとして使用される
+                    if state.collected_params.get("effect_size") == "HR":
+                        if state.collected_params.get("effect_size_columns"):
+                            data_columns["yi"] = state.collected_params["effect_size_columns"][0]
+                        if state.collected_params.get("variance_columns"):
+                            data_columns["vi"] = state.collected_params["variance_columns"][0]
                     
                     # 単一群比率用の列マッピング
                     if detected_cols.get("proportion_events"):
