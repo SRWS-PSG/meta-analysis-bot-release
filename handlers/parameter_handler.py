@@ -134,8 +134,27 @@ async def handle_natural_language_parameters(message, say, client, logger):
                     if detected_cols.get("variance_candidates"):
                         data_columns["vi"] = detected_cols["variance_candidates"][0]
                     
-                    # HR解析の場合、log_hrとse_log_hrがyiとviとして使用される
-                    if state.collected_params.get("effect_size") == "HR":
+                    # HR解析や他の事前計算済み効果量の場合の特別処理
+                    effect_size = state.collected_params.get("effect_size")
+                    if effect_size in ["HR", "OR", "RR"] and state.collected_params.get("effect_size_columns"):
+                        # ログ変換済みデータの列マッピング
+                        effect_col = state.collected_params["effect_size_columns"][0]
+                        variance_col = state.collected_params.get("variance_columns", [None])[0]
+                        
+                        # SE列の場合は2乗して分散に変換する処理が必要
+                        if variance_col and ("se_" in variance_col.lower() or "stderr" in variance_col.lower()):
+                            logger.info(f"SE列 {variance_col} を分散に変換する処理を設定")
+                            # R側で se^2 計算を行う指示
+                            data_columns["se_col_needs_squaring"] = variance_col
+                            data_columns["vi"] = f"{variance_col}_squared"  # R側で計算される列名
+                        elif variance_col:
+                            data_columns["vi"] = variance_col
+                        
+                        data_columns["yi"] = effect_col
+                        logger.info(f"事前計算済み効果量マッピング: yi={effect_col}, vi処理={data_columns.get('vi', 'なし')}")
+                        
+                    # 一般的な事前計算済み効果量（yi/vi形式）
+                    elif effect_size == "PRE" or (effect_size in ["SMD", "MD"] and state.collected_params.get("effect_size_columns")):
                         if state.collected_params.get("effect_size_columns"):
                             data_columns["yi"] = state.collected_params["effect_size_columns"][0]
                         if state.collected_params.get("variance_columns"):

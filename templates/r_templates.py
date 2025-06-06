@@ -958,6 +958,14 @@ if ("{subgroup_col}" %in% names(dat)) {{
         csv_path_cleaned = csv_file_path_in_script.replace('\\\\', '/')
         script_parts.append(f"dat <- read.csv('{csv_path_cleaned}')")
         
+        # SE列を分散に変換する処理
+        data_cols = analysis_params.get("data_columns", {})
+        se_col_needs_squaring = data_cols.get("se_col_needs_squaring")
+        if se_col_needs_squaring:
+            squared_col_name = f"{se_col_needs_squaring}_squared"
+            script_parts.append(f"# SE列を分散に変換")
+            script_parts.append(f"dat${squared_col_name} <- dat${se_col_needs_squaring}^2")
+        
         # 研究ラベル(slab)の準備
         data_cols = analysis_params.get("data_columns", {})
         study_label_author_col = data_cols.get("study_label_author")
