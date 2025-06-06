@@ -138,8 +138,29 @@ def _get_storage_backend():
         if STORAGE_BACKEND == 'redis':
             try:
                 import redis
+                import ssl
                 redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379')
-                _storage_backend = redis.from_url(redis_url, decode_responses=True)
+                
+                # Heroku Redis uses self-signed certificates, so we need to disable SSL verification
+                if redis_url.startswith('rediss://'):
+                    logger.info("Detected Redis SSL connection, configuring SSL settings...")
+                    # Create SSL context that doesn't verify certificates
+                    ssl_context = ssl.create_default_context()
+                    ssl_context.check_hostname = False
+                    ssl_context.verify_mode = ssl.CERT_NONE
+                    
+                    _storage_backend = redis.from_url(
+                        redis_url, 
+                        decode_responses=True,
+                        ssl_cert_reqs=None,
+                        ssl_ca_certs=None,
+                        ssl_keyfile=None,
+                        ssl_certfile=None,
+                        ssl_check_hostname=False
+                    )
+                else:
+                    _storage_backend = redis.from_url(redis_url, decode_responses=True)
+                
                 _storage_backend.ping()  # 接続テスト
                 logger.info("Redis storage backend initialized")
             except Exception as e:

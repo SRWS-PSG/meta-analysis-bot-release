@@ -16,6 +16,109 @@ from utils.conversation_state import get_or_create_state, save_state
 # Simple state management using thread_ts as key
 _parameter_states = {}
 
+# 自然言語パラメータ収集用のメッセージハンドラー（register_parameter_handlers外に移動）
+async def handle_natural_language_parameters(message, say, client, logger):
+    """自然言語でのパラメータ入力を処理（Gemini駆動の継続的対話）"""
+    try:
+        channel_id = message["channel"]
+        thread_ts = message.get("thread_ts")
+        user_text = message["text"]
+        
+        # スレッド内でのみ処理
+        if not thread_ts:
+            return
+        
+        # 会話状態を取得
+        state = get_or_create_state(thread_ts, channel_id)
+        
+        # パラメータ収集中でない場合はスキップ
+        from utils.conversation_state import DialogState
+        if state.state != DialogState.ANALYSIS_PREFERENCE:
+            logger.info(f"State is {state.state}, not analysis_preference. Skipping message processing.")
+            return
+        
+        logger.info(f"Processing natural language parameter input: {user_text}")
+        
+        # CSVの列名リストを取得
+        csv_columns = []
+        if state.csv_analysis and "detected_columns" in state.csv_analysis:
+            detected_cols = state.csv_analysis["detected_columns"]
+            for candidates in detected_cols.values():
+                if isinstance(candidates, list):
+                    csv_columns.extend(candidates)
+        
+        # 会話履歴の確認とログ
+        logger.info(f"Conversation history before adding user input: {len(state.conversation_history)} messages")
+        if state.conversation_history:
+            logger.info(f"Last message in history: role={state.conversation_history[-1].get('role')}, content={state.conversation_history[-1].get('content')[:100]}...")
+        
+        # ユーザーの入力を履歴に追加
+        state.conversation_history.append({
+            "role": "user",
+            "content": user_text
+        })
+        logger.info(f"Added user input to conversation history. New length: {len(state.conversation_history)}")
+        
+        # Geminiでパラメータを抽出して応答を生成
+        from utils.gemini_dialogue import process_user_input_with_gemini
+        
+        response = await process_user_input_with_gemini(
+            user_input=user_text,
+            csv_columns=csv_columns,
+            current_params=state.collected_params,
+            conversation_history=state.conversation_history,
+            csv_analysis=state.csv_analysis
+        )
+        
+        if response:
+            # パラメータを更新
+            if response.get("extracted_params"):
+                state.update_params(response["extracted_params"])
+                logger.info(f"Updated parameters: {response['extracted_params']}")
+            
+            # Geminiの応答を送信
+            bot_message = response.get("bot_message")
+            if bot_message:
+                await say(bot_message)
+                # ボットの応答を履歴に追加
+                state.conversation_history.append({
+                    "role": "assistant",
+                    "content": bot_message
+                })
+            
+            # 解析準備完了チェック
+            if response.get("is_ready_to_analyze"):
+                await say("🚀 パラメータ収集が完了しました。解析を開始します...")
+                
+                # 解析パラメータを構築
+                analysis_params = {
+                    "measure": state.collected_params.get("effect_size", "OR"),
+                    "method": state.collected_params.get("method", "REML"),
+                    "model_type": state.collected_params.get("model_type", "random")
+                }
+                
+                # 解析を実行
+                await run_analysis_async(
+                    state.file_info,
+                    analysis_params,
+                    channel_id,
+                    thread_ts,
+                    client,
+                    logger
+                )
+                
+                # 状態をリセット
+                state.state = "COMPLETED"
+            
+            save_state(state)
+        else:
+            logger.error("Failed to get response from Gemini")
+            await say("申し訳ございません。応答の生成に失敗しました。もう一度お試しください。")
+            
+    except Exception as e:
+        logger.error(f"Error processing natural language parameters: {e}", exc_info=True)
+        await say(f"❌ パラメータ処理中にエラーが発生しました: {str(e)}")
+
 def register_parameter_handlers(app: App):
     """パラメータ収集と解析開始に関連するハンドラーを登録"""
 
@@ -386,108 +489,6 @@ def register_parameter_handlers(app: App):
         # 必要であれば、関連するmetadataをクリアする処理などをここに追加
         # (例: 特定のストレージからこのjob_idの情報を削除する)
     
-    # 自然言語パラメータ収集用のメッセージハンドラー
-    async def handle_natural_language_parameters(message, say, client, logger):
-        """自然言語でのパラメータ入力を処理（Gemini駆動の継続的対話）"""
-        try:
-            channel_id = message["channel"]
-            thread_ts = message.get("thread_ts")
-            user_text = message["text"]
-            
-            # スレッド内でのみ処理
-            if not thread_ts:
-                return
-            
-            # 会話状態を取得
-            state = get_or_create_state(thread_ts, channel_id)
-            
-            # パラメータ収集中でない場合はスキップ
-            from utils.conversation_state import DialogState
-            if state.state != DialogState.ANALYSIS_PREFERENCE:
-                logger.info(f"State is {state.state}, not analysis_preference. Skipping message processing.")
-                return
-            
-            logger.info(f"Processing natural language parameter input: {user_text}")
-            
-            # CSVの列名リストを取得
-            csv_columns = []
-            if state.csv_analysis and "detected_columns" in state.csv_analysis:
-                detected_cols = state.csv_analysis["detected_columns"]
-                for candidates in detected_cols.values():
-                    if isinstance(candidates, list):
-                        csv_columns.extend(candidates)
-            
-            # 会話履歴の確認とログ
-            logger.info(f"Conversation history before adding user input: {len(state.conversation_history)} messages")
-            if state.conversation_history:
-                logger.info(f"Last message in history: role={state.conversation_history[-1].get('role')}, content={state.conversation_history[-1].get('content')[:100]}...")
-            
-            # ユーザーの入力を履歴に追加
-            state.conversation_history.append({
-                "role": "user",
-                "content": user_text
-            })
-            logger.info(f"Added user input to conversation history. New length: {len(state.conversation_history)}")
-            
-            # Geminiでパラメータを抽出して応答を生成
-            from utils.gemini_dialogue import process_user_input_with_gemini
-            
-            response = await process_user_input_with_gemini(
-                user_input=user_text,
-                csv_columns=csv_columns,
-                current_params=state.collected_params,
-                conversation_history=state.conversation_history,
-                csv_analysis=state.csv_analysis
-            )
-            
-            if response:
-                # パラメータを更新
-                if response.get("extracted_params"):
-                    state.update_params(response["extracted_params"])
-                    logger.info(f"Updated parameters: {response['extracted_params']}")
-                
-                # Geminiの応答を送信
-                bot_message = response.get("bot_message")
-                if bot_message:
-                    await say(bot_message)
-                    # ボットの応答を履歴に追加
-                    state.conversation_history.append({
-                        "role": "assistant",
-                        "content": bot_message
-                    })
-                
-                # 解析準備完了チェック
-                if response.get("is_ready_to_analyze"):
-                    await say("🚀 パラメータ収集が完了しました。解析を開始します...")
-                    
-                    # 解析パラメータを構築
-                    analysis_params = {
-                        "measure": state.collected_params.get("effect_size", "OR"),
-                        "method": state.collected_params.get("method", "REML"),
-                        "model_type": state.collected_params.get("model_type", "random")
-                    }
-                    
-                    # 解析を実行
-                    await run_analysis_async(
-                        state.file_info,
-                        analysis_params,
-                        channel_id,
-                        thread_ts,
-                        client,
-                        logger
-                    )
-                    
-                    # 状態をリセット
-                    state.state = "COMPLETED"
-                
-                save_state(state)
-            else:
-                logger.error("Failed to get response from Gemini")
-                await say("申し訳ございません。応答の生成に失敗しました。もう一度お試しください。")
-                
-        except Exception as e:
-            logger.error(f"Error processing natural language parameters: {e}", exc_info=True)
-            await say(f"❌ パラメータ処理中にエラーが発生しました: {str(e)}")
     
     # メッセージハンドラーは統一ハンドラーから呼び出されるため、ここでは登録しない
     # 代わりに、main.pyで統一されたメッセージハンドラーを登録
