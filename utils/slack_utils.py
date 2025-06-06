@@ -21,8 +21,24 @@ def create_analysis_start_message(analysis_result: Dict[str, Any], initial_param
     suggested_effect_type = suggested_analysis.get("effect_type_suggestion", "未検出")
     suggested_model_type = suggested_analysis.get("model_type_suggestion", "未検出")
     
-    # 研究数を取得
-    num_studies = len(analysis_result.get("data_preview", [])) if analysis_result.get("data_preview") else "不明"
+    # 配列として返される場合の処理
+    if isinstance(suggested_effect_type, list):
+        suggested_effect_type = ", ".join(suggested_effect_type) if suggested_effect_type else "未検出"
+    if isinstance(suggested_model_type, list):
+        suggested_model_type = ", ".join(suggested_model_type) if suggested_model_type else "未検出"
+    
+    # 研究数を取得（Geminiが返すnum_studiesフィールドを優先）
+    num_studies = analysis_result.get("num_studies", "不明")
+    if num_studies == "不明":
+        # フォールバック: reasonから抽出を試みる
+        reason = analysis_result.get("reason", "")
+        import re
+        study_count_match = re.search(r'(\d+)件?の?研究', reason)
+        if study_count_match:
+            num_studies = study_count_match.group(1)
+        else:
+            data_preview = analysis_result.get("data_preview", [])
+            num_studies = f"{len(data_preview)}+ (サンプル表示)" if data_preview else "不明"
     
     # 初期パラメータの表示
     auto_detected_params = ""

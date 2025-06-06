@@ -29,17 +29,22 @@ class GeminiClient:
         """CSV内容を分析してメタ解析への適合性を評価"""
         logger.info(f"analyze_csv called with content length: {len(csv_content)}")
         # プロンプトを改善し、より堅牢なJSON出力を目指す
+        # CSVの行数をカウント
+        csv_lines = csv_content.strip().split('\n')
+        data_rows = len(csv_lines) - 1 if csv_lines else 0  # ヘッダーを除く
+        
         prompt = f"""
-        以下のCSVデータの最初の50行と列名を分析し、メタ解析に適しているかを評価してください。
+        以下のCSVデータを分析し、メタ解析に適しているかを評価してください。
         特に、効果量(effect size)、その標準誤差(standard error)または分散(variance)、研究のサンプルサイズ(sample size)、研究を識別するID(study ID)として利用できそうな列があるか確認してください。
 
-        CSV内容 (最初の50行程度):
+        CSV内容 (全{data_rows}行のデータ):
         {csv_content[:3000]}  # 文字数制限を少し増やす
 
         以下のJSON形式で、キーと値がダブルクォートで囲まれた厳密なJSONで回答してください:
         {{
             "is_suitable": boolean,
-            "reason": "メタ解析への適合性に関する具体的な理由（日本語）",
+            "reason": "メタ解析への適合性に関する具体的な理由（日本語）。必ず「{data_rows}件の研究」のように実際の研究数を明記してください。",
+            "num_studies": {data_rows},
             "detected_columns": {{
                 "effect_size_candidates": ["効果量として使えそうな列名の候補リスト"],
                 "variance_candidates": ["分散/標準誤差として使えそうな列名の候補リスト"],
@@ -47,7 +52,7 @@ class GeminiClient:
                 "study_id_candidates": ["研究IDとして使えそうな列名の候補リスト"]
             }},
             "suggested_analysis": {{
-                "effect_type_suggestion": "SMD, OR, RR, MDなど、検出されたデータから推測される効果量の種類（複数可、または不明）",
+                "effect_type_suggestion": "SMD, OR, RR, MDなど、検出されたデータから推測される効果量の種類（単一の文字列で、最も適切なもの1つ）",
                 "model_type_suggestion": "randomまたはfixed（通常はrandomを推奨）"
             }},
             "column_descriptions": {{
@@ -59,8 +64,12 @@ class GeminiClient:
                 {{"column1": "row2_val1", "column2": "row2_val2"}}
             ]
         }}
-        data_previewにはCSVの最初の2行分のデータを含めてください。
-        もしCSVデータが不適切で解析できない場合は、is_suitableをfalseにし、reasonにその旨を記載してください。
+        
+        重要な注意点：
+        - effect_type_suggestionは配列ではなく、単一の文字列（最も適切な効果量1つ）で回答してください
+        - 実際の研究数は{data_rows}件です
+        - data_previewにはCSVの最初の2行分のデータを含めてください
+        - もしCSVデータが不適切で解析できない場合は、is_suitableをfalseにし、reasonにその旨を記載してください
         """
         
         try:

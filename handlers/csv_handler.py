@@ -199,11 +199,16 @@ async def process_csv_async(file_info, channel_id, user_id, client, logger, thre
         # 効果量タイプの推定
         if suggested.get("effect_type_suggestion"):
             effect_type = suggested["effect_type_suggestion"]
-            # カンマ区切りで複数の候補がある場合は最初のものを使用
-            if "," in effect_type:
+            # 配列として返される場合の処理
+            if isinstance(effect_type, list):
+                effect_type = effect_type[0] if effect_type else None
+            # 文字列でカンマ区切りの場合の処理
+            elif isinstance(effect_type, str) and "," in effect_type:
                 effect_type = effect_type.split(",")[0].strip()
-            initial_params["effect_size"] = effect_type
-            logger.info(f"Gemini suggested effect type: {effect_type}")
+            
+            if effect_type:
+                initial_params["effect_size"] = effect_type
+                logger.info(f"Gemini suggested effect type: {effect_type}")
         
         # モデルタイプの推定
         if suggested.get("model_type_suggestion"):
