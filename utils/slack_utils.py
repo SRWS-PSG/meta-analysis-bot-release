@@ -9,11 +9,43 @@ logger = logging.getLogger(__name__) # upload_files_to_slack のために追加
 def create_analysis_start_message(analysis_result: Dict[str, Any], initial_params: Optional[Dict[str, Any]] = None) -> str:
     """CSV分析結果を自然言語メッセージとして作成（Button UI削除）"""
     detected_cols = analysis_result.get("detected_columns", {})
+    
+    # 各種データタイプの列候補を取得
     effect_candidates = detected_cols.get("effect_size_candidates", [])
     variance_candidates = detected_cols.get("variance_candidates", [])
+    binary_intervention_events = detected_cols.get("binary_intervention_events", [])
+    binary_control_events = detected_cols.get("binary_control_events", [])
+    continuous_intervention_mean = detected_cols.get("continuous_intervention_mean", [])
+    continuous_control_mean = detected_cols.get("continuous_control_mean", [])
     study_id_candidates = detected_cols.get("study_id_candidates", [])
     
-    effect_display = ", ".join(effect_candidates[:3]) if effect_candidates else "検出されませんでした"
+    # 表示用の候補を構築
+    data_type_info = []
+    
+    # 事前計算済み効果量データ
+    if effect_candidates:
+        data_type_info.append(f"事前計算済み効果量: {', '.join(effect_candidates[:2])}")
+    
+    # 二値アウトカムデータ
+    binary_candidates = []
+    if binary_intervention_events:
+        binary_candidates.extend(binary_intervention_events[:1])
+    if binary_control_events:
+        binary_candidates.extend(binary_control_events[:1])
+    if binary_candidates:
+        data_type_info.append(f"二値アウトカム: {', '.join(binary_candidates)}")
+    
+    # 連続アウトカムデータ
+    continuous_candidates = []
+    if continuous_intervention_mean:
+        continuous_candidates.extend(continuous_intervention_mean[:1])
+    if continuous_control_mean:
+        continuous_candidates.extend(continuous_control_mean[:1])
+    if continuous_candidates:
+        data_type_info.append(f"連続アウトカム: {', '.join(continuous_candidates)}")
+    
+    # 表示用文字列の作成
+    effect_display = "; ".join(data_type_info) if data_type_info else "検出されませんでした"
     variance_display = ", ".join(variance_candidates[:3]) if variance_candidates else "検出されませんでした"
     study_id_display = ", ".join(study_id_candidates[:2]) if study_id_candidates else "検出されませんでした"
 
@@ -58,7 +90,7 @@ def create_analysis_start_message(analysis_result: Dict[str, Any], initial_param
 
 **データセット概要:**
 • 研究数: {num_studies}件
-• 効果量候補列: {effect_display}
+• 検出データ: {effect_display}
 • 分散/SE候補列: {variance_display}
 • 研究ID候補列: {study_id_display}
 • 推奨効果量: {suggested_effect_type}

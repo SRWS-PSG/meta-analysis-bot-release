@@ -227,13 +227,35 @@ async def process_csv_async(file_info, channel_id, user_id, client, logger, thre
             if detected_cols.get("study_id_candidates"):
                 initial_params["study_column"] = detected_cols["study_id_candidates"][0]
             
-            # 効果量列の候補を保存（後で使用）
+            # 事前計算済み効果量データ
             if detected_cols.get("effect_size_candidates"):
                 initial_params["effect_size_columns"] = detected_cols["effect_size_candidates"]
-            
-            # 分散/標準誤差列の候補を保存
             if detected_cols.get("variance_candidates"):
                 initial_params["variance_columns"] = detected_cols["variance_candidates"]
+            
+            # 二値アウトカムデータ
+            if detected_cols.get("binary_intervention_events"):
+                initial_params["binary_intervention_events"] = detected_cols["binary_intervention_events"]
+            if detected_cols.get("binary_intervention_total"):
+                initial_params["binary_intervention_total"] = detected_cols["binary_intervention_total"]
+            if detected_cols.get("binary_control_events"):
+                initial_params["binary_control_events"] = detected_cols["binary_control_events"]
+            if detected_cols.get("binary_control_total"):
+                initial_params["binary_control_total"] = detected_cols["binary_control_total"]
+            
+            # 連続アウトカムデータ
+            if detected_cols.get("continuous_intervention_mean"):
+                initial_params["continuous_intervention_mean"] = detected_cols["continuous_intervention_mean"]
+            if detected_cols.get("continuous_intervention_sd"):
+                initial_params["continuous_intervention_sd"] = detected_cols["continuous_intervention_sd"]
+            if detected_cols.get("continuous_intervention_n"):
+                initial_params["continuous_intervention_n"] = detected_cols["continuous_intervention_n"]
+            if detected_cols.get("continuous_control_mean"):
+                initial_params["continuous_control_mean"] = detected_cols["continuous_control_mean"]
+            if detected_cols.get("continuous_control_sd"):
+                initial_params["continuous_control_sd"] = detected_cols["continuous_control_sd"]
+            if detected_cols.get("continuous_control_n"):
+                initial_params["continuous_control_n"] = detected_cols["continuous_control_n"]
                 
             # サンプルサイズ列の候補を保存
             if detected_cols.get("sample_size_candidates"):

@@ -37,10 +37,15 @@ class GeminiClient:
         
         prompt = f"""
         以下のCSVデータを分析し、メタ解析に適しているかを評価してください。
-        特に、効果量(effect size)、その標準誤差(standard error)または分散(variance)、研究のサンプルサイズ(sample size)、研究を識別するID(study ID)として利用できそうな列があるか確認してください。
+        メタ解析で使用可能な列の種類を特定してください：
+
+        1. 事前計算済み効果量データ: effect size列とvariance/standard error列
+        2. 二値アウトカムデータ: 介入群・対照群のイベント数と総数
+        3. 連続アウトカムデータ: 各群の平均値、標準偏差、サンプルサイズ
+        4. 比率・発生率データ: イベント数と観察時間/総数
 
         CSV内容 (全{data_rows}行のデータ):
-        {csv_content[:3000]}  # 文字数制限を少し増やす
+        {csv_content[:3000]}
 
         以下のJSON形式で、キーと値がダブルクォートで囲まれた厳密なJSONで回答してください:
         {{
@@ -48,13 +53,23 @@ class GeminiClient:
             "reason": "メタ解析への適合性に関する具体的な理由（日本語）。必ず「{data_rows}件の研究」のように実際の研究数を明記してください。",
             "num_studies": {data_rows},
             "detected_columns": {{
-                "effect_size_candidates": ["効果量として使えそうな列名の候補リスト"],
-                "variance_candidates": ["分散/標準誤差として使えそうな列名の候補リスト"],
-                "sample_size_candidates": ["サンプルサイズとして使えそうな列名の候補リスト"],
-                "study_id_candidates": ["研究IDとして使えそうな列名の候補リスト"]
+                "effect_size_candidates": ["事前計算済み効果量列（例: effect_size, logOR, SMD）"],
+                "variance_candidates": ["分散/標準誤差列（例: variance, SE, standard_error）"],
+                "binary_intervention_events": ["介入群のイベント数列（例: intervention_events, treatment_success）"],
+                "binary_intervention_total": ["介入群の総数列（例: intervention_total, treatment_n）"],
+                "binary_control_events": ["対照群のイベント数列（例: control_events, control_success）"],
+                "binary_control_total": ["対照群の総数列（例: control_total, control_n）"],
+                "continuous_intervention_mean": ["介入群平均列（例: intervention_mean, treatment_mean）"],
+                "continuous_intervention_sd": ["介入群標準偏差列（例: intervention_sd, treatment_sd）"],
+                "continuous_intervention_n": ["介入群サンプルサイズ列（例: intervention_n, treatment_n）"],
+                "continuous_control_mean": ["対照群平均列（例: control_mean, placebo_mean）"],
+                "continuous_control_sd": ["対照群標準偏差列（例: control_sd, placebo_sd）"],
+                "continuous_control_n": ["対照群サンプルサイズ列（例: control_n, placebo_n）"],
+                "sample_size_candidates": ["全体サンプルサイズ列（例: total_n, sample_size）"],
+                "study_id_candidates": ["研究ID列（例: study, author, study_id）"]
             }},
             "suggested_analysis": {{
-                "effect_type_suggestion": "SMD, OR, RR, MDなど、検出されたデータから推測される効果量の種類（単一の文字列で、最も適切なもの1つ）",
+                "effect_type_suggestion": "データの種類に基づいた推奨効果量（OR, RR, SMD, MD, PRE等、単一の文字列）",
                 "model_type_suggestion": "randomまたはfixed（通常はrandomを推奨）"
             }},
             "column_descriptions": {{
@@ -68,10 +83,11 @@ class GeminiClient:
         }}
         
         重要な注意点：
-        - effect_type_suggestionは配列ではなく、単一の文字列（最も適切な効果量1つ）で回答してください
+        - 列名は大文字小文字を区別して正確に記載してください
+        - 二値アウトカムデータの場合、binary_intervention_events/binary_control_eventsが主要な効果量計算の元となります
+        - 事前計算済み効果量がある場合は、effect_size_candidatesに記載してください
+        - データの種類に応じて適切な効果量タイプを推奨してください（二値→OR/RR、連続→SMD/MD等）
         - 実際の研究数は{data_rows}件です
-        - data_previewにはCSVの最初の2行分のデータを含めてください
-        - もしCSVデータが不適切で解析できない場合は、is_suitableをfalseにし、reasonにその旨を記載してください
         """
         
         try:
