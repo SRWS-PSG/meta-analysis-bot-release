@@ -29,9 +29,11 @@ class GeminiClient:
         """CSV内容を分析してメタ解析への適合性を評価"""
         logger.info(f"analyze_csv called with content length: {len(csv_content)}")
         # プロンプトを改善し、より堅牢なJSON出力を目指す
-        # CSVの行数をカウント
-        csv_lines = csv_content.strip().split('\n')
+        # CSVの行数をカウント（空行を除外し、より堅牢に）
+        csv_lines = [line.strip() for line in csv_content.strip().split('\n') if line.strip()]
         data_rows = len(csv_lines) - 1 if csv_lines else 0  # ヘッダーを除く
+        logger.info(f"CSV analysis: {len(csv_lines)} total lines, {data_rows} data rows")
+        logger.info(f"CSV content preview: {csv_content[:500]}...")
         
         prompt = f"""
         以下のCSVデータを分析し、メタ解析に適しているかを評価してください。
