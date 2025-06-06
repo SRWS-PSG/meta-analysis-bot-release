@@ -163,13 +163,68 @@ def create_analysis_result_message(analysis_result_from_r: Dict[str, Any]) -> st
     if isinstance(i2_value, (int, float)):
         i2_value = f"{i2_value:.1f}"
     
+    # サブグループ解析結果を追加
+    subgroup_text = ""
+    for key, value in summary.items():
+        if key.startswith('subgroup_moderation_test_'):
+            subgroup_var = key.replace('subgroup_moderation_test_', '')
+            if isinstance(value, dict):
+                qm_p = value.get('QMp', 'N/A')
+                if isinstance(qm_p, (int, float)):
+                    qm_p = f"{qm_p:.3f}"
+                subgroup_text += f"\n• {subgroup_var}別サブグループ解析: p={qm_p}"
+        
+        elif key.startswith('subgroup_analyses_'):
+            subgroup_var = key.replace('subgroup_analyses_', '')
+            if isinstance(value, dict):
+                subgroup_text += f"\n\n**【{subgroup_var}別サブグループ結果】**"
+                for level_name, level_result in value.items():
+                    if isinstance(level_result, dict):
+                        sg_estimate = level_result.get('estimate', 'N/A')
+                        sg_ci_lb = level_result.get('ci_lb', 'N/A')
+                        sg_ci_ub = level_result.get('ci_ub', 'N/A')
+                        sg_k = level_result.get('k', 'N/A')
+                        
+                        if isinstance(sg_estimate, (int, float)):
+                            sg_estimate = f"{sg_estimate:.3f}"
+                        if isinstance(sg_ci_lb, (int, float)):
+                            sg_ci_lb = f"{sg_ci_lb:.3f}"
+                        if isinstance(sg_ci_ub, (int, float)):
+                            sg_ci_ub = f"{sg_ci_ub:.3f}"
+                        
+                        subgroup_text += f"\n• {level_name}: 効果量={sg_estimate} [{sg_ci_lb}, {sg_ci_ub}] (k={sg_k})"
+    
+    # メタ回帰結果を追加
+    meta_regression_text = ""
+    meta_regression_results = summary.get('meta_regression_results')
+    if meta_regression_results:
+        qm_p = meta_regression_results.get('QMp', 'N/A')
+        if isinstance(qm_p, (int, float)):
+            qm_p = f"{qm_p:.3f}"
+        meta_regression_text = f"\n• メタ回帰分析: p={qm_p}"
+        
+        moderators = meta_regression_results.get('moderators', {})
+        if moderators:
+            meta_regression_text += f"\n\n**【メタ回帰結果】**"
+            for mod_name, mod_result in moderators.items():
+                if isinstance(mod_result, dict):
+                    mod_estimate = mod_result.get('estimate', 'N/A')
+                    mod_pval = mod_result.get('pval', 'N/A')
+                    
+                    if isinstance(mod_estimate, (int, float)):
+                        mod_estimate = f"{mod_estimate:.3f}"
+                    if isinstance(mod_pval, (int, float)):
+                        mod_pval = f"{mod_pval:.3f}"
+                    
+                    meta_regression_text += f"\n• {mod_name}: 係数={mod_estimate}, p={mod_pval}"
+    
     message = f"""📊 **メタ解析が完了しました！**
 
 **【解析結果サマリー】**
 • 統合効果量: {pooled_effect}
 • 95%信頼区間: {ci_lower} - {ci_upper}
 • 異質性: I²={i2_value}%
-• 研究数: {num_studies}件
+• 研究数: {num_studies}件{subgroup_text}{meta_regression_text}
 
 ファイルが添付されています：
 • フォレストプロット

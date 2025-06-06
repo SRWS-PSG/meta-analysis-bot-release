@@ -698,6 +698,12 @@ if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) &
     def _generate_subgroup_code(self, analysis_params: Dict[str, Any]) -> str:
         subgroup_columns = analysis_params.get("subgroup_columns", [])
         method = analysis_params.get("model", "REML") # "method" から "model" に変更
+        data_cols = analysis_params.get("data_columns", {})
+        
+        # 実際の列名を取得
+        yi_col = data_cols.get("yi", "yi")
+        vi_col = data_cols.get("vi", "vi")
+        
         if not subgroup_columns:
             return ""
         
@@ -707,7 +713,8 @@ if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) &
             subgroup_test_model_code = self._safe_format(
                 self.templates["rma_with_mods"], # mods を使うテンプレート
                 method=method, 
-                mods_formula=f"factor({subgroup_col})" # サブグループ列をfactorとして指定
+                mods_formula=f"factor({subgroup_col})", # サブグループ列をfactorとして指定
+                yi_col=yi_col, vi_col=vi_col
             ).replace("res <-", f"res_subgroup_test_{subgroup_col} <-")
             
             # 各サブグループごとの解析結果を格納するリストを作成 (res_by_subgroup_{subgroup_col} に結果を格納)
@@ -720,7 +727,7 @@ if ("{subgroup_col}" %in% names(dat)) {{
         current_data_sg <- dat_split_{subgroup_col}[[level_name]]
         if (nrow(current_data_sg) > 0) {{
             tryCatch({{
-                rma_result_sg <- rma(yi, vi, data=current_data_sg, method="{method}")
+                rma_result_sg <- rma({yi_col}, {vi_col}, data=current_data_sg, method="{method}")
                 # 結果にレベル名を追加して返す (後でアクセスしやすくするため)
                 rma_result_sg$subgroup_level <- level_name 
                 return(rma_result_sg)
