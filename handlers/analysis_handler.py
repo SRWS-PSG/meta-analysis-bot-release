@@ -87,11 +87,22 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
             logger.error("run_analysis_async: CSVファイルのURLがpayloadにありません。")
             raise ValueError("CSV file URL is missing.")
 
-        r_executor = RAnalysisExecutor(r_output_dir=r_output_dir, csv_file_path=temp_csv_path)
+        r_executor = RAnalysisExecutor(r_output_dir=r_output_dir, csv_file_path=temp_csv_path, job_id=payload["job_id"])
+        
+        # data_summary を準備（CSVの基本情報）
+        data_summary = {
+            "csv_file_path": str(temp_csv_path),
+            "csv_analysis": payload.get("csv_analysis", {}),
+            "detected_columns": payload.get("csv_analysis", {}).get("detected_columns", {}),
+            "file_info": {
+                "filename": original_file_name,
+                "job_id": payload["job_id"]
+            }
+        }
+        
         analysis_result_from_r = await r_executor.execute_meta_analysis(
-            analysis_params=user_parameters, # RTemplateGeneratorが期待するパラメータ構造に合わせる
-            # csv_analysis=payload["csv_analysis"], # これはGeminiの分析結果なのでR実行には直接使わないことが多い
-            # job_id=payload["job_id"], # RExecutor内で使うか検討
+            analysis_params=user_parameters,
+            data_summary=data_summary
         )
         
         # analysis_result_from_r["files"] は {"type": "path"} の辞書を想定
