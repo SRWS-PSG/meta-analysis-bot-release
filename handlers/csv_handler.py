@@ -256,6 +256,14 @@ async def process_csv_async(file_info, channel_id, user_id, client, logger, thre
                 initial_params["continuous_control_sd"] = detected_cols["continuous_control_sd"]
             if detected_cols.get("continuous_control_n"):
                 initial_params["continuous_control_n"] = detected_cols["continuous_control_n"]
+            
+            # 単一群比率データ
+            if detected_cols.get("proportion_events"):
+                initial_params["proportion_events"] = detected_cols["proportion_events"]
+            if detected_cols.get("proportion_total"):
+                initial_params["proportion_total"] = detected_cols["proportion_total"]
+            if detected_cols.get("proportion_time"):
+                initial_params["proportion_time"] = detected_cols["proportion_time"]
                 
             # サンプルサイズ列の候補を保存
             if detected_cols.get("sample_size_candidates"):

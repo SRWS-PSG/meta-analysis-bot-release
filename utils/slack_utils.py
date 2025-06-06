@@ -17,6 +17,8 @@ def create_analysis_start_message(analysis_result: Dict[str, Any], initial_param
     binary_control_events = detected_cols.get("binary_control_events", [])
     continuous_intervention_mean = detected_cols.get("continuous_intervention_mean", [])
     continuous_control_mean = detected_cols.get("continuous_control_mean", [])
+    proportion_events = detected_cols.get("proportion_events", [])
+    proportion_total = detected_cols.get("proportion_total", [])
     study_id_candidates = detected_cols.get("study_id_candidates", [])
     
     # 表示用の候補を構築
@@ -43,6 +45,15 @@ def create_analysis_start_message(analysis_result: Dict[str, Any], initial_param
         continuous_candidates.extend(continuous_control_mean[:1])
     if continuous_candidates:
         data_type_info.append(f"連続アウトカム: {', '.join(continuous_candidates)}")
+    
+    # 単一群比率データ
+    proportion_candidates = []
+    if proportion_events:
+        proportion_candidates.extend(proportion_events[:1])
+    if proportion_total:
+        proportion_candidates.extend(proportion_total[:1])
+    if proportion_candidates:
+        data_type_info.append(f"単一群比率: {', '.join(proportion_candidates)}")
     
     # 表示用文字列の作成
     effect_display = "; ".join(data_type_info) if data_type_info else "検出されませんでした"

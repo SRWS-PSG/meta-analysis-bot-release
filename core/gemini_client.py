@@ -42,7 +42,8 @@ class GeminiClient:
         1. 事前計算済み効果量データ: effect size列とvariance/standard error列
         2. 二値アウトカムデータ: 介入群・対照群のイベント数と総数
         3. 連続アウトカムデータ: 各群の平均値、標準偏差、サンプルサイズ
-        4. 比率・発生率データ: イベント数と観察時間/総数
+        4. 単一群比率データ: イベント数と総数
+        5. 発生率データ: イベント数と観察時間
 
         CSV内容 (全{data_rows}行のデータ):
         {csv_content[:3000]}
@@ -65,6 +66,9 @@ class GeminiClient:
                 "continuous_control_mean": ["対照群平均列（例: control_mean, placebo_mean）"],
                 "continuous_control_sd": ["対照群標準偏差列（例: control_sd, placebo_sd）"],
                 "continuous_control_n": ["対照群サンプルサイズ列（例: control_n, placebo_n）"],
+                "proportion_events": ["単一群の比率データ：イベント数列（例: events, successes）"],
+                "proportion_total": ["単一群の比率データ：総数列（例: total, n, sample_size）"],
+                "proportion_time": ["発生率データ：観察時間列（例: time, person_years）"],
                 "sample_size_candidates": ["全体サンプルサイズ列（例: total_n, sample_size）"],
                 "study_id_candidates": ["研究ID列（例: study, author, study_id）"]
             }},
@@ -85,8 +89,9 @@ class GeminiClient:
         重要な注意点：
         - 列名は大文字小文字を区別して正確に記載してください
         - 二値アウトカムデータの場合、binary_intervention_events/binary_control_eventsが主要な効果量計算の元となります
+        - 単一群比率データの場合、proportion_events/proportion_totalが主要な効果量計算の元となります
         - 事前計算済み効果量がある場合は、effect_size_candidatesに記載してください
-        - データの種類に応じて適切な効果量タイプを推奨してください（二値→OR/RR、連続→SMD/MD等）
+        - データの種類に応じて適切な効果量タイプを推奨してください（二値→OR/RR、連続→SMD/MD、比率→PLO/PR等）
         - 実際の研究数は{data_rows}件です
         """
         
