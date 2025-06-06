@@ -215,7 +215,7 @@ def register_parameter_handlers(app: App):
             await client.chat_postMessage(
                 channel=channel_id,
                 thread_ts=thread_ts,
-                text="🤖 解析パラメータを自然な日本語で教えてください。\n\n例：\n・「オッズ比でランダム効果モデルで解析してください」\n・「リスク比で固定効果モデルでお願いします」\n・「SMDでREML法を使って解析してください」"
+                text="🤖 解析パラメータを教えてください。\n\n例：\n・「オッズ比でランダム効果モデルで解析してください」\n・「リスク比で固定効果モデルでお願いします」\n・「SMDでREML法を使って解析してください」"
             )
             
         except SlackApiError as e:
