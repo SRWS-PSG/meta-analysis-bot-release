@@ -177,6 +177,29 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
             metadata=completion_metadata
         )
         
+        # 解釈レポート生成を自動的に開始
+        from handlers.report_handler import generate_report_async
+        
+        # report_handlerが期待するpayload構造を作成
+        report_payload = {
+            "job_id": payload["job_id"],
+            "result_summary": r_summary_for_metadata,
+            "stage": "awaiting_interpretation",
+            "user_id": user_id,
+            "original_file_id": payload.get("file_id"),
+            "uploaded_files": files_uploaded_info,
+            "r_stdout": analysis_result_from_r.get("stdout", ""),
+            "r_stderr": analysis_result_from_r.get("stderr", "")
+        }
+        
+        asyncio.create_task(generate_report_async(
+            payload=report_payload,
+            channel_id=channel_id,
+            thread_ts=thread_ts,
+            client=client,
+            logger=logger
+        ))
+        
     except Exception as e:
         logger.error(f"解析実行エラー: {e}")
         client.chat_postMessage(
