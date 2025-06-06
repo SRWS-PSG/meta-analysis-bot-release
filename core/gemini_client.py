@@ -84,7 +84,9 @@ class GeminiClient:
                 "proportion_total": ["単一群の比率データ：総数列（例: total, n, sample_size）"],
                 "proportion_time": ["発生率データ：観察時間列（例: time, person_years）"],
                 "sample_size_candidates": ["全体サンプルサイズ列（例: total_n, sample_size）"],
-                "study_id_candidates": ["研究ID列（例: study, author, study_id）"]
+                "study_id_candidates": ["研究ID列（例: study, author, study_id）"],
+                "subgroup_candidates": ["サブグループ解析に使える文字列/カテゴリ型列（例: region, country, intervention_type, risk_of_bias）"],
+                "moderator_candidates": ["メタ回帰に使える数値型列（例: year, age, dose, follow_up_months）"]
             }},
             "suggested_analysis": {{
                 "effect_type_suggestion": "データの種類に基づいた推奨効果量（OR, RR, SMD, MD, HR, PRE等、単一の文字列）",

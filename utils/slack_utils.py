@@ -20,6 +20,8 @@ def create_analysis_start_message(analysis_result: Dict[str, Any], initial_param
     proportion_events = detected_cols.get("proportion_events", [])
     proportion_total = detected_cols.get("proportion_total", [])
     study_id_candidates = detected_cols.get("study_id_candidates", [])
+    subgroup_candidates = detected_cols.get("subgroup_candidates", [])
+    moderator_candidates = detected_cols.get("moderator_candidates", [])
     
     # 表示用の候補を構築
     data_type_info = []
@@ -59,6 +61,8 @@ def create_analysis_start_message(analysis_result: Dict[str, Any], initial_param
     effect_display = "; ".join(data_type_info) if data_type_info else "検出されませんでした"
     variance_display = ", ".join(variance_candidates[:3]) if variance_candidates else "検出されませんでした"
     study_id_display = ", ".join(study_id_candidates[:2]) if study_id_candidates else "検出されませんでした"
+    subgroup_display = ", ".join(subgroup_candidates[:5]) if subgroup_candidates else "検出されませんでした"
+    moderator_display = ", ".join(moderator_candidates[:5]) if moderator_candidates else "検出されませんでした"
 
     suggested_analysis = analysis_result.get("suggested_analysis", {})
     suggested_effect_type = suggested_analysis.get("effect_type_suggestion", "未検出")
@@ -104,6 +108,8 @@ def create_analysis_start_message(analysis_result: Dict[str, Any], initial_param
 • 検出データ: {effect_display}
 • 分散/SE候補列: {variance_display}
 • 研究ID候補列: {study_id_display}
+• サブグループ候補列: {subgroup_display}
+• メタ回帰候補列: {moderator_display}
 • 推奨効果量: {suggested_effect_type}
 • 推奨モデル: {suggested_model_type}{auto_detected_params}
 
