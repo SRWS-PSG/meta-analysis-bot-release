@@ -189,8 +189,55 @@ async def process_csv_async(file_info, channel_id, user_id, client, logger, thre
         # メタデータ作成
         job_id = MetadataManager.create_job_id()
         
-        # 直接自然言語パラメータ収集を開始
-        analysis_summary = create_analysis_start_message(analysis_result)
+        # まずGeminiの分析結果から初期パラメータを設定
+        suggested = analysis_result.get("suggested_analysis", {})
+        detected_cols = analysis_result.get("detected_columns", {})
+        
+        # 初期パラメータをセット
+        initial_params = {}
+        
+        # 効果量タイプの推定
+        if suggested.get("effect_type_suggestion"):
+            effect_type = suggested["effect_type_suggestion"]
+            # カンマ区切りで複数の候補がある場合は最初のものを使用
+            if "," in effect_type:
+                effect_type = effect_type.split(",")[0].strip()
+            initial_params["effect_size"] = effect_type
+            logger.info(f"Gemini suggested effect type: {effect_type}")
+        
+        # モデルタイプの推定
+        if suggested.get("model_type_suggestion"):
+            model_type = suggested["model_type_suggestion"]
+            if model_type.lower() in ["random", "random effects", "reml"]:
+                initial_params["model_type"] = "random"
+                initial_params["method"] = "REML"
+            elif model_type.lower() in ["fixed", "fixed effects", "fe"]:
+                initial_params["model_type"] = "fixed"
+                initial_params["method"] = "FE"
+            logger.info(f"Gemini suggested model type: {model_type}")
+        
+        # 列マッピングの推定
+        if detected_cols:
+            # 研究ID列
+            if detected_cols.get("study_id_candidates"):
+                initial_params["study_column"] = detected_cols["study_id_candidates"][0]
+            
+            # 効果量列の候補を保存（後で使用）
+            if detected_cols.get("effect_size_candidates"):
+                initial_params["effect_size_columns"] = detected_cols["effect_size_candidates"]
+            
+            # 分散/標準誤差列の候補を保存
+            if detected_cols.get("variance_candidates"):
+                initial_params["variance_columns"] = detected_cols["variance_candidates"]
+                
+            # サンプルサイズ列の候補を保存
+            if detected_cols.get("sample_size_candidates"):
+                initial_params["sample_size_columns"] = detected_cols["sample_size_candidates"]
+        
+        logger.info(f"Initial parameters from Gemini: {initial_params}")
+        
+        # 初期パラメータ付きで自然言語パラメータ収集を開始
+        analysis_summary = create_analysis_start_message(analysis_result, initial_params)
         
         message_kwargs = {
             "channel": channel_id,
@@ -215,6 +262,10 @@ async def process_csv_async(file_info, channel_id, user_id, client, logger, thre
                 "original_filename": file_info.get("name", "data.csv"),
                 "user_id": user_id
             }
+            
+            # 初期パラメータを状態に設定
+            state.update_params(initial_params)
+            
             # パラメータ収集状態に移行
             from utils.conversation_state import DialogState
             state.update_state(DialogState.ANALYSIS_PREFERENCE)

@@ -6,20 +6,37 @@ from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__) # upload_files_to_slack のために追加
 
-def create_analysis_start_message(analysis_result: Dict[str, Any]) -> str:
+def create_analysis_start_message(analysis_result: Dict[str, Any], initial_params: Optional[Dict[str, Any]] = None) -> str:
     """CSV分析結果を自然言語メッセージとして作成（Button UI削除）"""
     detected_cols = analysis_result.get("detected_columns", {})
     effect_candidates = detected_cols.get("effect_size_candidates", [])
     variance_candidates = detected_cols.get("variance_candidates", [])
+    study_id_candidates = detected_cols.get("study_id_candidates", [])
     
     effect_display = ", ".join(effect_candidates[:3]) if effect_candidates else "検出されませんでした"
     variance_display = ", ".join(variance_candidates[:3]) if variance_candidates else "検出されませんでした"
+    study_id_display = ", ".join(study_id_candidates[:2]) if study_id_candidates else "検出されませんでした"
 
     suggested_analysis = analysis_result.get("suggested_analysis", {})
     suggested_effect_type = suggested_analysis.get("effect_type_suggestion", "未検出")
+    suggested_model_type = suggested_analysis.get("model_type_suggestion", "未検出")
     
     # 研究数を取得
     num_studies = len(analysis_result.get("data_preview", [])) if analysis_result.get("data_preview") else "不明"
+    
+    # 初期パラメータの表示
+    auto_detected_params = ""
+    if initial_params:
+        auto_params = []
+        if initial_params.get("effect_size"):
+            auto_params.append(f"効果量: {initial_params['effect_size']}")
+        if initial_params.get("model_type"):
+            auto_params.append(f"モデル: {initial_params['model_type']}")
+        if initial_params.get("study_column"):
+            auto_params.append(f"研究ID列: {initial_params['study_column']}")
+        
+        if auto_params:
+            auto_detected_params = f"\n\n**🤖 自動検出済みパラメータ:**\n• " + "\n• ".join(auto_params)
     
     message = f"""📊 **CSVファイルを分析しました！**
 
@@ -27,7 +44,9 @@ def create_analysis_start_message(analysis_result: Dict[str, Any]) -> str:
 • 研究数: {num_studies}件
 • 効果量候補列: {effect_display}
 • 分散/SE候補列: {variance_display}
+• 研究ID候補列: {study_id_display}
 • 推奨効果量: {suggested_effect_type}
+• 推奨モデル: {suggested_model_type}{auto_detected_params}
 
 **解析パラメータを自然な日本語で教えてください。**
 
@@ -35,6 +54,7 @@ def create_analysis_start_message(analysis_result: Dict[str, Any]) -> str:
 • 「オッズ比でランダム効果モデルを使って解析して」
 • 「リスク比で固定効果モデルでお願いします」
 • 「SMDでREML法を使って、地域別のサブグループ解析も行って」
+• 「推奨設定のまま解析開始」（自動検出済みパラメータを使用）
 
 どのような解析をご希望ですか？"""
 
