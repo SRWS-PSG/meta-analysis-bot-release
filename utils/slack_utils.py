@@ -98,10 +98,22 @@ def create_analysis_result_message(analysis_result_from_r: Dict[str, Any]) -> st
     """解析結果を自然言語メッセージとして作成"""
     summary = analysis_result_from_r.get("summary", {})
     
-    pooled_effect = summary.get('pooled_effect', summary.get('estimate', 'N/A'))
-    ci_lower = summary.get('ci_lower', summary.get('ci_lb', 'N/A'))
-    ci_upper = summary.get('ci_upper', summary.get('ci_ub', 'N/A'))
-    i2_value = summary.get('i2', summary.get('I2', 'N/A'))
+    # R script generates: estimate, ci_lb, ci_ub, I2, k
+    pooled_effect = summary.get('estimate', 'N/A')
+    ci_lower = summary.get('ci_lb', 'N/A')
+    ci_upper = summary.get('ci_ub', 'N/A') 
+    i2_value = summary.get('I2', 'N/A')
+    num_studies = summary.get('k', 'N/A')
+    
+    # Format numeric values
+    if isinstance(pooled_effect, (int, float)):
+        pooled_effect = f"{pooled_effect:.3f}"
+    if isinstance(ci_lower, (int, float)):
+        ci_lower = f"{ci_lower:.3f}"
+    if isinstance(ci_upper, (int, float)):
+        ci_upper = f"{ci_upper:.3f}"
+    if isinstance(i2_value, (int, float)):
+        i2_value = f"{i2_value:.1f}"
     
     message = f"""📊 **メタ解析が完了しました！**
 
@@ -109,7 +121,7 @@ def create_analysis_result_message(analysis_result_from_r: Dict[str, Any]) -> st
 • 統合効果量: {pooled_effect}
 • 95%信頼区間: {ci_lower} - {ci_upper}
 • 異質性: I²={i2_value}%
-• 研究数: {summary.get('num_studies', 'N/A')}件
+• 研究数: {num_studies}件
 
 ファイルが添付されています：
 • フォレストプロット
