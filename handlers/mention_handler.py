@@ -296,8 +296,10 @@ def register_mention_handlers(app: App):
                                 }
                                 
                                 # say 関数を定義
-                                async def say(text):
-                                    client.chat_postMessage(channel=channel_id, thread_ts=event["thread_ts"], text=text)
+                                async def say(text, thread_ts=None):
+                                    # thread_tsが指定されていない場合は、イベントのthread_tsを使用
+                                    ts = thread_ts or event["thread_ts"]
+                                    client.chat_postMessage(channel=channel_id, thread_ts=ts, text=text)
                                 
                                 await handle_natural_language_parameters(message, say, client, logger)
                             
