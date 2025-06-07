@@ -90,10 +90,22 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
         r_executor = RAnalysisExecutor(r_output_dir=r_output_dir, csv_file_path=temp_csv_path, job_id=payload["job_id"])
         
         # data_summary を準備（CSVの基本情報）
+        csv_analysis = payload.get("csv_analysis", {})
+        
+        # CSVの列情報を取得（Geminiの分析結果から）
+        column_descriptions = csv_analysis.get("column_descriptions", {})
+        csv_columns = list(column_descriptions.keys()) if column_descriptions else []
+        
+        # data_previewからも列名を取得（フォールバック）
+        data_preview = csv_analysis.get("data_preview", [])
+        if not csv_columns and data_preview:
+            csv_columns = list(data_preview[0].keys()) if data_preview else []
+        
         data_summary = {
             "csv_file_path": str(temp_csv_path),
-            "csv_analysis": payload.get("csv_analysis", {}),
-            "detected_columns": payload.get("csv_analysis", {}).get("detected_columns", {}),
+            "csv_analysis": csv_analysis,
+            "detected_columns": csv_analysis.get("detected_columns", {}),
+            "columns": csv_columns,  # 列情報を追加
             "file_info": {
                 "filename": original_file_name,
                 "job_id": payload["job_id"]
