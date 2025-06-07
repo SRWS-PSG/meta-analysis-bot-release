@@ -101,6 +101,11 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
         if not csv_columns and data_preview:
             csv_columns = list(data_preview[0].keys()) if data_preview else []
         
+        # デバッグログ追加
+        logger.info(f"Debug - CSV column extraction: column_descriptions keys: {list(column_descriptions.keys()) if column_descriptions else 'None'}")
+        logger.info(f"Debug - CSV column extraction: data_preview sample: {data_preview[0] if data_preview else 'None'}")
+        logger.info(f"Debug - CSV column extraction: final csv_columns: {csv_columns}")
+        
         data_summary = {
             "csv_file_path": str(temp_csv_path),
             "csv_analysis": csv_analysis,
