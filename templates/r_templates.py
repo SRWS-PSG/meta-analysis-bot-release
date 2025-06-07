@@ -150,19 +150,34 @@ tryCatch({{
         ai_col <- "{ai_col}"
         bi_col <- "{bi_col}" 
         ci_col <- "{ci_col}"
-        di_col <- "{di_col}" 
+        di_col <- "{di_col}"
+        n1i_col <- "{n1i_col}"
+        n2i_col <- "{n2i_col}"
         
-        required_ilab_cols <- c(ai_col, bi_col, ci_col, di_col)
-        required_ilab_cols <- required_ilab_cols[required_ilab_cols != ""]
-
-        if (length(required_ilab_cols) == 4 && all(required_ilab_cols %in% names(dat))) {{
-            ilab_data <- cbind(dat[[ai_col]], dat[[bi_col]], dat[[ci_col]], dat[[di_col]])
-            ilab_xpos <- c(-9.5, -8, -6, -4.5) 
-            ilab_lab <- c("Events", "No Events", "Events", "No Events") 
-        }} else if (length(required_ilab_cols) == 2 && all(required_ilab_cols %in% names(dat))) {{
+        # 二値アウトカムでEvents/Total形式で表示
+        if (ai_col != "" && ci_col != "" && n1i_col != "" && n2i_col != "" &&
+            all(c(ai_col, ci_col, n1i_col, n2i_col) %in% names(dat))) {{
+            # Events/Total 形式で表示
+            treatment_display <- paste(dat[[ai_col]], "/", dat[[n1i_col]], sep="")
+            control_display <- paste(dat[[ci_col]], "/", dat[[n2i_col]], sep="")
+            ilab_data <- cbind(treatment_display, control_display)
+            ilab_xpos <- c(-8.5, -5.5)
+            ilab_lab <- c("Events/Total", "Events/Total")
+        }} else if (ai_col != "" && ci_col != "" && all(c(ai_col, ci_col) %in% names(dat))) {{
+            # フォールバック: イベント数のみ
             ilab_data <- cbind(dat[[ai_col]], dat[[ci_col]])
-            ilab_xpos <- c(-9.5, -6)
-            ilab_lab <- c("Events", "Events") 
+            ilab_xpos <- c(-8.5, -5.5)
+            ilab_lab <- c("Events", "Events")
+        }}
+    }} else if (current_measure %in% c("SMD", "MD", "ROM")) {{
+        # 連続アウトカムの場合: n1i, n2i を表示
+        n1i_col <- "{n1i_col}"
+        n2i_col <- "{n2i_col}"
+        
+        if (n1i_col != "" && n2i_col != "" && all(c(n1i_col, n2i_col) %in% names(dat))) {{
+            ilab_data <- cbind(dat[[n1i_col]], dat[[n2i_col]])
+            ilab_xpos <- c(-8.5, -5.5)
+            ilab_lab <- c("N", "N")
         }}
     }}
 
@@ -191,8 +206,8 @@ tryCatch({{
     # 引数リストを使って forest 関数を呼び出し
     do.call(forest, forest_args)
 
-    if (!is.null(ilab_data) && length(ilab_xpos) == 4) { 
-        text(c(-8.75, -5.25), res_for_plot$k+2.8, c("Treatment", "Control"), cex=0.75, font=2)
+    if (!is.null(ilab_data) && length(ilab_xpos) == 2) { 
+        text(c(-8.5, -5.5), res_for_plot$k+2.8, c("Treatment", "Control"), cex=0.75, font=2)
     }
     
     text(-16, -1, pos=4, cex=0.75, bquote(paste(
@@ -287,13 +302,32 @@ if (exists("res_by_subgroup_{subgroup_col_name}") && !is.null(res_by_subgroup_{s
             bi_col_main <- "{bi_col}"
             ci_col_main <- "{ci_col}"
             di_col_main <- "{di_col}"
-            required_ilab_cols_main <- c(ai_col_main, bi_col_main, ci_col_main, di_col_main)
-            required_ilab_cols_main <- required_ilab_cols_main[required_ilab_cols_main != ""]
-            if (length(required_ilab_cols_main) == 4 && all(required_ilab_cols_main %in% names(dat))) {{
-                ilab_data_main <- cbind(dat_ordered[[ai_col_main]], dat_ordered[[bi_col_main]], 
-                                      dat_ordered[[ci_col_main]], dat_ordered[[di_col_main]])
-                ilab_xpos_main <- c(-9.5, -8, -6, -4.5)
-                ilab_lab_main <- c("Events", "No Events", "Events", "No Events")
+            n1i_col_main <- "{n1i_col}"
+            n2i_col_main <- "{n2i_col}"
+            
+            # Events/Total 形式で表示
+            if (ai_col_main != "" && ci_col_main != "" && n1i_col_main != "" && n2i_col_main != "" &&
+                all(c(ai_col_main, ci_col_main, n1i_col_main, n2i_col_main) %in% names(dat))) {{
+                treatment_display_main <- paste(dat_ordered[[ai_col_main]], "/", dat_ordered[[n1i_col_main]], sep="")
+                control_display_main <- paste(dat_ordered[[ci_col_main]], "/", dat_ordered[[n2i_col_main]], sep="")
+                ilab_data_main <- cbind(treatment_display_main, control_display_main)
+                ilab_xpos_main <- c(-8.5, -5.5)
+                ilab_lab_main <- c("Events/Total", "Events/Total")
+            }} else if (ai_col_main != "" && ci_col_main != "" && all(c(ai_col_main, ci_col_main) %in% names(dat))) {{
+                # フォールバック: イベント数のみ
+                ilab_data_main <- cbind(dat_ordered[[ai_col_main]], dat_ordered[[ci_col_main]])
+                ilab_xpos_main <- c(-8.5, -5.5)
+                ilab_lab_main <- c("Events", "Events")
+            }}
+        }} else if (current_measure %in% c("SMD", "MD", "ROM")) {{
+            # 連続アウトカムの場合: n1i, n2i を表示
+            n1i_col_main <- "{n1i_col}"
+            n2i_col_main <- "{n2i_col}"
+            
+            if (n1i_col_main != "" && n2i_col_main != "" && all(c(n1i_col_main, n2i_col_main) %in% names(dat))) {{
+                ilab_data_main <- cbind(dat_ordered[[n1i_col_main]], dat_ordered[[n2i_col_main]])
+                ilab_xpos_main <- c(-8.5, -5.5)
+                ilab_lab_main <- c("N", "N")
             }}
         }}
         
@@ -322,8 +356,8 @@ if (exists("res_by_subgroup_{subgroup_col_name}") && !is.null(res_by_subgroup_{s
         do.call(forest, forest_sg_args)
         
         # Treatment/Control ヘッダーの追加
-        if (!is.null(ilab_data_main) && length(ilab_xpos_main) == 4) {{
-             text(c(-8.75,-5.25), ylim_top - 1, c("Treatment", "Control"), font=2, cex=0.75)
+        if (!is.null(ilab_data_main) && length(ilab_xpos_main) == 2) {{
+             text(c(-8.5,-5.5), ylim_top - 1, c("Treatment", "Control"), font=2, cex=0.75)
         }}
         
         # サブグループラベルとサマリーポリゴンを追加
@@ -779,6 +813,8 @@ if ("{subgroup_col}" %in% names(dat)) {{
         bi_col = data_cols.get("bi", "") 
         ci_col = data_cols.get("ci", "")
         di_col = data_cols.get("di", "")
+        n1i_col = data_cols.get("n1i", "")
+        n2i_col = data_cols.get("n2i", "")
 
         # 1. メインフォレストプロット
         main_forest_plot_path = output_paths.get("forest_plot_path", "forest_plot_overall.png")
@@ -788,6 +824,7 @@ if ("{subgroup_col}" %in% names(dat)) {{
                 forest_plot_path=main_forest_plot_path.replace('\\', '/'),
                 measure_for_plot=analysis_params.get("measure", "RR"),
                 ai_col=ai_col, bi_col=bi_col, ci_col=ci_col, di_col=di_col,
+                n1i_col=n1i_col, n2i_col=n2i_col,
                 row_h_in_placeholder=self.PLOT_ROW_H_IN,
                 base_h_in_placeholder=self.PLOT_BASE_H_IN,
                 plot_width_in_placeholder=self.PLOT_WIDTH_IN,
@@ -814,6 +851,7 @@ if ("{subgroup_col}" %in% names(dat)) {{
                         subgroup_forest_plot_path=sg_forest_plot_path,
                         measure_for_plot=analysis_params.get("measure", "RR"),
                         ai_col=ai_col, bi_col=bi_col, ci_col=ci_col, di_col=di_col,
+                        n1i_col=n1i_col, n2i_col=n2i_col,
                         res_for_plot_model_name="res_for_plot", # メインモデルのプロット用オブジェクト名
                         row_h_in_placeholder=self.PLOT_ROW_H_IN,
                         base_h_in_placeholder=self.PLOT_BASE_H_IN,
