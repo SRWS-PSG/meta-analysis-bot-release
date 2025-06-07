@@ -414,7 +414,7 @@ if ("{moderator_column_for_bubble}" %in% names(dat) && exists("res") && !is.null
    is_moderator_in_model <- FALSE
    if (!is.null(rownames(res$beta))) {{
        if (any(grepl(paste0("^", actual_moderator_name_in_model), rownames(res$beta)[-1], fixed = FALSE)) ||
-           any(grepl(paste0("^factor\\(", actual_moderator_name_in_model, "\\)"), rownames(res$beta)[-1], fixed = FALSE)) ){{
+           any(grepl(paste0("^factor\\\\(", actual_moderator_name_in_model, "\\\\)"), rownames(res$beta)[-1], fixed = FALSE)) ){{
            is_moderator_in_model <- TRUE
        }}
    }}
