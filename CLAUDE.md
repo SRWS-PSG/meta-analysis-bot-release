@@ -10,8 +10,9 @@ This is a Meta-Analysis Slack Bot that performs statistical meta-analyses on CSV
 ## お願い
 - テスト、デバッグのために使うコードは、すべて test/ の中に入れてレポジトリを汚さないこと。あと、test/ 内のreadmeに何をするファイルなのかの説明を入れること
 - secretは.envに入れる。ハードコードはしない。
+- herokuへのデプロイには5分かかる
 
-## 満たすべき要件
+## ボットが満たすべき要件
 
 ### 起動条件
 - ボットが存在するSlackチャンネルでCSVファイルを共有+メンションで起動
