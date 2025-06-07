@@ -55,8 +55,15 @@ async def generate_report_async(payload, channel_id, thread_ts, client, logger):
     """解釈レポートの非同期生成"""
     try:
         gemini_client = GeminiClient()
+        
+        # デバッグ：result_summaryの構造を確認
+        result_summary = payload["result_summary"]
+        logger.info(f"Debug - result_summary keys: {list(result_summary.keys()) if isinstance(result_summary, dict) else 'Not a dict'}")
+        logger.info(f"Debug - r_version present: {'r_version' in result_summary if isinstance(result_summary, dict) else 'N/A'}")
+        logger.info(f"Debug - metafor_version present: {'metafor_version' in result_summary if isinstance(result_summary, dict) else 'N/A'}")
+        
         interpretation = await gemini_client.generate_interpretation(
-            result_summary=payload["result_summary"], # analysis_handlerから渡されるサマリー
+            result_summary=result_summary,
             job_id=payload["job_id"]
         )
         

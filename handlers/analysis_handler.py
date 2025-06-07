@@ -136,10 +136,15 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
         r_summary_for_metadata = {}
         if analysis_result_from_r.get("success") and analysis_result_from_r.get("structured_summary_content"):
             try:
-                r_summary_for_metadata = json.loads(analysis_result_from_r["structured_summary_content"])
-                # 必要ならさらに絞り込む
-                if "overall_analysis" in r_summary_for_metadata:
-                    r_summary_for_metadata = r_summary_for_metadata["overall_analysis"] 
+                full_r_summary = json.loads(analysis_result_from_r["structured_summary_content"])
+                
+                # バージョン情報を含む完全なサマリーを保持し、レポート生成で使用する
+                r_summary_for_metadata = full_r_summary.copy()
+                
+                # overall_analysisが存在する場合、そのフィールドをトップレベルに追加（後方互換性のため）
+                if "overall_analysis" in full_r_summary:
+                    r_summary_for_metadata.update(full_r_summary["overall_analysis"])
+                    
             except json.JSONDecodeError:
                 logger.error("RからのJSONサマリーのパースに失敗しました。")
                 r_summary_for_metadata = {"error": "Failed to parse R summary JSON"}
