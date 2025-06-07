@@ -127,7 +127,10 @@ class GeminiClient:
             else:
                 json_str = raw_response_text.strip()
             
-            result = json.loads(json_str)
+            # 制御文字を除去してからJSONをパース
+            import re
+            cleaned_json_str = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', json_str)
+            result = json.loads(cleaned_json_str)
             logger.info(f"Successfully parsed JSON response: is_suitable={result.get('is_suitable')}")
             return result
         except Exception as e:
@@ -221,7 +224,10 @@ class GeminiClient:
             else:
                 json_str = raw_response_text.strip()
 
-            return json.loads(json_str)
+            # 制御文字を除去してからJSONをパース
+            import re
+            cleaned_json_str = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', json_str)
+            return json.loads(cleaned_json_str)
         except Exception as e:
             return {
                 "methods_section": "解釈生成中にエラーが発生しました。",
@@ -264,8 +270,10 @@ class GeminiClient:
             else:
                 json_str = raw_response_text
             
-            # JSONとしてパース
-            result = json.loads(json_str)
+            # 制御文字を除去してからJSONをパース
+            import re
+            cleaned_json_str = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', json_str)
+            result = json.loads(cleaned_json_str)
             logger.info(f"Successfully extracted structured data: {result}")
             return result
             
