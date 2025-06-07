@@ -102,18 +102,13 @@ res <- rma({yi_col}, {vi_col}, data=dat, method="{method}")
 # モデレーターを用いたメタ回帰実行
 res <- rma({yi_col}, {vi_col}, mods = ~ {mods_formula}, data=dat, method="{method}")
 """,
-            "subgroup_analysis": """
-# サブグループ解析 (必要な場合)
-# 各サブグループ変数ごとに解析を実行
-# for (subgroup_col in c({subgroup_columns_list})) {{
-#     if (subgroup_col %in% names(dat)) {{
-#         # サブグループ間の差の検定
-#         res_subgroup_test_{subgroup_col} <- rma(yi, vi, mods = ~ factor(dat[[subgroup_col]]), data=dat, method="{method}")
-#         # 各サブグループごとの解析 (これは通常プロットや詳細表示用)
-#         # by = factor(dat[[subgroup_col]]) を使用
-#         res_by_subgroup_{subgroup_col} <- rma(yi, vi, data=dat, method="{method}", by = factor(dat[[subgroup_col}]))
-#     }}
-# }}
+            "subgroup_single": """
+# Subgroup analysis for '{subgroup_col}'
+res_subgroup_test_{subgroup_col} <- rma({yi_col}, {vi_col}, mods = ~ factor({subgroup_col}), data=dat, method="{method}")
+
+# 各サブグループ '{subgroup_col}' ごとの解析 (splitとlapplyを使用し、個別のrmaオブジェクトのリストを作成)
+dat_split_{subgroup_col} <- split(dat, dat[['{subgroup_col}']])
+res_by_subgroup_{subgroup_col} <- lapply(dat_split_{subgroup_col}, function(x) rma({yi_col}, {vi_col}, data=x, method="{method}"))
 """,
             "forest_plot": """
 # フォレストプロット作成

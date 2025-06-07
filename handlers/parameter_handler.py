@@ -94,7 +94,9 @@ async def handle_natural_language_parameters(message, say, client, logger):
                 analysis_params = {
                     "measure": state.collected_params.get("effect_size", "OR"),
                     "model": state.collected_params.get("method") or "REML",  # R template uses "model" not "method"
-                    "model_type": state.collected_params.get("model_type", "random")
+                    "model_type": state.collected_params.get("model_type", "random"),
+                    "subgroup_columns": state.collected_params.get("subgroup_columns", []),
+                    "moderator_columns": state.collected_params.get("moderator_columns", [])
                 }
                 
                 # 初期検出された列マッピングを追加
