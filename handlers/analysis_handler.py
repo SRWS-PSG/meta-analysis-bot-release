@@ -139,6 +139,12 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
                     "path": analysis_result_from_r["rdata_path"],
                     "title": f"result_{payload['job_id']}.RData"
                 })
+            if analysis_result_from_r.get("r_script_path"):
+                 files_to_upload_for_slack.append({
+                    "type": "r_script",
+                    "path": analysis_result_from_r["r_script_path"],
+                    "title": f"run_meta_{payload['job_id']}.R"
+                })
 
 
         files_uploaded_info = await upload_files_to_slack( # 実際の関数呼び出し
