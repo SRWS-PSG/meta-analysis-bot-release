@@ -236,35 +236,24 @@ def create_analysis_result_message(analysis_result_from_r: Dict[str, Any]) -> st
     return message
 
 def create_report_message(interpretation: Dict[str, Any]) -> str:
-    """解釈レポートを自然言語メッセージとして作成"""
+    """解釈レポートを自然言語メッセージとして作成（統計解析とGRADE準拠結果のみ）"""
     methods_text = interpretation.get('methods_section', 'N/A')
     results_text = interpretation.get('results_section', 'N/A')
     summary_text = interpretation.get('summary', 'N/A')
-    discussion_points = interpretation.get('discussion_points', [])
-    limitations = interpretation.get('limitations', [])
 
-    discussion_text = "\n".join([f"• {point}" for point in discussion_points])
-    limitations_text = "\n".join([f"• {limitation}" for limitation in limitations])
-
-    message = f"""📄 **解釈レポート**
+    message = f"""📄 **解釈レポート（学術論文形式）**
 
 **【要約】**
 {summary_text}
 
-**【方法】**
-{methods_text[:800]}{'...' if len(methods_text) > 800 else ''}
+**【統計解析 / Statistical Analysis】**
+{methods_text[:1200]}{'...' if len(methods_text) > 1200 else ''}
 
-**【結果】**
-{results_text[:800]}{'...' if len(results_text) > 800 else ''}
-
-**【考察のポイント】**
-{discussion_text}
-
-**【本解析の限界】**
-{limitations_text}
+**【結果 / Results】**
+{results_text[:1200]}{'...' if len(results_text) > 1200 else ''}
 
 ---
-*このレポートはAIによって生成されました。内容は参考情報としてご利用ください。*"""
+*このレポートはAIによって生成されました。エビデンスの確実性評価（GRADE）を適用し、統計解析結果のみを記載しています。*"""
     
     return message
 

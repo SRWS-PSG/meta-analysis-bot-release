@@ -35,9 +35,15 @@ This is a Meta-Analysis Slack Bot that performs statistical meta-analyses on CSV
 - **ログ変換データの自動検出**
 - 十分なコンテキストがそろったら、それを元にRのコードを作り、実行
 - 戻り値の図、データを返す
-- **英語の学術論文形式（Methods (statistical analysis)・Results）のレポートを生成**
-- **レポートの日本版も提供**
-- **解析環境情報（Rバージョン、metaforバージョン）の記録**
+- **英語の学術論文形式（Statistical Analysis・Results）のレポートを生成**
+- **レポートの日本版も提供（英語+日本語併記）**
+- **GRADE準拠のエビデンス確実性評価プレースホルダー**
+- **解析環境情報の詳細記録**：
+  - Rバージョン（R.version.string）
+  - metaforパッケージバージョン
+  - プラットフォーム情報
+  - 解析実行日時
+  - 使用パッケージ詳細情報
 
 ### 対応する解析タイプ
 - **二値アウトカム**: OR (オッズ比)、RR (リスク比)、RD (リスク差)、PETO

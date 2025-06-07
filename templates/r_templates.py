@@ -468,9 +468,31 @@ tryCatch({
     
     {egger_json_update_code}
 
-    # Add R and metafor versions
+    # Add R and metafor versions with detailed information
     summary_list$r_version <- R.version.string
     summary_list$metafor_version <- as.character(packageVersion("metafor"))
+    
+    # Additional analysis environment information
+    summary_list$analysis_environment <- list(
+        r_version_full = R.version.string,
+        r_version_short = paste(R.version$major, R.version$minor, sep="."),
+        metafor_version = as.character(packageVersion("metafor")),
+        jsonlite_version = as.character(packageVersion("jsonlite")),
+        platform = R.version$platform,
+        os_type = .Platform$OS.type,
+        analysis_date = as.character(Sys.Date()),
+        analysis_time = as.character(Sys.time()),
+        packages_info = list(
+            metafor = list(
+                version = as.character(packageVersion("metafor")),
+                description = "Conducting Meta-Analyses in R"
+            ),
+            jsonlite = list(
+                version = as.character(packageVersion("jsonlite")),
+                description = "JSON output generation"
+            )
+        )
+    )
 
 }, error = function(e_sum) {
     summary_list$error_in_summary_generation <- paste("Error creating parts of summary:", e_sum$message)
