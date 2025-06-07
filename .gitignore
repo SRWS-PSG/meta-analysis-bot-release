@@ -29,6 +29,7 @@ venv/
 ENV/
 env/
 test_env/
+.venv/
 
 # R
 .Rproj.user

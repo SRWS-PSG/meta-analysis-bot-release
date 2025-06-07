@@ -7,6 +7,9 @@ If you want to execute "sudo" commands, please ask user to execute.
 
 This is a Meta-Analysis Slack Bot that performs statistical meta-analyses on CSV files shared in Slack channels. It uses Google Gemini AI for natural language processing (Japanese) and generates academic-quality reports in English using R's metafor package. The app is deployed in heroku.
 
+## お願い
+テスト、デバッグのために使うコードは、すべて test/ の中に入れてレポジトリを汚さないこと。あと、test/ 内のreadmeに何をするファイルなのかの説明を入れること
+
 ## 満たすべき要件
 
 ### 起動条件
@@ -17,10 +20,11 @@ This is a Meta-Analysis Slack Bot that performs statistical meta-analyses on CSV
 
 ### 機能要件
 - ボットはCSVを分析し、適切な列が見つかった場合にメタ解析を実行
+- 列が適切であるか、ユーザーが何をしたいかはGemini APIを使いながらユーザーと対話してコンテキストをうめる
+- コンテキストが十分に溜まったら、その内容で良いか、ユーザーに承認をもらってからメタ解析を実行
 - すべてチャット内で完結させて、別のページへの遷移はしない
 - コード、実行結果の図、結果を保持したRDataは添付でSlackへ、地の文で簡単な解析結果
 - そのあとに解釈レポートを地の文で提供
-- ユーザーは自然な日本語で分析の意図を伝える
 - 結果はスレッド内に共有され、スレッド内で会話コンテキストが維持される
 - **パラメータ収集はGemini AIが対話的に行い、キーワードマッチングは使用しない**
 - **Geminiが会話の文脈を理解し、必要な情報が揃うまで適切な質問を続ける**
@@ -29,8 +33,8 @@ This is a Meta-Analysis Slack Bot that performs statistical meta-analyses on CSV
 - **ログ変換データの自動検出**
 - 十分なコンテキストがそろったら、それを元にRのコードを作り、実行
 - 戻り値の図、データを返す
-- **英語の学術論文形式（Methods・Results）のレポートを生成**
-- **日本語での要約と解釈も提供**
+- **英語の学術論文形式（Methods (statistical analysis)・Results）のレポートを生成**
+- **レポートの日本版も提供**
 - **解析環境情報（Rバージョン、metaforバージョン）の記録**
 
 ### 対応する解析タイプ
@@ -556,6 +560,10 @@ def handle_direct_message(body, event, client, logger, ack):
 has_thread_ts = "thread_ts" in event
 if channel_type == "im" or is_thread_message or has_thread_ts:
 ```
+
+### デバッグに関して
+別にSLACK_UPLOAD_BOT_TOKEN,SLACK_UPLOAD_CHANNEL_IDで指定されたボットを作っているので、それをSlack API経由で投稿して、実際のmeta-analysis-botがうまく動いているかを検証できるようにする　
+
 
 ### アンチパターン集
 
