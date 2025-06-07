@@ -76,10 +76,10 @@ async def handle_natural_language_parameters(message, say, client, logger):
                 state.update_params(response["extracted_params"])
                 logger.info(f"Updated parameters: {response['extracted_params']}")
             
-            # Geminiの応答を送信
+            # Geminiの応答を送信（スレッド内に）
             bot_message = response.get("bot_message")
             if bot_message:
-                await say(bot_message)
+                await say(bot_message, thread_ts=thread_ts)
                 # ボットの応答を履歴に追加
                 state.conversation_history.append({
                     "role": "assistant",
@@ -88,7 +88,7 @@ async def handle_natural_language_parameters(message, say, client, logger):
             
             # 解析準備完了チェック
             if response.get("is_ready_to_analyze"):
-                await say("🚀 パラメータ収集が完了しました。解析を開始します...")
+                await say("🚀 パラメータ収集が完了しました。解析を開始します...", thread_ts=thread_ts)
                 
                 # 解析パラメータを構築
                 analysis_params = {
@@ -208,11 +208,11 @@ async def handle_natural_language_parameters(message, say, client, logger):
             save_state(state)
         else:
             logger.error("Failed to get response from Gemini")
-            await say("申し訳ございません。応答の生成に失敗しました。もう一度お試しください。")
+            await say("申し訳ございません。応答の生成に失敗しました。もう一度お試しください。", thread_ts=thread_ts)
             
     except Exception as e:
         logger.error(f"Error processing natural language parameters: {e}", exc_info=True)
-        await say(f"❌ パラメータ処理中にエラーが発生しました: {str(e)}")
+        await say(f"❌ パラメータ処理中にエラーが発生しました: {str(e)}", thread_ts=thread_ts)
 
 def register_parameter_handlers(app: App):
     """パラメータ収集と解析開始に関連するハンドラーを登録"""
