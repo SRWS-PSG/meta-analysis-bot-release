@@ -22,19 +22,34 @@ def register_report_handlers(app: App):
             )
             return
         
-        asyncio.create_task(generate_report_async(
-            payload=payload,
-            channel_id=body["channel"]["id"],
-            thread_ts=body["message"]["ts"], # ボタンイベントの場合、元のメッセージのts
-            client=client,
-            logger=logger
-        ))
-        
+        # レポート生成中メッセージを送信
         client.chat_postMessage(
             channel=body["channel"]["id"],
             thread_ts=body["message"]["ts"], # ボタンイベントの場合、元のメッセージのts
             text="📝 解釈レポートを生成中..."
         )
+        
+        # 非同期でレポート生成を実行（エラーハンドリング付き）
+        async def run_report_generation():
+            try:
+                await generate_report_async(
+                    payload=payload,
+                    channel_id=body["channel"]["id"],
+                    thread_ts=body["message"]["ts"],
+                    client=client,
+                    logger=logger
+                )
+            except Exception as e:
+                logger.error(f"レポート生成エラー: {e}")
+                client.chat_postMessage(
+                    channel=body["channel"]["id"],
+                    thread_ts=body["message"]["ts"],
+                    text=f"❌ レポート生成中にエラーが発生しました: {str(e)}"
+                )
+        
+        # タスクを作成して実行
+        task = asyncio.create_task(run_report_generation())
+        # タスクが完了するまで待機しない（非同期実行）
 
 async def generate_report_async(payload, channel_id, thread_ts, client, logger):
     """解釈レポートの非同期生成"""

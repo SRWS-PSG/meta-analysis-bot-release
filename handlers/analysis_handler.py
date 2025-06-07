@@ -192,13 +192,21 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
             "r_stderr": analysis_result_from_r.get("stderr", "")
         }
         
-        asyncio.create_task(generate_report_async(
+        # レポート生成中メッセージを送信
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text="📝 解釈レポートを生成中です..."
+        )
+        
+        # 同期的にレポート生成を実行
+        await generate_report_async(
             payload=report_payload,
             channel_id=channel_id,
             thread_ts=thread_ts,
             client=client,
             logger=logger
-        ))
+        )
         
     except Exception as e:
         logger.error(f"解析実行エラー: {e}")

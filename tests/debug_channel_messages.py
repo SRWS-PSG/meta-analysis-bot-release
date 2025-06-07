@@ -89,24 +89,64 @@ def check_channel_messages(wait_seconds=30):
             print()
         
         print("\n🤖 ボットの応答:")
-        for bot_msg in bot_messages:
-            print(f"  {bot_msg['timestamp']} - Thread: {bot_msg['thread_ts']}")
-            print(f"    Text: {bot_msg['text']}")
-            print()
-        
-        # 最新の対話状況を分析
-        if bot_messages:
-            latest_bot_msg = bot_messages[-1]
-            print(f"🔄 最新のボット応答: {latest_bot_msg['timestamp']}")
-            print(f"📝 内容: {latest_bot_msg['text']}")
+        if not bot_messages:
+            print("❌ チャンネル直下のボット応答が見つかりません")
             
-            # 対話が進行中かチェック
-            if any(keyword in latest_bot_msg['text'] for keyword in ['どの', '選択', '教えて', '？']):
-                print("✅ 対話が進行中のようです（質問が含まれています）")
-            else:
-                print("⏸️ 対話が完了または停止している可能性があります")
+            # 最新のメンションのスレッドを確認
+            if user_mentions:
+                latest_mention = user_mentions[0]
+                print(f"\n🔍 最新メンション（{latest_mention['timestamp']}）のスレッドを確認中...")
+                
+                # スレッド内の応答を検索
+                mention_ts = None
+                for msg in messages:
+                    text = msg.get('text', '')
+                    if f'<@{meta_bot_id}>' in text and len(msg.get('files', [])) > 0:
+                        mention_ts = msg.get('ts')
+                        break
+                
+                if mention_ts:
+                    try:
+                        thread_response = client.conversations_replies(
+                            channel=channel_id,
+                            ts=mention_ts
+                        )
+                        
+                        thread_bot_messages = []
+                        for msg in thread_response.get('messages', []):
+                            if msg.get('user') == meta_bot_id:
+                                timestamp = datetime.fromtimestamp(float(msg.get('ts', 0)))
+                                thread_bot_messages.append({
+                                    'timestamp': timestamp,
+                                    'text': msg.get('text', '')[:200] + ('...' if len(msg.get('text', '')) > 200 else ''),
+                                    'ts': msg.get('ts')
+                                })
+                        
+                        if thread_bot_messages:
+                            print(f"✅ スレッド内でボット応答を発見（{len(thread_bot_messages)}件）:")
+                            for bot_msg in thread_bot_messages:
+                                print(f"  {bot_msg['timestamp']}")
+                                print(f"    Text: {bot_msg['text']}")
+                                print()
+                            
+                            latest_bot_msg = thread_bot_messages[-1]
+                            print(f"🔄 最新のボット応答: {latest_bot_msg['timestamp']}")
+                            print(f"📝 内容: {latest_bot_msg['text']}")
+                            
+                            # 対話が進行中かチェック
+                            if any(keyword in latest_bot_msg['text'] for keyword in ['どの', '選択', '教えて', '？', 'ですか']):
+                                print("✅ 対話が進行中のようです（質問が含まれています）")
+                            else:
+                                print("⏸️ 対話が完了または停止している可能性があります")
+                        else:
+                            print("❌ スレッド内にもボット応答が見つかりません")
+                    except Exception as e:
+                        print(f"❌ スレッド取得エラー: {e}")
         else:
-            print("❌ ボットからの応答が見つかりません")
+            for bot_msg in bot_messages:
+                print(f"  {bot_msg['timestamp']} - Thread: {bot_msg['thread_ts']}")
+                print(f"    Text: {bot_msg['text']}")
+                print()
             
     except SlackApiError as e:
         print(f"❌ Slack API エラー: {e.response['error']}")
