@@ -599,10 +599,11 @@ def register_mention_handlers(app: App):
                                 }
                                 
                                 # say 関数を定義
-                                async def say(text, thread_ts_override=None):
-                                    # thread_ts_overrideが指定されていない場合は、DMのthread_tsを使用
-                                    ts = thread_ts_override or thread_ts
-                                    client.chat_postMessage(channel=channel_id, thread_ts=ts, text=text)
+                                async def say(msg_text, thread_ts=None):
+                                    # thread_tsが指定されていない場合は、外側のthread_tsを使用
+                                    outer_thread_ts = message.get("thread_ts") or event.get("thread_ts", event["ts"])
+                                    current_thread_ts = thread_ts or outer_thread_ts
+                                    client.chat_postMessage(channel=channel_id, thread_ts=current_thread_ts, text=msg_text)
                                 
                                 await handle_natural_language_parameters(message, say, client, logger)
                             
