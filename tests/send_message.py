@@ -5,14 +5,16 @@
 
 import os
 import sys
-sys.path.append('/home/youkiti/meta-analysis-bot-release')
+# プロジェクトルートをパスに追加
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
 from slack_sdk import WebClient
 import argparse
 
-# .envファイルを読み込み
-load_dotenv('/home/youkiti/meta-analysis-bot-release/.env')
+# .envファイルを読み込み（プロジェクトルートから）
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(project_root, '.env'))
 
 def send_message(channel_id, message, thread_ts=None):
     """メッセージを送信"""

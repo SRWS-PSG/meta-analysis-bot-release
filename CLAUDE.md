@@ -8,7 +8,8 @@ If you want to execute "sudo" commands, please ask user to execute.
 This is a Meta-Analysis Slack Bot that performs statistical meta-analyses on CSV files shared in Slack channels. It uses Google Gemini AI for natural language processing (Japanese) and generates academic-quality reports in English using R's metafor package. The app is deployed in heroku.
 
 ## お願い
-テスト、デバッグのために使うコードは、すべて test/ の中に入れてレポジトリを汚さないこと。あと、test/ 内のreadmeに何をするファイルなのかの説明を入れること
+- テスト、デバッグのために使うコードは、すべて test/ の中に入れてレポジトリを汚さないこと。あと、test/ 内のreadmeに何をするファイルなのかの説明を入れること
+- secretは.envに入れる。ハードコードはしない。
 
 ## 満たすべき要件
 

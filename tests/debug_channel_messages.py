@@ -5,7 +5,8 @@
 
 import os
 import sys
-sys.path.append('/home/youkiti/meta-analysis-bot-release')
+# プロジェクトルートをパスに追加
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
@@ -14,8 +15,9 @@ from datetime import datetime, timedelta
 import json
 from dotenv import load_dotenv
 
-# .envファイルを読み込み
-load_dotenv('/home/youkiti/meta-analysis-bot-release/.env')
+# .envファイルを読み込み（プロジェクトルートから）
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(project_root, '.env'))
 
 def check_channel_messages():
     """テスト用チャンネルのメッセージを確認"""

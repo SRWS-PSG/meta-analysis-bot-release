@@ -14,6 +14,9 @@ import requests
 from pathlib import Path
 from typing import Optional
 
+# プロジェクトルートをパスに追加
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def get_channel_id(token: str, channel_name: str) -> Optional[str]:
     """チャンネル名からチャンネルIDを取得"""
     url = "https://slack.com/api/conversations.list"
