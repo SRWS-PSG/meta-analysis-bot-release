@@ -206,7 +206,7 @@ tryCatch({{
 }}, error = function(e) {{
     plot(1, type="n", main="Forest Plot Error", xlab="", ylab="")
     text(1, 1, paste("Error generating forest plot:\n", e$message), col="red")
-    logger::log_error(sprintf("Forest plot generation failed: %s", e$message))
+    print(sprintf("Forest plot generation failed: %s", e$message))
 }})
 dev.off()
 """,
@@ -386,7 +386,7 @@ if (exists("res_by_subgroup_{subgroup_col_name}") && !is.null(res_by_subgroup_{s
     }}, error = function(e) {{
         plot(1, type="n", main="Subgroup Forest Plot Error ({subgroup_col_name})", xlab="", ylab="")
         text(1, 1, paste("Error generating subgroup forest plot for {subgroup_col_name}:\n", e$message), col="red")
-        logger::log_error(sprintf("Subgroup forest plot generation failed for {subgroup_col_name}: %s", e$message))
+        print(sprintf("Subgroup forest plot generation failed for {subgroup_col_name}: %s", e$message))
     }})
     dev.off()
 }}
@@ -402,7 +402,7 @@ tryCatch({{
 }}, error = function(e) {{
     plot(1, type="n", main="Funnel Plot Error", xlab="", ylab="")
     text(1, 1, paste("Error generating funnel plot:\n", e$message), col="red")
-    logger::log_error(sprintf("Funnel plot generation failed: %s", e$message))
+    print(sprintf("Funnel plot generation failed: %s", e$message))
 }})
 dev.off()
 """,
@@ -430,7 +430,7 @@ if ("{moderator_column_for_bubble}" %in% names(dat) && exists("res") && !is.null
        }}, error = function(e) {{
            plot(1, type="n", main="Bubble Plot Error", xlab="", ylab="")
            text(1, 1, paste("Error generating bubble plot for {moderator_column_for_bubble}:\n", e$message), col="red")
-           logger::log_error(sprintf("Bubble plot generation failed for {moderator_column_for_bubble}: %s", e$message))
+           print(sprintf("Bubble plot generation failed for {moderator_column_for_bubble}: %s", e$message))
        }})
        dev.off()
    }} else {{
@@ -496,7 +496,7 @@ tryCatch({
 
 }, error = function(e_sum) {
     summary_list$error_in_summary_generation <- paste("Error creating parts of summary:", e_sum$message)
-    logger::log_error(sprintf("Error creating parts of summary_list: %s", e_sum$message))
+    print(sprintf("Error creating parts of summary_list: %s", e_sum$message))
 })
 
 {generated_plots_r_code}
@@ -514,7 +514,7 @@ tryCatch({
     }, error = function(e_json_fallback) {
         print(paste("Error saving fallback error JSON:", e_json_fallback$message))
     })
-    logger::log_error(sprintf("Error saving summary_list as JSON: %s", e_json$message))
+    print(sprintf("Error saving summary_list as JSON: %s", e_json$message))
 })
 
 tryCatch({
@@ -522,7 +522,7 @@ tryCatch({
     print(paste("RData saved to:", '{rdata_path}'))
 }, error = function(e_rdata) {
     print(paste("Error saving RData:", e_rdata$message))
-    logger::log_error(sprintf("Error saving RData: %s", e_rdata$message))
+    print(sprintf("Error saving RData: %s", e_rdata$message))
 })
 """,
             "sensitivity_analysis": """
@@ -536,7 +536,7 @@ if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) &
         res_sensitivity <- tryCatch({{
             rma(yi, vi, data=dat_sensitivity, method="{method}")
         }}, error = function(e) {{
-            logger::log_error(sprintf("Error in sensitivity analysis rma for {sensitivity_variable}={sensitivity_value}: %s", e$message))
+            print(sprintf("Error in sensitivity analysis rma for {sensitivity_variable}={sensitivity_value}: %s", e$message))
             return(NULL)
         }})
         
@@ -749,7 +749,7 @@ if ("{subgroup_col}" %in% names(dat)) {{
                 rma_result_sg$subgroup_level <- level_name 
                 return(rma_result_sg)
             }}, error = function(e) {{
-                logger::log_warn(sprintf("RMA failed for subgroup '{subgroup_col}' level '%s': %s", level_name, e$message))
+                print(sprintf("RMA failed for subgroup '{subgroup_col}' level '%s': %s", level_name, e$message))
                 return(NULL) # エラー時はNULLを返す
             }})
         }} else {{
@@ -765,7 +765,7 @@ if ("{subgroup_col}" %in% names(dat)) {{
 }} else {{
     res_subgroup_test_{subgroup_col} <- NULL
     res_by_subgroup_{subgroup_col} <- NULL
-    logger::log_warn("Subgroup column '{subgroup_col}' not found in data for subgroup analysis.")
+    print("Subgroup column '{subgroup_col}' not found in data for subgroup analysis.")
 }}
 """
             subgroup_codes.append(f"\n# --- Subgroup analysis for '{subgroup_col}' ---\n{subgroup_test_model_code}\n{subgroup_by_level_code}")
@@ -1056,7 +1056,7 @@ if ("{subgroup_col}" %in% names(dat)) {{
 
         # Egger's test (ファンネルプロットが要求されている場合)
         if output_paths.get("funnel_plot_path"):
-            script_parts.append("egger_test_res <- tryCatch(regtest(res_for_plot), error = function(e) { logger::log_warn(sprintf(\"Egger's test failed: %s\", e$message)); return(NULL) })")
+            script_parts.append("egger_test_res <- tryCatch(regtest(res_for_plot), error = function(e) { print(sprintf(\"Egger's test failed: %s\", e$message)); return(NULL) })")
 
 
         # プロット生成
