@@ -253,7 +253,7 @@ def create_report_message(interpretation: Dict[str, Any]) -> str:
 {results_text[:1200]}{'...' if len(results_text) > 1200 else ''}
 
 ---
-*このレポートはAIによって生成されました。エビデンスの確実性評価（GRADE）を適用し、統計解析結果のみを記載しています。*"""
+*このレポートはAIによって生成されました。統計解析結果のみを記載しています。*"""
     
     return message
 

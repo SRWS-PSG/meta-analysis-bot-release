@@ -184,8 +184,13 @@ async def handle_natural_language_parameters(message, say, client, logger):
                 job_id = state.file_info.get("job_id", "unknown_job")
                 r_output_dir = get_r_output_dir(job_id)
                 
+                # csv_analysis情報をpayloadに含める
+                payload = state.file_info.copy()
+                payload["csv_analysis"] = state.csv_analysis
+                logger.info(f"Debug - Added csv_analysis to payload: has {len(state.csv_analysis)} keys")
+                
                 await run_analysis_async(
-                    payload=state.file_info,
+                    payload=payload,
                     user_parameters=analysis_params,
                     channel_id=channel_id,
                     thread_ts=thread_ts,
