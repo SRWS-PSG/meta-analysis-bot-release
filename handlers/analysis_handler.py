@@ -165,8 +165,21 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
                 r_summary_for_metadata = full_r_summary.copy()
                 
                 # overall_analysisが存在する場合、そのフィールドをトップレベルに追加（後方互換性のため）
+                # ただし、バージョン情報は上書きしない
                 if "overall_analysis" in full_r_summary:
+                    # バージョン情報を保持
+                    version_info = {
+                        'r_version': r_summary_for_metadata.get('r_version'),
+                        'metafor_version': r_summary_for_metadata.get('metafor_version'),
+                        'analysis_environment': r_summary_for_metadata.get('analysis_environment')
+                    }
+                    
                     r_summary_for_metadata.update(full_r_summary["overall_analysis"])
+                    
+                    # バージョン情報を復元
+                    for key, value in version_info.items():
+                        if value is not None:
+                            r_summary_for_metadata[key] = value
                     
             except json.JSONDecodeError:
                 logger.error("RからのJSONサマリーのパースに失敗しました。")
