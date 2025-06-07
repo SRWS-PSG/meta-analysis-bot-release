@@ -161,6 +161,11 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
             try:
                 full_r_summary = json.loads(analysis_result_from_r["structured_summary_content"])
                 
+                # デバッグ: R出力のキーを確認
+                logger.info(f"Debug - R script output keys: {list(full_r_summary.keys()) if isinstance(full_r_summary, dict) else 'Not a dict'}")
+                logger.info(f"Debug - R version in output: {'r_version' in full_r_summary if isinstance(full_r_summary, dict) else 'N/A'}")
+                logger.info(f"Debug - metafor version in output: {'metafor_version' in full_r_summary if isinstance(full_r_summary, dict) else 'N/A'}")
+                
                 # バージョン情報を含む完全なサマリーを保持し、レポート生成で使用する
                 r_summary_for_metadata = full_r_summary.copy()
                 
@@ -174,12 +179,16 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
                         'analysis_environment': r_summary_for_metadata.get('analysis_environment')
                     }
                     
+                    logger.info(f"Debug - Preserving version info before update: r_version={version_info['r_version']}, metafor_version={version_info['metafor_version']}")
+                    
                     r_summary_for_metadata.update(full_r_summary["overall_analysis"])
                     
                     # バージョン情報を復元
                     for key, value in version_info.items():
                         if value is not None:
                             r_summary_for_metadata[key] = value
+                    
+                    logger.info(f"Debug - After version restoration: r_version={r_summary_for_metadata.get('r_version')}, metafor_version={r_summary_for_metadata.get('metafor_version')}")
                     
             except json.JSONDecodeError:
                 logger.error("RからのJSONサマリーのパースに失敗しました。")

@@ -4,6 +4,11 @@
 
 ## 対話テスト・デバッグファイル
 
+### `test_version_info_debug.py`
+- **目的**: バージョン情報（R version、metafor version）が解釈レポートに正しく表示されるかをテスト
+- **使用方法**: `python3 test_version_info_debug.py`
+- **機能**: CSVファイルをアップロード、解析実行、最終レポートでバージョン情報の有無を確認
+
 ### `test_slack_upload.py`
 - **目的**: test-messengerボットを使用してCSVファイル+メンションを投稿し、meta-analysis-botの応答をテスト
 - **使用方法**: `python3 test_slack_upload.py --bot-id U08TKJ1JQ77 --example binary --message "オッズ比で解析してください"`
