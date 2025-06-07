@@ -13,9 +13,15 @@ import argparse
 import requests
 from pathlib import Path
 from typing import Optional
+from dotenv import load_dotenv
 
 # プロジェクトルートをパスに追加
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# プロジェクトルートの.envファイルを読み込み
+project_root = Path(__file__).parent.parent
+env_path = project_root / '.env'
+load_dotenv(env_path)
 
 def get_channel_id(token: str, channel_name: str) -> Optional[str]:
     """チャンネル名からチャンネルIDを取得"""
@@ -187,7 +193,9 @@ def main():
     
     # サンプルCSVを使用する場合
     if args.example:
-        examples_dir = Path(__file__).parent / "examples"
+        # プロジェクトルートのexamplesディレクトリを確認
+        project_root = Path(__file__).parent.parent
+        examples_dir = project_root / "examples"
         example_files = {
             "binary": "example_binary_meta_dataset.csv",
             "continuous": "example_continuous_meta_dataset.csv",
@@ -197,6 +205,11 @@ def main():
         file_path = examples_dir / example_files[args.example]
         if not file_path.exists():
             print(f"❌ サンプルファイルが見つかりません: {file_path}")
+            print(f"📁 確認した場所: {examples_dir}")
+            print(f"📂 利用可能なファイル:")
+            if examples_dir.exists():
+                for f in examples_dir.glob("*.csv"):
+                    print(f"   - {f.name}")
             sys.exit(1)
     else:
         if not args.file:

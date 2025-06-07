@@ -121,8 +121,11 @@ python3 test_slack_upload.py --bot-id U08TKJ1JQ77 --example binary --message "�
 # ユーザー応答をシミュレート（ボットの質問に対して）
 python3 send_message.py --message "<@U08TKJ1JQ77> はい、ランダム効果モデルでお願いします" --thread "スレッドTS"
 
-# 対話状況の確認
+# 対話状況の確認（30秒待機後にボット応答を確認）
 python3 debug_channel_messages.py
+
+# 待機時間を短縮する場合
+python3 debug_channel_messages.py --wait 10
 
 # チャンネル参加状況の確認
 python3 check_channels.py

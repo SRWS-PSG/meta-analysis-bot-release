@@ -16,8 +16,9 @@
 
 ### `debug_channel_messages.py`
 - **目的**: 指定チャンネルのメッセージ履歴を確認し、ボットの応答状況をデバッグ
-- **使用方法**: `python3 debug_channel_messages.py`
-- **機能**: 過去1時間のメンション・ボット応答を表示、対話状況を分析
+- **使用方法**: `python3 debug_channel_messages.py` または `python3 debug_channel_messages.py --wait 10`
+- **機能**: ボット応答を待機（デフォルト30秒）してから、過去1時間のメンション・ボット応答を表示、対話状況を分析
+- **オプション**: `--wait N` でボット応答待機時間をN秒に変更可能
 
 ### `check_channels.py`
 - **目的**: ボットのチャンネル参加状況と権限を確認

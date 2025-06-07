@@ -3,17 +3,18 @@
 Get meta-analysis bot user ID
 """
 import os
+import sys
 import requests
 from pathlib import Path
+from dotenv import load_dotenv
 
-# Load .env file
-env_path = Path(__file__).parent / '.env'
-if env_path.exists():
-    with open(env_path) as f:
-        for line in f:
-            if '=' in line and not line.strip().startswith('#'):
-                key, value = line.strip().split('=', 1)
-                os.environ[key] = value
+# プロジェクトルートをパスに追加
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# プロジェクトルートの.envファイルを読み込み
+project_root = Path(__file__).parent.parent
+env_path = project_root / '.env'
+load_dotenv(env_path)
 
 # メタ解析ボットのトークンを使用
 token = os.getenv("SLACK_BOT_TOKEN")

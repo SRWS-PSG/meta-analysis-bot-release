@@ -19,12 +19,18 @@ from dotenv import load_dotenv
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv(os.path.join(project_root, '.env'))
 
-def check_channel_messages():
+def check_channel_messages(wait_seconds=30):
     """テスト用チャンネルのメッセージを確認"""
+    
+    # ボットの応答を待つための待機
+    print(f"⏳ ボットの応答を待っています（{wait_seconds}秒）...")
+    import time
+    time.sleep(wait_seconds)
     
     # 環境変数からトークン取得
     token = os.getenv('SLACK_UPLOAD_BOT_TOKEN')
     channel_id = os.getenv('SLACK_UPLOAD_CHANNEL_ID', 'C066EQ49QVD')  # デフォルトのテストチャンネル
+    meta_bot_id = os.getenv('META_ANALYSIS_BOT_ID', 'U08TKJ1JQ77')  # メタ解析ボットのID
     
     if not token:
         print("❌ SLACK_UPLOAD_BOT_TOKEN環境変数が設定されていません")
@@ -58,7 +64,7 @@ def check_channel_messages():
             text = msg.get('text', '')
             
             # ボットのメッセージか確認
-            if user_id == 'U08TKJ1JQ77':  # メタ解析ボットのID
+            if user_id == meta_bot_id:  # メタ解析ボットのID
                 bot_messages.append({
                     'timestamp': timestamp,
                     'text': text[:200] + '...' if len(text) > 200 else text,
@@ -67,7 +73,7 @@ def check_channel_messages():
                 })
             
             # ボットメンションを確認
-            if '<@U08TKJ1JQ77>' in text:
+            if f'<@{meta_bot_id}>' in text:
                 user_mentions.append({
                     'timestamp': timestamp,
                     'user': user_id,
@@ -110,4 +116,10 @@ def check_channel_messages():
         print(f"❌ エラー: {e}")
 
 if __name__ == "__main__":
-    check_channel_messages()
+    import argparse
+    parser = argparse.ArgumentParser(description='チャンネルメッセージ履歴の確認')
+    parser.add_argument('--wait', type=int, default=30, help='ボット応答待機時間（秒）')
+    args = parser.parse_args()
+    
+    # 待機時間を指定して実行
+    check_channel_messages(args.wait)
