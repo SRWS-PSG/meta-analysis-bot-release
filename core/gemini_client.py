@@ -170,7 +170,7 @@ class GeminiClient:
         - 実行されたメタ回帰分析（該当する場合の共変量）
         - 実行された出版バイアス検定（該当する場合）
         - 実行された感度分析（該当する場合）
-        - **Analysis Environment:** `result_summary`の`r_version`と`metafor_version`を必ず記載（例：All analyses were conducted using `result_summary.r_version` with the metafor package `result_summary.metafor_version`.）
+        - **Analysis Environment:** `result_summary`の`r_version`と`metafor_version`を必ず記載（例：All analyses were conducted using {result_summary.get('r_version', 'R version not available')} with the metafor package {result_summary.get('metafor_version', 'metafor version not available')}.）
 
         【Results記述内容】
         実際の数値結果のみ：
@@ -204,8 +204,8 @@ class GeminiClient:
         }}
 
         【重要】Statistical Analysisセクションには必ずAnalysis Environment情報を含めてください：
-        - 英語例：All statistical analyses were performed using {result_summary.r_version} with the metafor package version {result_summary.metafor_version}.
-        - 日本語例：統計解析は{result_summary.r_version}、metaforパッケージversion {result_summary.metafor_version}を用いて実施しました。
+        - 英語例：All statistical analyses were performed using {result_summary.get('r_version', 'R version not available')} with the metafor package version {result_summary.get('metafor_version', 'metafor version not available')}.
+        - 日本語例：統計解析は{result_summary.get('r_version', 'R version not available')}、metaforパッケージversion {result_summary.get('metafor_version', 'metafor version not available')}を用いて実施しました。
 
         結果データに基づいて判断できる統計手法と数値結果のみを記述してください。
         国際的な医学雑誌の投稿基準（ICMJE）に準拠し、簡潔かつ正確に記述してください。
