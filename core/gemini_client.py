@@ -29,26 +29,69 @@ class GeminiClient:
         """CSV内容を分析してメタ解析への適合性を評価"""
         logger.info(f"analyze_csv called with content length: {len(csv_content)}")
         # プロンプトを改善し、より堅牢なJSON出力を目指す
+        # CSVの行数をカウント（空行を除外し、より堅牢に）
+        csv_lines = [line.strip() for line in csv_content.strip().split('\n') if line.strip()]
+        data_rows = len(csv_lines) - 1 if csv_lines else 0  # ヘッダーを除く
+        logger.info(f"CSV analysis: {len(csv_lines)} total lines, {data_rows} data rows")
+        logger.info(f"CSV content preview: {csv_content[:500]}...")
+        
         prompt = f"""
-        以下のCSVデータの最初の50行と列名を分析し、メタ解析に適しているかを評価してください。
-        特に、効果量(effect size)、その標準誤差(standard error)または分散(variance)、研究のサンプルサイズ(sample size)、研究を識別するID(study ID)として利用できそうな列があるか確認してください。
+        以下のCSVデータを分析し、メタ解析に適しているかを評価してください。
+        メタ解析で使用可能な列の種類を特定してください：
 
-        CSV内容 (最初の50行程度):
-        {csv_content[:3000]}  # 文字数制限を少し増やす
+        1. 事前計算済み効果量データ: 
+           - 一般的な効果量列: effect_size, yi, estimate, smd, md
+           - ログ変換済みデータ: log_hr, log_or, log_rr, ln_hr, logHR, logOR, logRR
+           - 分散/標準誤差列: variance, vi, standard_error, se, se_log_hr, se_log_or, stderr
+        2. 二値アウトカムデータ: 介入群・対照群のイベント数と総数
+        3. 連続アウトカムデータ: 各群の平均値、標準偏差、サンプルサイズ
+        4. 単一群比率データ: イベント数と総数
+        5. 発生率データ: イベント数と観察時間
+
+        CSV内容 (全{data_rows}行のデータ):
+        {csv_content[:3000]}
+
+        データ変換の自動検出:
+        - 列名に「log」「ln」が含まれる場合、ログ変換済みデータとして識別
+        - HR、OR、RRなどの比率系効果量は通常ログ変換が必要
+        - 列の値の範囲も考慮（例：負の値を含む場合はログ変換済みの可能性）
 
         以下のJSON形式で、キーと値がダブルクォートで囲まれた厳密なJSONで回答してください:
         {{
             "is_suitable": boolean,
-            "reason": "メタ解析への適合性に関する具体的な理由（日本語）",
+            "reason": "メタ解析への適合性に関する具体的な理由（日本語）。必ず「{data_rows}件の研究」のように実際の研究数を明記してください。",
+            "num_studies": {data_rows},
             "detected_columns": {{
-                "effect_size_candidates": ["効果量として使えそうな列名の候補リスト"],
-                "variance_candidates": ["分散/標準誤差として使えそうな列名の候補リスト"],
-                "sample_size_candidates": ["サンプルサイズとして使えそうな列名の候補リスト"],
-                "study_id_candidates": ["研究IDとして使えそうな列名の候補リスト"]
+                "effect_size_candidates": ["事前計算済み効果量列（例: effect_size, logOR, SMD, log_hr）"],
+                "variance_candidates": ["分散/標準誤差列（例: variance, SE, standard_error, se_log_hr）"],
+                "transformation_status": {{
+                    "is_log_transformed": boolean,
+                    "detected_log_columns": ["検出されたログ変換済み列名"],
+                    "transformation_indicators": ["ログ変換を示す指標（列名パターン、値の範囲など）"],
+                    "needs_transformation": boolean
+                }},
+                "binary_intervention_events": ["介入群のイベント数列（例: intervention_events, treatment_success）"],
+                "binary_intervention_total": ["介入群の総数列（例: intervention_total, treatment_n）"],
+                "binary_control_events": ["対照群のイベント数列（例: control_events, control_success）"],
+                "binary_control_total": ["対照群の総数列（例: control_total, control_n）"],
+                "continuous_intervention_mean": ["介入群平均列（例: intervention_mean, treatment_mean）"],
+                "continuous_intervention_sd": ["介入群標準偏差列（例: intervention_sd, treatment_sd）"],
+                "continuous_intervention_n": ["介入群サンプルサイズ列（例: intervention_n, treatment_n）"],
+                "continuous_control_mean": ["対照群平均列（例: control_mean, placebo_mean）"],
+                "continuous_control_sd": ["対照群標準偏差列（例: control_sd, placebo_sd）"],
+                "continuous_control_n": ["対照群サンプルサイズ列（例: control_n, placebo_n）"],
+                "proportion_events": ["単一群の比率データ：イベント数列（例: events, successes）"],
+                "proportion_total": ["単一群の比率データ：総数列（例: total, n, sample_size）"],
+                "proportion_time": ["発生率データ：観察時間列（例: time, person_years）"],
+                "sample_size_candidates": ["全体サンプルサイズ列（例: total_n, sample_size）"],
+                "study_id_candidates": ["研究ID列（例: study, author, study_id）"],
+                "subgroup_candidates": ["サブグループ解析に使える文字列/カテゴリ型列（例: region, country, intervention_type, risk_of_bias）"],
+                "moderator_candidates": ["メタ回帰に使える数値型列（例: year, age, dose, follow_up_months）"]
             }},
             "suggested_analysis": {{
-                "effect_type_suggestion": "SMD, OR, RR, MDなど、検出されたデータから推測される効果量の種類（複数可、または不明）",
-                "model_type_suggestion": "randomまたはfixed（通常はrandomを推奨）"
+                "effect_type_suggestion": "データの種類に基づいた推奨効果量（OR, RR, SMD, MD, HR, PRE等、単一の文字列）",
+                "model_type_suggestion": "randomまたはfixed（通常はrandomを推奨）",
+                "transformation_recommendation": "必要な変換の説明（例：「HRデータは既にログ変換済みです」「ORデータの対数変換が必要です」）"
             }},
             "column_descriptions": {{
                 "column_name1": "列1の内容の簡単な説明とデータ型（例: 数値、文字列）",
@@ -59,8 +102,15 @@ class GeminiClient:
                 {{"column1": "row2_val1", "column2": "row2_val2"}}
             ]
         }}
-        data_previewにはCSVの最初の2行分のデータを含めてください。
-        もしCSVデータが不適切で解析できない場合は、is_suitableをfalseにし、reasonにその旨を記載してください。
+        
+        重要な注意点：
+        - 列名は大文字小文字を区別して正確に記載してください
+        - ログ変換の検出: 列名に「log」「ln」が含まれる、または効果量が負の値を含む場合
+        - HR、OR、RRデータの場合、ログ変換済みかどうかを明確に識別してください
+        - SE列は分散計算のため2乗が必要（se_log_hr → vi）
+        - 事前計算済み効果量の場合、変換状態を正確に把握してください
+        - データの種類に応じて適切な効果量タイプを推奨してください（二値→OR/RR、連続→SMD/MD、ハザード比→HR等）
+        - 実際の研究数は{data_rows}件です
         """
         
         try:

@@ -402,3 +402,187 @@ The bot leverages Google Gemini AI for sophisticated natural language processing
 - All bot responses in threads
 - Context maintained per thread
 - Avoids infinite loops with bot message detection
+
+## CSV読み込み〜解析実施までの修正履歴とアンチパターン
+
+### 2025年6月6日の修正内容
+
+#### 1. 解析結果の表示でN/A値が表示される問題
+**問題**: メタ解析完了後、結果サマリーで統合効果量や信頼区間が "N/A" と表示される
+```
+**【解析結果サマリー】**
+• 統合効果量: N/A
+• 95%信頼区間: N/A - N/A
+• 異質性: I²=N/A%
+• 研究数: N/A件
+```
+
+**原因**: `utils/slack_utils.py`の`create_analysis_result_message`関数でRスクリプトの出力フィールド名との不整合
+
+**Rスクリプトの実際の出力**:
+```json
+{
+  "overall_analysis": {
+    "k": 10,
+    "estimate": 1.45,
+    "ci_lb": 1.12,
+    "ci_ub": 1.88,
+    "I2": 45.2
+  }
+}
+```
+
+**修正**: 正しいフィールド名の使用 (`utils/slack_utils.py:97-133`)
+```python
+# Before (間違い)
+pooled_effect = summary.get('pooled_effect', summary.get('estimate', 'N/A'))
+ci_lower = summary.get('ci_lower', summary.get('ci_lb', 'N/A'))
+num_studies = summary.get('num_studies', 'N/A')
+
+# After (修正済み)
+pooled_effect = summary.get('estimate', 'N/A')  # Rが出力する実際のフィールド名
+ci_lower = summary.get('ci_lb', 'N/A')          # Rが出力する実際のフィールド名  
+num_studies = summary.get('k', 'N/A')           # Rが出力する実際のフィールド名
+```
+
+**コミット**: fb57b9a (2025-01-06)
+
+#### 2. CSV列検出で効果量候補が「検出されませんでした」と表示される問題
+**問題**: CSV分析で研究数は正確に検出されるが、効果量候補列や分散候補列が「検出されませんでした」と表示される
+```
+• 研究数: 10件
+• 効果量候補列: 検出されませんでした  ← 問題
+• 分散/SE候補列: 検出されませんでした  ← 問題
+• 研究ID候補列: Study
+• 推奨効果量: OR
+```
+
+**原因**: Geminiのプロンプトが不十分で、二値アウトカムデータ（イベント数/総数）を適切に識別できていなかった
+
+**CSV実際のデータ例**:
+```csv
+Study,Intervention_Events,Intervention_Total,Control_Events,Control_Total
+Study 1,15,48,10,52
+Study 2,22,55,18,58
+```
+
+**修正**: 
+1. Geminiプロンプトを改善して詳細なデータタイプ識別を実装
+2. 二値・連続・事前計算済みデータを明確に分類
+3. 新しい列分類システムの導入
+
+**修正後のGeminiプロンプト** (`core/gemini_client.py:55-70`):
+```json
+"detected_columns": {
+  "binary_intervention_events": ["介入群のイベント数列"],
+  "binary_control_events": ["対照群のイベント数列"],
+  "binary_intervention_total": ["介入群の総数列"],
+  "binary_control_total": ["対照群の総数列"],
+  "effect_size_candidates": ["事前計算済み効果量列"],
+  "variance_candidates": ["分散/標準誤差列"]
+}
+```
+
+**表示の改善** (`utils/slack_utils.py:22-48`):
+```python
+# データタイプ別に候補を表示
+if binary_intervention_events:
+    data_type_info.append(f"二値アウトカム: {', '.join(binary_candidates)}")
+if effect_candidates:
+    data_type_info.append(f"事前計算済み効果量: {', '.join(effect_candidates)}")
+```
+
+**コミット**: 4dfb6bb (2025-01-06)
+
+#### 3. Redis SSL証明書エラー
+**問題**: Heroku RedisのSSL接続で証明書検証エラーが発生
+```
+Failed to initialize Redis: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain
+```
+
+**原因**: Heroku Redisは自己署名証明書を使用しており、デフォルトのRedis接続では検証に失敗する
+
+**修正**: `utils/conversation_state.py`でSSL証明書検証をバイパス
+```python
+if redis_url.startswith('rediss://'):
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+    _storage_backend = redis.from_url(
+        redis_url, 
+        decode_responses=True,
+        ssl_cert_reqs=None,
+        ssl_check_hostname=False
+    )
+```
+
+#### 2. 関数インポートエラー
+**問題**: `handle_natural_language_parameters`関数がインポートできない
+```
+cannot import name 'handle_natural_language_parameters' from 'handlers.parameter_handler'
+```
+
+**原因**: 関数が別の関数内に定義されていたため、モジュールレベルでインポートできなかった
+
+**修正**: `handlers/parameter_handler.py`で関数をモジュールレベルに移動
+
+#### 3. DialogState列挙型の比較エラー
+**問題**: 会話状態の比較で文字列と列挙型を混在させていた
+```python
+# 誤り
+if state.state == "analysis_preference":
+
+# 正しい
+from utils.conversation_state import DialogState
+if state.state == DialogState.ANALYSIS_PREFERENCE:
+```
+
+#### 4. Slack 3秒タイムアウト対応
+**問題**: Slackイベントハンドラーが即座にACKを返さず、タイムアウトが発生
+
+**修正**: すべてのイベントハンドラーに`ack()`を追加
+```python
+@app.event("message")
+def handle_direct_message(body, event, client, logger, ack):
+    ack()  # 即座にACKを返す
+    # 処理を続行...
+```
+
+#### 5. スレッドメッセージ検出の改善
+**問題**: DMまたは直接返信のみを処理し、スレッド内の他のメッセージを無視していた
+
+**修正**: スレッド参加者のメッセージも処理するようロジックを拡張
+```python
+has_thread_ts = "thread_ts" in event
+if channel_type == "im" or is_thread_message or has_thread_ts:
+```
+
+### アンチパターン集
+
+1. **ストレージバックエンドの不一致**
+   - ❌ `STORAGE_BACKEND=memory`なのにRedis URLを設定
+   - ✅ Redis使用時は`STORAGE_BACKEND=redis`に設定
+
+2. **非同期処理の誤り**
+   - ❌ Slackイベントで時間のかかる処理を同期的に実行
+   - ✅ 即座に`ack()`して、重い処理は非同期で実行
+
+3. **型の不一致**
+   - ❌ 列挙型と文字列を直接比較
+   - ✅ 適切な型変換または列挙型を使用した比較
+
+4. **関数のスコープ**
+   - ❌ インポートが必要な関数を別の関数内に定義
+   - ✅ モジュールレベルで関数を定義
+
+5. **SSL接続の処理**
+   - ❌ Heroku Redisの自己署名証明書をデフォルト設定で接続
+   - ✅ SSL証明書検証を適切に設定
+
+### 今後の開発時の注意点
+
+1. **ログの重要性**: エラー発生時は必ず`heroku logs --tail`で詳細を確認
+2. **環境変数の確認**: `heroku config`で設定値の整合性を確認
+3. **イベントハンドラー**: 必ず最初に`ack()`を呼び出す
+4. **型の一貫性**: 列挙型を使用する場合は全体で統一
+5. **Redis接続**: Heroku RedisはSSL必須、証明書検証の設定が必要

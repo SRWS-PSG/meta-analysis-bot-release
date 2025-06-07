@@ -6,35 +6,119 @@ from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__) # upload_files_to_slack のために追加
 
-def create_analysis_start_message(analysis_result: Dict[str, Any]) -> str:
+def create_analysis_start_message(analysis_result: Dict[str, Any], initial_params: Optional[Dict[str, Any]] = None) -> str:
     """CSV分析結果を自然言語メッセージとして作成（Button UI削除）"""
     detected_cols = analysis_result.get("detected_columns", {})
+    
+    # 各種データタイプの列候補を取得
     effect_candidates = detected_cols.get("effect_size_candidates", [])
     variance_candidates = detected_cols.get("variance_candidates", [])
+    binary_intervention_events = detected_cols.get("binary_intervention_events", [])
+    binary_control_events = detected_cols.get("binary_control_events", [])
+    continuous_intervention_mean = detected_cols.get("continuous_intervention_mean", [])
+    continuous_control_mean = detected_cols.get("continuous_control_mean", [])
+    proportion_events = detected_cols.get("proportion_events", [])
+    proportion_total = detected_cols.get("proportion_total", [])
+    study_id_candidates = detected_cols.get("study_id_candidates", [])
+    subgroup_candidates = detected_cols.get("subgroup_candidates", [])
+    moderator_candidates = detected_cols.get("moderator_candidates", [])
     
-    effect_display = ", ".join(effect_candidates[:3]) if effect_candidates else "検出されませんでした"
+    # 表示用の候補を構築
+    data_type_info = []
+    
+    # 事前計算済み効果量データ
+    if effect_candidates:
+        data_type_info.append(f"事前計算済み効果量: {', '.join(effect_candidates[:2])}")
+    
+    # 二値アウトカムデータ
+    binary_candidates = []
+    if binary_intervention_events:
+        binary_candidates.extend(binary_intervention_events[:1])
+    if binary_control_events:
+        binary_candidates.extend(binary_control_events[:1])
+    if binary_candidates:
+        data_type_info.append(f"二値アウトカム: {', '.join(binary_candidates)}")
+    
+    # 連続アウトカムデータ
+    continuous_candidates = []
+    if continuous_intervention_mean:
+        continuous_candidates.extend(continuous_intervention_mean[:1])
+    if continuous_control_mean:
+        continuous_candidates.extend(continuous_control_mean[:1])
+    if continuous_candidates:
+        data_type_info.append(f"連続アウトカム: {', '.join(continuous_candidates)}")
+    
+    # 単一群比率データ
+    proportion_candidates = []
+    if proportion_events:
+        proportion_candidates.extend(proportion_events[:1])
+    if proportion_total:
+        proportion_candidates.extend(proportion_total[:1])
+    if proportion_candidates:
+        data_type_info.append(f"単一群比率: {', '.join(proportion_candidates)}")
+    
+    # 表示用文字列の作成
+    effect_display = "; ".join(data_type_info) if data_type_info else "検出されませんでした"
     variance_display = ", ".join(variance_candidates[:3]) if variance_candidates else "検出されませんでした"
+    study_id_display = ", ".join(study_id_candidates[:2]) if study_id_candidates else "検出されませんでした"
+    subgroup_display = ", ".join(subgroup_candidates[:5]) if subgroup_candidates else "検出されませんでした"
+    moderator_display = ", ".join(moderator_candidates[:5]) if moderator_candidates else "検出されませんでした"
 
     suggested_analysis = analysis_result.get("suggested_analysis", {})
     suggested_effect_type = suggested_analysis.get("effect_type_suggestion", "未検出")
+    suggested_model_type = suggested_analysis.get("model_type_suggestion", "未検出")
     
-    # 研究数を取得
-    num_studies = len(analysis_result.get("data_preview", [])) if analysis_result.get("data_preview") else "不明"
+    # 配列として返される場合の処理
+    if isinstance(suggested_effect_type, list):
+        suggested_effect_type = ", ".join(suggested_effect_type) if suggested_effect_type else "未検出"
+    if isinstance(suggested_model_type, list):
+        suggested_model_type = ", ".join(suggested_model_type) if suggested_model_type else "未検出"
+    
+    # 研究数を取得（Geminiが返すnum_studiesフィールドを優先）
+    num_studies = analysis_result.get("num_studies", "不明")
+    if num_studies == "不明":
+        # フォールバック: reasonから抽出を試みる
+        reason = analysis_result.get("reason", "")
+        import re
+        study_count_match = re.search(r'(\d+)件?の?研究', reason)
+        if study_count_match:
+            num_studies = study_count_match.group(1)
+        else:
+            data_preview = analysis_result.get("data_preview", [])
+            num_studies = f"{len(data_preview)}+ (サンプル表示)" if data_preview else "不明"
+    
+    # 初期パラメータの表示
+    auto_detected_params = ""
+    if initial_params:
+        auto_params = []
+        if initial_params.get("effect_size"):
+            auto_params.append(f"効果量: {initial_params['effect_size']}")
+        if initial_params.get("model_type"):
+            auto_params.append(f"モデル: {initial_params['model_type']}")
+        if initial_params.get("study_column"):
+            auto_params.append(f"研究ID列: {initial_params['study_column']}")
+        
+        if auto_params:
+            auto_detected_params = f"\n\n**🤖 自動検出済みパラメータ:**\n• " + "\n• ".join(auto_params)
     
     message = f"""📊 **CSVファイルを分析しました！**
 
 **データセット概要:**
 • 研究数: {num_studies}件
-• 効果量候補列: {effect_display}
+• 検出データ: {effect_display}
 • 分散/SE候補列: {variance_display}
+• 研究ID候補列: {study_id_display}
+• サブグループ候補列: {subgroup_display}
+• メタ回帰候補列: {moderator_display}
 • 推奨効果量: {suggested_effect_type}
+• 推奨モデル: {suggested_model_type}{auto_detected_params}
 
-**解析パラメータを自然な日本語で教えてください。**
+**解析パラメータを教えてください。**
 
 例：
 • 「オッズ比でランダム効果モデルを使って解析して」
-• 「リスク比で固定効果モデルでお願いします」
 • 「SMDでREML法を使って、地域別のサブグループ解析も行って」
+• 「このまま解析開始」（自動検出済みパラメータを使用）
 
 どのような解析をご希望ですか？"""
 
@@ -205,11 +289,11 @@ async def upload_files_to_slack(files_to_upload: List[Dict[str, str]], channel_i
             continue
 
         try:
-            # Slack SDKの files_upload_v2 を使用
+            # Slack SDKの files_upload_v2 を使用（fileパラメータで指定）
             response = await asyncio.to_thread(
                 client.files_upload_v2,
                 channel=channel_id,
-                filepath=file_path,
+                file=file_path,
                 title=file_title,
                 initial_comment=f"{file_title} ({job_id})",
                 thread_ts=thread_ts

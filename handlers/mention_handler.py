@@ -92,8 +92,11 @@ def register_mention_handlers(app: App):
     """メンション関連のハンドラーを登録"""
     
     @app.event("app_mention")
-    def handle_app_mention(body, event, client, logger):
+    def handle_app_mention(body, event, client, logger, ack):
         """ボットがメンションされた時の処理"""
+        # 即座にACKを返してSlackの3秒タイムアウトを回避
+        ack()
+        
         try:
             logger.info("=== APP MENTION EVENT RECEIVED ===")
             logger.info(f"Event timestamp: {event.get('ts')}")
@@ -360,8 +363,11 @@ def register_mention_handlers(app: App):
                 logger.error(f"Error sending error message: {reply_error}")
     
     @app.event("message")
-    def handle_direct_message(body, event, client, logger):
+    def handle_direct_message(body, event, client, logger, ack):
         """ダイレクトメッセージとスレッド返信の処理"""
+        # 即座にACKを返してSlackの3秒タイムアウトを回避
+        ack()
+        
         try:
             # ボット自身のメッセージは無視
             if event.get("bot_id"):
@@ -376,19 +382,22 @@ def register_mention_handlers(app: App):
             # ファイルの確認
             files = event.get("files", [])
             
-            # DM または スレッド内メッセージの場合に処理
-            if channel_type == "im" or is_thread_message:
+            # DM、スレッド内メッセージ、または"thread_ts"が存在する場合（スレッド参加者）に処理
+            has_thread_ts = "thread_ts" in event
+            if channel_type == "im" or is_thread_message or has_thread_ts:
                 text = event.get("text", "")
+                thread_ts = event.get("thread_ts", event.get("ts"))  # 必要に応じてイベントTSをフォールバック
+                channel_id = event["channel"]
+                user_id = event["user"]
+                
                 logger.info(f"Message in thread or DM received: {text[:100]}...")
                 logger.info(f"Files in message: {len(files)} files")
+                logger.info(f"Thread TS: {thread_ts}, Channel: {channel_id}, Is thread message: {is_thread_message}")
                 
                 # CSVファイルがあるかチェック
                 csv_files = [f for f in files if f.get("name", "").lower().endswith(".csv")]
                 if csv_files:
                     # CSVファイルが添付されている場合
-                    channel_id = event["channel"]
-                    user_id = event["user"]
-                    thread_ts = event.get("thread_ts", event["ts"])
                     
                     logger.info(f"CSV files found in thread: {[f.get('name') for f in csv_files]}")
                     client.chat_postMessage(
@@ -454,9 +463,6 @@ def register_mention_handlers(app: App):
                 # CSVデータが含まれているかチェック
                 elif _contains_csv_data(text):
                     # CSVデータが含まれている場合は処理する
-                    channel_id = event["channel"]
-                    user_id = event["user"]
-                    thread_ts = event.get("thread_ts", event["ts"])
                     
                     client.chat_postMessage(
                         channel=channel_id,
@@ -510,9 +516,12 @@ def register_mention_handlers(app: App):
                     # CSVファイルがない場合、パラメータ収集の対話を処理する可能性がある
                     # 会話状態をチェック
                     from utils.conversation_state import get_state
+                    logger.info(f"Checking conversation state for thread_ts={thread_ts}, channel_id={channel_id}")
                     state = get_state(thread_ts, channel_id)
+                    logger.info(f"Retrieved state: {state.state if state else 'None'}")
                     
-                    if state and state.state == "analysis_preference":
+                    from utils.conversation_state import DialogState
+                    if state and state.state == DialogState.ANALYSIS_PREFERENCE:
                         # パラメータ収集中の場合
                         logger.info(f"Processing parameter collection in thread {thread_ts}: {text}")
                         

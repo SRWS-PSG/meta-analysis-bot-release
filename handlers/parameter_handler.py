@@ -16,6 +16,197 @@ from utils.conversation_state import get_or_create_state, save_state
 # Simple state management using thread_ts as key
 _parameter_states = {}
 
+# 自然言語パラメータ収集用のメッセージハンドラー（register_parameter_handlers外に移動）
+async def handle_natural_language_parameters(message, say, client, logger):
+    """自然言語でのパラメータ入力を処理（Gemini駆動の継続的対話）"""
+    try:
+        channel_id = message["channel"]
+        thread_ts = message.get("thread_ts")
+        user_text = message["text"]
+        
+        # スレッド内でのみ処理
+        if not thread_ts:
+            return
+        
+        # 会話状態を取得
+        state = get_or_create_state(thread_ts, channel_id)
+        
+        # パラメータ収集中でない場合はスキップ
+        from utils.conversation_state import DialogState
+        if state.state != DialogState.ANALYSIS_PREFERENCE:
+            logger.info(f"State is {state.state}, not analysis_preference. Skipping message processing.")
+            return
+        
+        logger.info(f"Processing natural language parameter input: {user_text}")
+        
+        # CSVの列名リストを取得
+        csv_columns = []
+        if state.csv_analysis and "detected_columns" in state.csv_analysis:
+            detected_cols = state.csv_analysis["detected_columns"]
+            for candidates in detected_cols.values():
+                if isinstance(candidates, list):
+                    csv_columns.extend(candidates)
+        
+        # 会話履歴の確認とログ
+        logger.info(f"Conversation history before adding user input: {len(state.conversation_history)} messages")
+        if state.conversation_history:
+            logger.info(f"Last message in history: role={state.conversation_history[-1].get('role')}, content={state.conversation_history[-1].get('content')[:100]}...")
+        
+        # ユーザーの入力を履歴に追加
+        state.conversation_history.append({
+            "role": "user",
+            "content": user_text
+        })
+        logger.info(f"Added user input to conversation history. New length: {len(state.conversation_history)}")
+        
+        # Geminiでパラメータを抽出して応答を生成
+        from utils.gemini_dialogue import process_user_input_with_gemini
+        
+        response = await process_user_input_with_gemini(
+            user_input=user_text,
+            csv_columns=csv_columns,
+            current_params=state.collected_params,
+            conversation_history=state.conversation_history,
+            csv_analysis=state.csv_analysis
+        )
+        
+        if response:
+            # パラメータを更新
+            if response.get("extracted_params"):
+                state.update_params(response["extracted_params"])
+                logger.info(f"Updated parameters: {response['extracted_params']}")
+            
+            # Geminiの応答を送信
+            bot_message = response.get("bot_message")
+            if bot_message:
+                await say(bot_message)
+                # ボットの応答を履歴に追加
+                state.conversation_history.append({
+                    "role": "assistant",
+                    "content": bot_message
+                })
+            
+            # 解析準備完了チェック
+            if response.get("is_ready_to_analyze"):
+                await say("🚀 パラメータ収集が完了しました。解析を開始します...")
+                
+                # 解析パラメータを構築
+                analysis_params = {
+                    "measure": state.collected_params.get("effect_size", "OR"),
+                    "model": state.collected_params.get("method") or "REML",  # R template uses "model" not "method"
+                    "model_type": state.collected_params.get("model_type", "random")
+                }
+                
+                # 初期検出された列マッピングを追加
+                if state.csv_analysis and "detected_columns" in state.csv_analysis:
+                    detected_cols = state.csv_analysis["detected_columns"]
+                    data_columns = {}
+                    
+                    # 二値アウトカム用の列マッピング
+                    if detected_cols.get("binary_intervention_events"):
+                        data_columns["ai"] = detected_cols["binary_intervention_events"][0]
+                    if detected_cols.get("binary_intervention_total"):
+                        # bi = total - events の計算用
+                        data_columns["n1i"] = detected_cols["binary_intervention_total"][0]
+                    if detected_cols.get("binary_control_events"):
+                        data_columns["ci"] = detected_cols["binary_control_events"][0]
+                    if detected_cols.get("binary_control_total"):
+                        # di = total - events の計算用
+                        data_columns["n2i"] = detected_cols["binary_control_total"][0]
+                    
+                    # 連続アウトカム用の列マッピング
+                    if detected_cols.get("continuous_intervention_mean"):
+                        data_columns["m1i"] = detected_cols["continuous_intervention_mean"][0]
+                    if detected_cols.get("continuous_intervention_sd"):
+                        data_columns["sd1i"] = detected_cols["continuous_intervention_sd"][0]
+                    if detected_cols.get("continuous_intervention_n"):
+                        data_columns["n1i"] = detected_cols["continuous_intervention_n"][0]
+                    if detected_cols.get("continuous_control_mean"):
+                        data_columns["m2i"] = detected_cols["continuous_control_mean"][0]
+                    if detected_cols.get("continuous_control_sd"):
+                        data_columns["sd2i"] = detected_cols["continuous_control_sd"][0]
+                    if detected_cols.get("continuous_control_n"):
+                        data_columns["n2i"] = detected_cols["continuous_control_n"][0]
+                    
+                    # 事前計算済み効果量用の列マッピング
+                    if detected_cols.get("effect_size_candidates"):
+                        data_columns["yi"] = detected_cols["effect_size_candidates"][0]
+                    if detected_cols.get("variance_candidates"):
+                        data_columns["vi"] = detected_cols["variance_candidates"][0]
+                    
+                    # HR解析や他の事前計算済み効果量の場合の特別処理
+                    effect_size = state.collected_params.get("effect_size")
+                    if effect_size in ["HR", "OR", "RR"] and state.collected_params.get("effect_size_columns"):
+                        # ログ変換済みデータの列マッピング
+                        effect_col = state.collected_params["effect_size_columns"][0]
+                        variance_col = state.collected_params.get("variance_columns", [None])[0]
+                        
+                        # SE列の場合は2乗して分散に変換する処理が必要
+                        if variance_col and ("se_" in variance_col.lower() or "stderr" in variance_col.lower()):
+                            logger.info(f"SE列 {variance_col} を分散に変換する処理を設定")
+                            # R側で se^2 計算を行う指示
+                            data_columns["se_col_needs_squaring"] = variance_col
+                            data_columns["vi"] = f"{variance_col}_squared"  # R側で計算される列名
+                        elif variance_col:
+                            data_columns["vi"] = variance_col
+                        
+                        data_columns["yi"] = effect_col
+                        logger.info(f"事前計算済み効果量マッピング: yi={effect_col}, vi処理={data_columns.get('vi', 'なし')}")
+                        
+                    # 一般的な事前計算済み効果量（yi/vi形式）
+                    elif effect_size == "PRE" or (effect_size in ["SMD", "MD"] and state.collected_params.get("effect_size_columns")):
+                        if state.collected_params.get("effect_size_columns"):
+                            data_columns["yi"] = state.collected_params["effect_size_columns"][0]
+                        if state.collected_params.get("variance_columns"):
+                            data_columns["vi"] = state.collected_params["variance_columns"][0]
+                    
+                    # 単一群比率用の列マッピング
+                    if detected_cols.get("proportion_events"):
+                        data_columns["proportion_events"] = detected_cols["proportion_events"][0]
+                    if detected_cols.get("proportion_total"):
+                        data_columns["proportion_total"] = detected_cols["proportion_total"][0]
+                    
+                    # 研究ID列
+                    if detected_cols.get("study_id_candidates"):
+                        data_columns["study_label"] = detected_cols["study_id_candidates"][0]
+                    
+                    # 列マッピングが見つかった場合のみ追加
+                    if data_columns:
+                        analysis_params["data_columns"] = data_columns
+                        logger.info(f"Added data_columns to analysis_params: {data_columns}")
+                
+                logger.info(f"Final analysis_params: {analysis_params}")
+                
+                # 解析を実行
+                from utils.file_utils import get_r_output_dir
+                job_id = state.file_info.get("job_id", "unknown_job")
+                r_output_dir = get_r_output_dir(job_id)
+                
+                await run_analysis_async(
+                    payload=state.file_info,
+                    user_parameters=analysis_params,
+                    channel_id=channel_id,
+                    thread_ts=thread_ts,
+                    user_id=state.file_info.get("user_id", "unknown_user"),
+                    client=client,
+                    logger=logger,
+                    r_output_dir=r_output_dir,
+                    original_file_url=state.file_info.get("file_url"),
+                    original_file_name=state.file_info.get("original_filename", "data.csv")
+                )
+                
+                # 状態をリセット
+                state.state = "COMPLETED"
+            
+            save_state(state)
+        else:
+            logger.error("Failed to get response from Gemini")
+            await say("申し訳ございません。応答の生成に失敗しました。もう一度お試しください。")
+            
+    except Exception as e:
+        logger.error(f"Error processing natural language parameters: {e}", exc_info=True)
+        await say(f"❌ パラメータ処理中にエラーが発生しました: {str(e)}")
+
 def register_parameter_handlers(app: App):
     """パラメータ収集と解析開始に関連するハンドラーを登録"""
 
@@ -50,7 +241,7 @@ def register_parameter_handlers(app: App):
             await client.chat_postMessage(
                 channel=channel_id,
                 thread_ts=thread_ts,
-                text="🤖 解析パラメータを自然な日本語で教えてください。\n\n例：\n・「オッズ比でランダム効果モデルで解析してください」\n・「リスク比で固定効果モデルでお願いします」\n・「SMDでREML法を使って解析してください」"
+                text="🤖 解析パラメータを教えてください。\n\n例：\n・「オッズ比でランダム効果モデルで解析してください」\n・「リスク比で固定効果モデルでお願いします」\n・「SMDでREML法を使って解析してください」"
             )
             
         except SlackApiError as e:
@@ -386,107 +577,6 @@ def register_parameter_handlers(app: App):
         # 必要であれば、関連するmetadataをクリアする処理などをここに追加
         # (例: 特定のストレージからこのjob_idの情報を削除する)
     
-    # 自然言語パラメータ収集用のメッセージハンドラー
-    async def handle_natural_language_parameters(message, say, client, logger):
-        """自然言語でのパラメータ入力を処理（Gemini駆動の継続的対話）"""
-        try:
-            channel_id = message["channel"]
-            thread_ts = message.get("thread_ts")
-            user_text = message["text"]
-            
-            # スレッド内でのみ処理
-            if not thread_ts:
-                return
-            
-            # 会話状態を取得
-            state = get_or_create_state(thread_ts, channel_id)
-            
-            # パラメータ収集中でない場合はスキップ
-            if state.state != "analysis_preference":
-                logger.info(f"State is {state.state}, not analysis_preference. Skipping message processing.")
-                return
-            
-            logger.info(f"Processing natural language parameter input: {user_text}")
-            
-            # CSVの列名リストを取得
-            csv_columns = []
-            if state.csv_analysis and "detected_columns" in state.csv_analysis:
-                detected_cols = state.csv_analysis["detected_columns"]
-                for candidates in detected_cols.values():
-                    if isinstance(candidates, list):
-                        csv_columns.extend(candidates)
-            
-            # 会話履歴の確認とログ
-            logger.info(f"Conversation history before adding user input: {len(state.conversation_history)} messages")
-            if state.conversation_history:
-                logger.info(f"Last message in history: role={state.conversation_history[-1].get('role')}, content={state.conversation_history[-1].get('content')[:100]}...")
-            
-            # ユーザーの入力を履歴に追加
-            state.conversation_history.append({
-                "role": "user",
-                "content": user_text
-            })
-            logger.info(f"Added user input to conversation history. New length: {len(state.conversation_history)}")
-            
-            # Geminiでパラメータを抽出して応答を生成
-            from utils.gemini_dialogue import process_user_input_with_gemini
-            
-            response = await process_user_input_with_gemini(
-                user_input=user_text,
-                csv_columns=csv_columns,
-                current_params=state.collected_params,
-                conversation_history=state.conversation_history,
-                csv_analysis=state.csv_analysis
-            )
-            
-            if response:
-                # パラメータを更新
-                if response.get("extracted_params"):
-                    state.update_params(response["extracted_params"])
-                    logger.info(f"Updated parameters: {response['extracted_params']}")
-                
-                # Geminiの応答を送信
-                bot_message = response.get("bot_message")
-                if bot_message:
-                    await say(bot_message)
-                    # ボットの応答を履歴に追加
-                    state.conversation_history.append({
-                        "role": "assistant",
-                        "content": bot_message
-                    })
-                
-                # 解析準備完了チェック
-                if response.get("is_ready_to_analyze"):
-                    await say("🚀 パラメータ収集が完了しました。解析を開始します...")
-                    
-                    # 解析パラメータを構築
-                    analysis_params = {
-                        "measure": state.collected_params.get("effect_size", "OR"),
-                        "method": state.collected_params.get("method", "REML"),
-                        "model_type": state.collected_params.get("model_type", "random")
-                    }
-                    
-                    # 解析を実行
-                    await run_analysis_async(
-                        state.file_info,
-                        analysis_params,
-                        channel_id,
-                        thread_ts,
-                        client,
-                        logger
-                    )
-                    
-                    # 状態をリセット
-                    state.state = "COMPLETED"
-                
-                save_state(state)
-            else:
-                logger.error("Failed to get response from Gemini")
-                await say("申し訳ございません。応答の生成に失敗しました。もう一度お試しください。")
-                
-        except Exception as e:
-            logger.error(f"Error processing natural language parameters: {e}", exc_info=True)
-            await say(f"❌ パラメータ処理中にエラーが発生しました: {str(e)}")
     
     # メッセージハンドラーは統一ハンドラーから呼び出されるため、ここでは登録しない
     # 代わりに、main.pyで統一されたメッセージハンドラーを登録

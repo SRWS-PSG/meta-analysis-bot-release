@@ -96,11 +96,11 @@ dat <- escalc(measure="{measure}", ri={ri}, ni={ni}, data=dat{slab_param_string}
 """,
             "rma_basic": """
 # 基本的なメタアナリシス実行
-res <- rma(yi, vi, data=dat, method="{method}")
+res <- rma({yi_col}, {vi_col}, data=dat, method="{method}")
 """,
             "rma_with_mods": """
 # モデレーターを用いたメタ回帰実行
-res <- rma(yi, vi, mods = ~ {mods_formula}, data=dat, method="{method}")
+res <- rma({yi_col}, {vi_col}, mods = ~ {mods_formula}, data=dat, method="{method}")
 """,
             "subgroup_analysis": """
 # サブグループ解析 (必要な場合)
@@ -670,6 +670,12 @@ if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) &
     def _generate_rma_code(self, analysis_params: Dict[str, Any]) -> str:
         method = analysis_params.get("model", "REML") # "method" から "model" に変更
         moderators = analysis_params.get("moderator_columns", [])
+        data_cols = analysis_params.get("data_columns", {})
+        
+        # 実際の列名を取得（デフォルトは yi, vi）
+        yi_col = data_cols.get("yi", "yi")
+        vi_col = data_cols.get("vi", "vi")
+        
         mods_formula_parts = []
         if moderators:
             # モデレーターが数値型かカテゴリ型かを考慮する必要がある場合がある
@@ -681,10 +687,12 @@ if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) &
             return self._safe_format(
                 self.templates["rma_with_mods"],
                 method=method, mods_formula=mods_formula,
+                yi_col=yi_col, vi_col=vi_col
             )
         else:
             return self._safe_format(
                 self.templates["rma_basic"], method=method,
+                yi_col=yi_col, vi_col=vi_col
             )
 
     def _generate_subgroup_code(self, analysis_params: Dict[str, Any]) -> str:
@@ -965,6 +973,14 @@ if ("{subgroup_col}" %in% names(dat)) {{
         csv_path_cleaned = csv_file_path_in_script.replace('\\\\', '/')
         script_parts.append(f"dat <- read.csv('{csv_path_cleaned}')")
         
+        # SE列を分散に変換する処理
+        data_cols = analysis_params.get("data_columns", {})
+        se_col_needs_squaring = data_cols.get("se_col_needs_squaring")
+        if se_col_needs_squaring:
+            squared_col_name = f"{se_col_needs_squaring}_squared"
+            script_parts.append(f"# SE列を分散に変換")
+            script_parts.append(f"dat${squared_col_name} <- dat${se_col_needs_squaring}^2")
+        
         # 研究ラベル(slab)の準備
         data_cols = analysis_params.get("data_columns", {})
         study_label_author_col = data_cols.get("study_label_author")
@@ -992,8 +1008,13 @@ if ("{subgroup_col}" %in% names(dat)) {{
         # メインのメタ解析モデル (プロット用、res_for_plot に格納)
         # これはモデレーターやサブグループを含まないシンプルなモデルが良い場合が多い
         plot_model_method = analysis_params.get("model", "REML") # "method" から "model" に変更
+        data_cols = analysis_params.get("data_columns", {})
+        yi_col = data_cols.get("yi", "yi")
+        vi_col = data_cols.get("vi", "vi")
+        
         rma_for_plot_code = self._safe_format(
             self.templates["rma_basic"], method=plot_model_method,
+            yi_col=yi_col, vi_col=vi_col
         ).replace("res <-", "res_for_plot <-") # 結果を res_for_plot に格納
         script_parts.append(rma_for_plot_code)
 
