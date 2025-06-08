@@ -210,12 +210,12 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
             "original_file_url": payload.get("file_url") # これは run_analysis_async に渡されたもの
         })
         
+        # 最終的なresult_summaryをログ出力してデバッグ
+        logger.info(f"Debug - Final result_summary keys: {list(r_summary_for_metadata.keys()) if isinstance(r_summary_for_metadata, dict) else 'Not a dict'}")
+        logger.info(f"Debug - Final r_version: {r_summary_for_metadata.get('r_version') if isinstance(r_summary_for_metadata, dict) else 'N/A'}")
+        logger.info(f"Debug - Final metafor_version: {r_summary_for_metadata.get('metafor_version') if isinstance(r_summary_for_metadata, dict) else 'N/A'}")
+
         # create_analysis_result_blocks に渡すデータ構造をRの出力に合わせる
-        # RExecutorの戻り値の "summary" が create_analysis_result_blocks の期待する構造と異なる場合、ここで変換する
-        # ここでは、r_summary_for_metadata をそのまま使えるように create_analysis_result_blocks 側を調整するか、
-        # ここで期待される構造に整形する。
-        # 今回は r_summary_for_metadata をそのまま渡し、create_analysis_result_blocks で対応すると仮定。
-        # ただし、ログ表示のために analysis_result_from_r 全体も渡す。
         display_result_for_blocks = {
             "summary": r_summary_for_metadata,
             "r_log": analysis_result_from_r.get("stdout","") + "\n" + analysis_result_from_r.get("stderr","")
