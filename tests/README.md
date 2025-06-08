@@ -86,6 +86,26 @@
 - **目的**: メタデータ管理機能のテスト
 - **機能**: Slackメッセージのメタデータ処理
 
+### `debug_version_info_issue.py`
+- **目的**: サブグループ解析でバージョン情報が消える問題の調査
+- **使用方法**: `python3 debug_version_info_issue.py`
+- **機能**: Rスクリプト生成・実行、JSON出力のバージョン情報確認
+
+### `analyze_r_template_issue.py`
+- **目的**: Rテンプレート生成の詳細分析（バージョン情報の位置確認）
+- **使用方法**: `python3 analyze_r_template_issue.py`
+- **機能**: save_resultsセクションの構造分析、tryCatchブロックの確認
+
+### `test_r_version_debug.R`
+- **目的**: Rのエラーハンドリングとバージョン情報追加の動作検証
+- **使用方法**: `R --vanilla < test_r_version_debug.R`
+- **機能**: tryCatchブロック内でのエラー発生シミュレーション
+
+### `test_r_script_manual.R`
+- **目的**: 実際のメタ解析Rスクリプトの手動テスト
+- **使用方法**: `R --vanilla < test_r_script_manual.R`
+- **機能**: サブグループ解析を含む完全な解析フローのテスト
+
 ## 実行方法
 
 ### 単発テスト
