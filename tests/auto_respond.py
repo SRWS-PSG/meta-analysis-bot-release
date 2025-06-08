@@ -21,11 +21,19 @@ def find_latest_thread_and_respond(message, wait_seconds=5):
     """最新のボットスレッドを見つけて応答"""
     
     token = os.getenv('SLACK_UPLOAD_BOT_TOKEN')
-    channel_id = os.getenv('SLACK_UPLOAD_CHANNEL_ID', 'C066EQ49QVD')
-    meta_bot_id = os.getenv('META_ANALYSIS_BOT_ID', 'U08TKJ1JQ77')
+    channel_id = os.getenv('SLACK_UPLOAD_CHANNEL_ID')
+    meta_bot_id = os.getenv('META_ANALYSIS_BOT_ID')
     
     if not token:
         print("❌ SLACK_UPLOAD_BOT_TOKEN環境変数が設定されていません")
+        return
+    
+    if not channel_id:
+        print("❌ SLACK_UPLOAD_CHANNEL_ID環境変数が設定されていません")
+        return
+        
+    if not meta_bot_id:
+        print("❌ META_ANALYSIS_BOT_ID環境変数が設定されていません")
         return
     
     client = WebClient(token=token)

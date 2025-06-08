@@ -29,11 +29,19 @@ def check_channel_messages(wait_seconds=30):
     
     # 環境変数からトークン取得
     token = os.getenv('SLACK_UPLOAD_BOT_TOKEN')
-    channel_id = os.getenv('SLACK_UPLOAD_CHANNEL_ID', 'C066EQ49QVD')  # デフォルトのテストチャンネル
-    meta_bot_id = os.getenv('META_ANALYSIS_BOT_ID', 'U08TKJ1JQ77')  # メタ解析ボットのID
+    channel_id = os.getenv('SLACK_UPLOAD_CHANNEL_ID')  # テストチャンネル
+    meta_bot_id = os.getenv('META_ANALYSIS_BOT_ID')  # メタ解析ボットのID
     
     if not token:
         print("❌ SLACK_UPLOAD_BOT_TOKEN環境変数が設定されていません")
+        return
+    
+    if not channel_id:
+        print("❌ SLACK_UPLOAD_CHANNEL_ID環境変数が設定されていません")
+        return
+        
+    if not meta_bot_id:
+        print("❌ META_ANALYSIS_BOT_ID環境変数が設定されていません")
         return
     
     from slack_sdk import WebClient

@@ -323,8 +323,9 @@ def register_mention_handlers(app: App):
                 help_text = (
                     "👋 こんにちは！メタ解析ボットです。\n\n"
                     "使い方:\n"
-                    "1. CSVファイルをアップロードしてください\n"
+                    "1. ペアワイズの比較のためのCSVファイルをアップロードしてください\n"
                     "2. ボットが自動でメタ解析に適したデータかチェックします\n"
+                    "例: https://github.com/SRWS-PSG/meta-analysis-bot-release/tree/main/examples\n"
                     "3. 適していれば解析パラメータを対話で設定し、\n"
                     "4. 解析を実行してレポートを返却します\n\n"
                     "細かい調整はご自身で返却された.Rふぁいるを元にお願いします！"

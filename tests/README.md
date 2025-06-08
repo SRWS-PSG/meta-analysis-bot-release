@@ -11,7 +11,7 @@
 
 ### `test_slack_upload.py`
 - **目的**: test-messengerボットを使用してCSVファイル+メンションを投稿し、meta-analysis-botの応答をテスト
-- **使用方法**: `python3 test_slack_upload.py --bot-id U08TKJ1JQ77 --example binary --message "オッズ比で解析してください"`
+- **使用方法**: `python3 test_slack_upload.py --bot-id YOUR_BOT_ID --example binary --message "オッズ比で解析してください"`
 - **機能**: examplesディレクトリのCSVファイルを自動アップロード、メンション付きメッセージ送信
 
 ### `send_message.py`
@@ -91,8 +91,8 @@
 ### 単発テスト
 ```bash
 # 対話テスト（最も重要）
-python3 tests/test_slack_upload.py --bot-id U08TKJ1JQ77 --example binary
-python3 tests/send_message.py --message "@U08TKJ1JQ77 はい、お願いします" --thread "スレッドTS"
+python3 tests/test_slack_upload.py --bot-id YOUR_BOT_ID --example binary
+python3 tests/send_message.py --message "@YOUR_BOT_ID はい、お願いします" --thread "スレッドTS"
 
 # デバッグ
 python3 tests/debug_channel_messages.py
@@ -111,7 +111,7 @@ python3 tests/comprehensive_r_test.py
 
 ## 注意事項
 
-- 本番環境への影響を避けるため、テストは専用チャンネル（C066EQ49QVD）で実行
+- 本番環境への影響を避けるため、テストは専用のテストチャンネルで実行
 - APIキーなどの機密情報は`.env`ファイルから読み込み
 - テスト実行前に必要な環境変数が設定されていることを確認
 - 長時間実行されるテストは適切にタイムアウト設定を行う

@@ -20,11 +20,19 @@ def test_version_info():
     
     # Environment variables
     upload_bot_token = os.environ.get('SLACK_UPLOAD_BOT_TOKEN')
-    channel_id = os.environ.get('SLACK_UPLOAD_CHANNEL_ID', 'C066EQ49QVD')
-    bot_id = 'U08TKJ1JQ77'  # meta-analysis-bot ID
+    channel_id = os.environ.get('SLACK_UPLOAD_CHANNEL_ID')
+    bot_id = os.environ.get('META_ANALYSIS_BOT_ID')  # meta-analysis-bot ID
     
     if not upload_bot_token:
         print("Error: SLACK_UPLOAD_BOT_TOKEN environment variable not set")
+        return
+    
+    if not channel_id:
+        print("Error: SLACK_UPLOAD_CHANNEL_ID environment variable not set")
+        return
+        
+    if not bot_id:
+        print("Error: META_ANALYSIS_BOT_ID environment variable not set")
         return
     
     client = WebClient(token=upload_bot_token)
@@ -119,7 +127,7 @@ def monitor_version_info(client, channel_id, thread_ts=None, timeout=120):
                 ts = message.get("ts", "")
                 
                 # Check if this is from the meta-analysis bot
-                if user_id == "U08TKJ1JQ77":  # meta-analysis-bot
+                if user_id == bot_id:  # meta-analysis-bot
                     print(f"\n🤖 Bot message at {ts}:")
                     print(f"📝 Content: {text[:200]}{'...' if len(text) > 200 else ''}")
                     

@@ -123,10 +123,10 @@ docker cp [CONTAINER_ID]:/app/filename.ext ./filename.ext
 ```bash
 # 対話型テスト（推奨）
 cd tests/
-python3 test_slack_upload.py --bot-id U08TKJ1JQ77 --example binary --message "オッズ比で解析してください"
+python3 test_slack_upload.py --bot-id YOUR_BOT_ID --example binary --message "オッズ比で解析してください"
 
 # ユーザー応答をシミュレート（ボットの質問に対して）
-python3 send_message.py --message "<@U08TKJ1JQ77> はい、ランダム効果モデルでお願いします" --thread "スレッドTS"
+python3 send_message.py --message "<@YOUR_BOT_ID> はい、ランダム効果モデルでお願いします" --thread "スレッドTS"
 
 # 対話状況の確認（30秒待機後にボット応答を確認）
 python3 debug_channel_messages.py
