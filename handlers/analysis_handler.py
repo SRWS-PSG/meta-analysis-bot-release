@@ -172,21 +172,23 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
                 # overall_analysisが存在する場合、そのフィールドをトップレベルに追加（後方互換性のため）
                 # ただし、バージョン情報は上書きしない
                 if "overall_analysis" in full_r_summary:
-                    # バージョン情報を保持
+                    # バージョン情報を保持（full_r_summaryから直接取得）
                     version_info = {
-                        'r_version': r_summary_for_metadata.get('r_version'),
-                        'metafor_version': r_summary_for_metadata.get('metafor_version'),
-                        'analysis_environment': r_summary_for_metadata.get('analysis_environment')
+                        'r_version': full_r_summary.get('r_version'),
+                        'metafor_version': full_r_summary.get('metafor_version'),
+                        'analysis_environment': full_r_summary.get('analysis_environment')
                     }
                     
-                    logger.info(f"Debug - Preserving version info before update: r_version={version_info['r_version']}, metafor_version={version_info['metafor_version']}")
+                    logger.info(f"Debug - Preserving version info from full_r_summary: r_version={version_info['r_version']}, metafor_version={version_info['metafor_version']}")
                     
+                    # overall_analysisの内容を追加
                     r_summary_for_metadata.update(full_r_summary["overall_analysis"])
                     
-                    # バージョン情報を復元
-                    for key, value in version_info.items():
-                        if value is not None:
-                            r_summary_for_metadata[key] = value
+                    # バージョン情報を確実に復元（Noneでも上書き）
+                    r_summary_for_metadata['r_version'] = version_info['r_version']
+                    r_summary_for_metadata['metafor_version'] = version_info['metafor_version']
+                    if version_info['analysis_environment'] is not None:
+                        r_summary_for_metadata['analysis_environment'] = version_info['analysis_environment']
                     
                     logger.info(f"Debug - After version restoration: r_version={r_summary_for_metadata.get('r_version')}, metafor_version={r_summary_for_metadata.get('metafor_version')}")
                     
