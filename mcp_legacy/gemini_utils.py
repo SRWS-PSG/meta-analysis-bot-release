@@ -916,6 +916,7 @@ def generate_r_script_with_gemini(data_summary, analysis_preferences, template_i
 
         2.  **データの読み込み**:
             *   スクリプトの前提として、データは既に `dat` という名前のデータフレームに読み込まれているものとします。`dat <- read.csv(...)` のようなコードは含めないでください。
+            *   **重要**: 二値アウトカムデータの場合、最終的な`summary_list`に`zero_cells_summary`を必ず含める必要があります。
 
         3.  **ゼロセル検出と処理**:
             *   **二値アウトカムデータ（OR, RR, RD, PETO）の場合、必ずゼロセル検出を実行してください。**
@@ -996,10 +997,12 @@ def generate_r_script_with_gemini(data_summary, analysis_preferences, template_i
                     *   `generated_plots_list[[length(generated_plots_list) + 1]] <- list(label = "forest_plot", path = "{forest_plot_path_placeholder}")`
                     *   ファンネルプロットや各バブルプロットも同様に、実際に生成されたファイルパスと共にこのリストに追加してください。ラベルは `"funnel_plot"`, `"bubble_plot_publication_year"` のようにしてください。
                 *   `summary_list` に、この `generated_plots_list` を `generated_plots` というキーで含めてください。
-                *   **重要**: 二値アウトカムデータの場合、`summary_list` に必ず `zero_cells_summary` を含めてください：
+                *   **CRITICAL REQUIREMENT**: 二値アウトカムデータの場合、`summary_list` に必ず `zero_cells_summary` を含めてください。これは必須です：
                     ```r
+                    # MANDATORY: Add zero cells summary to final JSON output
                     summary_list$zero_cells_summary <- zero_cells_summary
                     ```
+                *   **注意**: `zero_cells_summary` が含まれていない場合、Slack表示で重要な情報が欠落します。必ず含めてください。
                 *   この **`summary_list` のみを** `jsonlite::toJSON()` を使ってJSON文字列に変換し、**必ず `{json_summary_path_placeholder}` (これは "summary.json" というファイル名を指します) というパスに書き出してください。** `auto_unbox = TRUE`, `pretty = TRUE`, `null = "null"` オプションを使用してください。
                 *   **JSON出力の期待構造例 (zero_cells_summary を必ず含む)**:
                     ```json
