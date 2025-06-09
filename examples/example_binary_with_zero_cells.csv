@@ -1,0 +1,9 @@
+Study,Author,Year,Intervention_Events,Intervention_Total,Control_Events,Control_Total,Region,Quality
+Study_1,Smith et al.,2020,0,50,4,50,North America,High
+Study_2,Johnson et al.,2021,2,48,0,50,Europe,High
+Study_3,Williams et al.,2019,3,47,5,45,Asia,Medium
+Study_4,Brown et al.,2022,1,49,2,48,North America,High
+Study_5,Davis et al.,2020,0,52,0,48,Europe,Medium
+Study_6,Miller et al.,2021,5,45,8,42,Asia,High
+Study_7,Wilson et al.,2018,0,51,3,49,North America,Medium
+Study_8,Taylor et al.,2022,4,46,6,44,Europe,High

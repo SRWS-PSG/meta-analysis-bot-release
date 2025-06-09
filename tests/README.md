@@ -70,6 +70,11 @@
 - **使用方法**: `python3 test_or_ci_conversion.py`
 - **機能**: Geminiの列検出、Rテンプレート生成、OR/CI → lnOR/SE変換の検証
 
+### `test_zero_cell_handling.py`
+- **目的**: ゼロセル（0イベント）対応のMantel-Haenszel法と感度解析をテスト
+- **使用方法**: `python3 test_zero_cell_handling.py`
+- **機能**: ゼロセル検出、MH法による解析、補正の有無による感度解析、sparse dataの適切な処理
+
 ## 詳細デバッグファイル
 
 ### `comprehensive_r_test.py`

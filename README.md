@@ -114,13 +114,14 @@ Google Gemini AIによる自然言語対話で解析パラメータを収集し�
 - ✅ **自然言語対話**: 日本語でのパラメータ収集、文脈理解、適切な質問生成
 - ✅ **多様な効果量対応**: OR, RR, RD, HR, SMD, MD, PLO, IR, COR, 事前計算済み効果量
 - ✅ **OR/CI自動変換**: オッズ比・リスク比と信頼区間から対数スケールへの自動変換（新機能）
+- ✅ **ゼロセル対応**: Mantel-Haenszel法による補正なし解析、自動感度解析（新機能）
 - ✅ **高度な解析機能**: サブグループ解析、メタ回帰、感度分析
 - ✅ **学術レポート生成**: 英語論文形式（Statistical Analysis・Resultsセクション）+ 日本語併記
 
 ### 技術機能
 - ✅ **非同期処理**: Slack 3秒タイムアウト対応、バックグラウンド解析実行
 - ✅ **エラー処理**: Gemini AIによるRスクリプト自動デバッグ（最大3回リトライ）
-- ✅ **プロット生成**: 動的サイズ調整、Events/Total表示のフォレストプロット
+- ✅ **プロット生成**: 動的サイズ調整、Events/Total表示、合計行付きフォレストプロット
 - ✅ **ファイル出力**: Rスクリプト、フォレスト/ファンネル/バブルプロット、RDataファイル
 - ✅ **スレッド対話**: 会話コンテキスト維持、メンション必須、状態管理
 
@@ -384,6 +385,9 @@ python3 test_slack_upload.py --bot-id YOUR_BOT_ID --example proportion --message
 
 # ハザード比データ
 python3 test_slack_upload.py --bot-id YOUR_BOT_ID --example hazard_ratio --message "ハザード比で解析してください"
+
+# ゼロセルデータ（Mantel-Haenszel法のテスト）
+python3 test_slack_upload.py --bot-id YOUR_BOT_ID --example zero_cells --message "ゼロセルがあるデータでMantel-Haenszel法をお願いします"
 ```
 
 #### 3. バージョン情報テスト

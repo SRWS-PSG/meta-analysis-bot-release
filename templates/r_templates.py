@@ -78,6 +78,45 @@ library(jsonlite)
 # 二値アウトカムの効果量計算 (例: オッズ比)
 dat <- escalc(measure="{measure}", ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat{slab_param_string})
 """,
+            "escalc_binary_no_correction": """
+# 二値アウトカムの効果量計算（連続性補正なし）
+dat <- escalc(measure="{measure}", ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, add=0, to="none"{slab_param_string})
+""",
+            "rma_mh": """
+# Mantel-Haenszel法による解析（補正なし）
+res <- rma.mh(ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, measure="{measure}", 
+              add=0, to="none", drop00=TRUE, correct=TRUE)
+""",
+            "rma_mh_with_correction": """
+# Mantel-Haenszel法による解析（個別効果量のみ補正、集計は補正なし）
+res <- rma.mh(ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, measure="{measure}", 
+              add=c(0.5, 0), to=c("only0", "none"), drop00=TRUE, correct=TRUE)
+""",
+            "zero_cell_analysis": """
+# ゼロセル分析
+zero_cells_summary <- list()
+zero_cells_summary$total_studies <- nrow(dat)
+zero_cells_summary$studies_with_zero_cells <- sum((dat${ai} == 0) | (dat${bi} == 0) | (dat${ci} == 0) | (dat${di} == 0))
+zero_cells_summary$double_zero_studies <- sum((dat${ai} == 0 & dat${ci} == 0))
+zero_cells_summary$zero_in_treatment <- sum(dat${ai} == 0)
+zero_cells_summary$zero_in_control <- sum(dat${ci} == 0)
+
+print("ゼロセル分析:")
+print(paste("総研究数:", zero_cells_summary$total_studies))
+print(paste("ゼロセルを含む研究数:", zero_cells_summary$studies_with_zero_cells))
+print(paste("両群ゼロ研究数:", zero_cells_summary$double_zero_studies))
+print(paste("介入群ゼロ研究数:", zero_cells_summary$zero_in_treatment))
+print(paste("対照群ゼロ研究数:", zero_cells_summary$zero_in_control))
+
+# ゼロセルがある場合の推奨手法の判定
+if (zero_cells_summary$studies_with_zero_cells > 0) {{
+    print("ゼロセルが検出されました。Mantel-Haenszel法を推奨します。")
+    recommended_method <- "MH"
+}} else {{
+    print("ゼロセルは検出されませんでした。逆分散法で問題ありません。")
+    recommended_method <- "IV"
+}}
+""",
             "or_ci_conversion": """
 # OR/RRと信頼区間からlnOR/lnRRとSEへの変換
 dat$yi <- log(dat${or_col})
@@ -217,6 +256,34 @@ tryCatch({{
     if (!is.null(ilab_data) && length(ilab_xpos) == 2) { 
         text(c(-8.5, -5.5), res_for_plot$k+2.8, c("Treatment", "Control"), cex=0.75, font=2)
     }
+    
+    # 合計行を追加（二値アウトカムの場合のみ）
+    if (current_measure %in% c("OR", "RR", "RD", "PETO") && !is.null(ilab_data)) {{
+        ai_col <- "{ai_col}"
+        ci_col <- "{ci_col}"
+        n1i_col <- "{n1i_col}"
+        n2i_col <- "{n2i_col}"
+        
+        # 全体合計の計算と表示
+        if (ai_col != "" && ci_col != "" && n1i_col != "" && n2i_col != "" &&
+            all(c(ai_col, ci_col, n1i_col, n2i_col) %in% names(dat))) {{
+            
+            total_ai <- sum(dat[[ai_col]], na.rm = TRUE)
+            total_n1i <- sum(dat[[n1i_col]], na.rm = TRUE)
+            total_ci <- sum(dat[[ci_col]], na.rm = TRUE)
+            total_n2i <- sum(dat[[n2i_col]], na.rm = TRUE)
+            
+            # 合計行の位置（最下部）
+            total_row_y <- 0.3
+            
+            # 合計行のラベルと数値を表示
+            text(-16, total_row_y, "Total", font = 2, pos = 4, cex = 0.75)
+            text(c(-8.5, -5.5), total_row_y, 
+                 c(paste(total_ai, "/", total_n1i, sep=""),
+                   paste(total_ci, "/", total_n2i, sep="")),
+                 font = 2, cex = 0.75)
+        }}
+    }}
     
     text(-16, -1, pos=4, cex=0.75, bquote(paste(
         "RE Model (Q = ", .(formatC(res_for_plot$QE, digits=2, format="f")),
@@ -379,6 +446,58 @@ if (exists("res_by_subgroup_{subgroup_col_name}") && !is.null(res_by_subgroup_{s
                 text(-16, max(rows_list[[sg_name]]) + 0.5, 
                      paste0(sg_name, " (k=", res_sg_obj$k, ")"), 
                      pos=4, font=4, cex=0.75)
+                
+                # サブグループの合計行を追加（二値アウトカムの場合のみ）
+                if (current_measure %in% c("OR", "RR", "RD", "PETO") && !is.null(ilab_data_main)) {{
+                    ai_col_sg <- "{ai_col}"
+                    ci_col_sg <- "{ci_col}"
+                    n1i_col_sg <- "{n1i_col}"
+                    n2i_col_sg <- "{n2i_col}"
+                    
+                    if (ai_col_sg != "" && ci_col_sg != "" && n1i_col_sg != "" && n2i_col_sg != "" &&
+                        all(c(ai_col_sg, ci_col_sg, n1i_col_sg, n2i_col_sg) %in% names(dat))) {{
+                        
+                        # このサブグループのデータのみを抽出
+                        sg_data <- dat_ordered[dat_ordered[['{subgroup_col_name}']] == sg_name, ]
+                        
+                        if (nrow(sg_data) > 0) {{
+                            sg_total_ai <- sum(sg_data[[ai_col_sg]], na.rm = TRUE)
+                            sg_total_n1i <- sum(sg_data[[n1i_col_sg]], na.rm = TRUE)
+                            sg_total_ci <- sum(sg_data[[ci_col_sg]], na.rm = TRUE)
+                            sg_total_n2i <- sum(sg_data[[n2i_col_sg]], na.rm = TRUE)
+                            
+                            # サブグループ合計行の位置（サブグループの最小行の0.3行上）
+                            sg_total_row_y <- min(rows_list[[sg_name]]) - 0.3
+                            
+                            # サブグループ合計行のラベルと数値を表示
+                            text(-16, sg_total_row_y, paste0(sg_name, " Total"), font = 2, pos = 4, cex = 0.7)
+                            text(c(-8.5, -5.5), sg_total_row_y, 
+                                 c(paste(sg_total_ai, "/", sg_total_n1i, sep=""),
+                                   paste(sg_total_ci, "/", sg_total_n2i, sep="")),
+                                 font = 2, cex = 0.7)
+                        }}
+                    }}
+                }} else if (current_measure %in% c("SMD", "MD", "ROM") && !is.null(ilab_data_main)) {{
+                    # 連続アウトカムの場合: サブグループ別のサンプルサイズ合計
+                    n1i_col_sg <- "{n1i_col}"
+                    n2i_col_sg <- "{n2i_col}"
+                    
+                    if (n1i_col_sg != "" && n2i_col_sg != "" && all(c(n1i_col_sg, n2i_col_sg) %in% names(dat))) {{
+                        sg_data <- dat_ordered[dat_ordered[['{subgroup_col_name}']] == sg_name, ]
+                        
+                        if (nrow(sg_data) > 0) {{
+                            sg_total_n1i <- sum(sg_data[[n1i_col_sg]], na.rm = TRUE)
+                            sg_total_n2i <- sum(sg_data[[n2i_col_sg]], na.rm = TRUE)
+                            
+                            sg_total_row_y <- min(rows_list[[sg_name]]) - 0.3
+                            
+                            text(-16, sg_total_row_y, paste0(sg_name, " Total"), font = 2, pos = 4, cex = 0.7)
+                            text(c(-8.5, -5.5), sg_total_row_y, 
+                                 c(sg_total_n1i, sg_total_n2i),
+                                 font = 2, cex = 0.7)
+                        }}
+                    }}
+                }}
                 
                 # サブグループサマリーポリゴンを追加
                 if (apply_exp_transform) {{
@@ -614,6 +733,86 @@ if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) &
         summary_list$sensitivity_analysis_skipped <- paste("Sensitivity analysis for {sensitivity_variable}={sensitivity_value} skipped: variable not found or value not in data.")
     }}
 }}
+""",
+            "zero_cell_sensitivity": """
+# ゼロセル対応の感度解析（補正の有無による比較）
+if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells > 0) {{
+    sensitivity_results <- list()
+    
+    # 1. 逆分散法（デフォルト0.5補正）
+    tryCatch({{
+        res_iv_corrected <- rma(yi, vi, data=dat, method="{method}")
+        sensitivity_results$iv_corrected <- list(
+            method = "Inverse Variance (0.5 correction)",
+            estimate = as.numeric(res_iv_corrected$b)[1],
+            ci_lb = as.numeric(res_iv_corrected$ci.lb)[1],
+            ci_ub = as.numeric(res_iv_corrected$ci.ub)[1],
+            pval = as.numeric(res_iv_corrected$pval)[1],
+            I2 = res_iv_corrected$I2
+        )
+    }}, error = function(e) {{
+        sensitivity_results$iv_corrected <<- list(error = e$message)
+    }})
+    
+    # 2. Mantel-Haenszel法（補正なし）
+    tryCatch({{
+        res_mh_no_corr <- rma.mh(ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, 
+                                measure="{measure}", add=0, to="none", drop00=TRUE)
+        sensitivity_results$mh_no_correction <- list(
+            method = "Mantel-Haenszel (no correction)",
+            estimate = as.numeric(res_mh_no_corr$b)[1],
+            ci_lb = as.numeric(res_mh_no_corr$ci.lb)[1],
+            ci_ub = as.numeric(res_mh_no_corr$ci.ub)[1],
+            pval = as.numeric(res_mh_no_corr$pval)[1],
+            I2 = res_mh_no_corr$I2
+        )
+    }}, error = function(e) {{
+        sensitivity_results$mh_no_correction <<- list(error = e$message)
+    }})
+    
+    # 3. Mantel-Haenszel法（個別効果量のみ補正）
+    tryCatch({{
+        res_mh_corr <- rma.mh(ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, 
+                             measure="{measure}", add=c(0.5, 0), to=c("only0", "none"), drop00=TRUE)
+        sensitivity_results$mh_with_correction <- list(
+            method = "Mantel-Haenszel (forest plot correction only)",
+            estimate = as.numeric(res_mh_corr$b)[1],
+            ci_lb = as.numeric(res_mh_corr$ci.lb)[1],
+            ci_ub = as.numeric(res_mh_corr$ci.ub)[1],
+            pval = as.numeric(res_mh_corr$pval)[1],
+            I2 = res_mh_corr$I2
+        )
+    }}, error = function(e) {{
+        sensitivity_results$mh_with_correction <<- list(error = e$message)
+    }})
+    
+    # 結果の比較表示
+    print("\\n=== ゼロセル対応の感度解析結果 ===")
+    for (method_name in names(sensitivity_results)) {{
+        result <- sensitivity_results[[method_name]]
+        if ("error" %in% names(result)) {{
+            print(paste(method_name, ": エラー -", result$error))
+        }} else {{
+            print(sprintf("%s: %s = %.3f [%.3f, %.3f], p = %.3f, I² = %.1f%%",
+                         method_name, "{measure}", 
+                         if("{measure}" %in% c("OR", "RR")) exp(result$estimate) else result$estimate,
+                         if("{measure}" %in% c("OR", "RR")) exp(result$ci_lb) else result$ci_lb,
+                         if("{measure}" %in% c("OR", "RR")) exp(result$ci_ub) else result$ci_ub,
+                         result$pval, result$I2))
+        }}
+    }}
+    
+    # JSONに保存
+    if (exists("summary_list")) {{
+        summary_list$zero_cell_sensitivity <- sensitivity_results
+        summary_list$zero_cell_analysis <- zero_cells_summary
+    }}
+}} else {{
+    print("ゼロセルが検出されなかったため、感度解析をスキップします。")
+    if (exists("summary_list")) {{
+        summary_list$zero_cell_sensitivity_skipped <- "No zero cells detected"
+    }}
+}}
 """
         }
         return templates
@@ -675,12 +874,28 @@ if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) &
                 else:
                     logger.error(f"列 'di' がなく、'n2i' または 'ci' もないため計算できません。")
                     return f"# Error: Column 'di' is missing and cannot be calculated from 'n2i' (present: {bool(n2i_col)}) and 'ci' (present: {bool(ci_col)}) for measure {measure}."
+            # ゼロセル分析を追加
+            zero_cell_analysis_code = self._safe_format(
+                self.templates["zero_cell_analysis"],
+                ai=ai_col, bi=actual_bi_col, ci=ci_col, di=actual_di_col
+            )
+            
             escalc_call = self._safe_format(
                 self.templates["escalc_binary"],
                 measure=measure, ai=ai_col, bi=actual_bi_col,
                 ci=ci_col, di=actual_di_col, slab_param_string=slab_param_string
             )
-            return "\n".join(pre_escalc_code) + f"\n{escalc_call.lstrip()}" if pre_escalc_code else escalc_call
+            
+            # ゼロセル対応の感度解析を追加
+            sensitivity_code = self._safe_format(
+                self.templates["zero_cell_sensitivity"],
+                ai=ai_col, bi=actual_bi_col, ci=ci_col, di=actual_di_col,
+                measure=measure, method=analysis_params.get("model", "REML")
+            )
+            
+            # 組み合わせて返す
+            all_code_parts = pre_escalc_code + [zero_cell_analysis_code, escalc_call, sensitivity_code]
+            return "\n\n".join(filter(None, all_code_parts))
         elif measure in ["SMD", "MD", "ROM"]: 
             required_cols = ["n1i", "n2i", "m1i", "m2i", "sd1i", "sd2i"]
             if not all(data_cols.get(col) for col in required_cols):
