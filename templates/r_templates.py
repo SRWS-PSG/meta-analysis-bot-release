@@ -678,6 +678,12 @@ tryCatch({
     {regression_json_update_code}
     
     {egger_json_update_code}
+    
+    # ゼロセル情報を追加（存在する場合）
+    if (exists("zero_cells_summary") && !is.null(zero_cells_summary)) {
+        summary_list$zero_cells_summary <- zero_cells_summary
+        print("Zero cell summary added to JSON output")
+    }
 
 }, error = function(e_sum) {
     summary_list$error_in_summary_generation <- paste("Error creating parts of summary:", e_sum$message)
