@@ -692,6 +692,44 @@ GEMINI_API_KEY=your-gemini-key
 ```
 
 
+#### 7. ゼロセル情報がSlackに表示されない問題（2025-06-09）
+**問題**: Rスクリプトでゼロセル検出とMantel-Haenszel法が正常実行されているのに、Slack結果メッセージにゼロセル情報が表示されない
+
+**原因**: 
+1. JSONサマリーの構造と期待される構造の不一致
+2. `utils/slack_utils.py`の`create_analysis_result_message`関数でゼロセル情報を抽出・表示していなかった
+
+**デバッグ手順**:
+```bash
+# 1. R実行ログでゼロセル処理を確認
+heroku logs --app=meta-analysis-bot | grep -A10 "ゼロセル\|Zero cell\|Mantel"
+
+# 2. JSONサマリー構造を確認
+heroku logs --app=meta-analysis-bot | grep -A20 "summary.*json"
+
+# 3. Slack表示関数にデバッグログ追加
+logger.info(f"DEBUG: Full summary keys: {list(summary.keys())}")
+logger.info(f"DEBUG: zero_cells_summary: {zero_cells_summary}")
+```
+
+**修正**: `utils/slack_utils.py`にゼロセル情報表示セクション追加
+```python
+# ゼロセル解析結果を追加
+zero_cell_text = ""
+zero_cells_summary = summary.get('zero_cells_summary')
+if zero_cells_summary:
+    studies_with_zero = zero_cells_summary.get('studies_with_zero_cells', 0)
+    if studies_with_zero > 0:
+        # ゼロセル情報を表示するテキスト生成
+```
+
+**学習ポイント**:
+- R→JSON→Python→Slackの全データフローを確認することが重要
+- 機能が「動いている」ことと「表示されている」ことは別問題
+- デバッグログを戦略的に配置（JSONパース前後、表示関数内）
+
+**詳細なデバッグ手順**: `docs/DEBUGGING_GUIDE.md`を参照
+
 ### アンチパターン集
 
 1. **ストレージバックエンドの不一致**
