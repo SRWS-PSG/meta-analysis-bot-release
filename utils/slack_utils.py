@@ -194,6 +194,32 @@ def create_analysis_result_message(analysis_result_from_r: Dict[str, Any]) -> st
                         
                         subgroup_text += f"\n• {level_name}: 効果量={sg_estimate} [{sg_ci_lb}, {sg_ci_ub}] (k={sg_k})"
     
+    # ゼロセル解析結果を追加
+    zero_cell_text = ""
+    zero_cells_summary = summary.get('zero_cells_summary')
+    if zero_cells_summary:
+        studies_with_zero = zero_cells_summary.get('studies_with_zero_cells', 0)
+        if studies_with_zero > 0:
+            double_zero = zero_cells_summary.get('double_zero_studies', 0)
+            intervention_zero = zero_cells_summary.get('intervention_zero_studies', 0)
+            control_zero = zero_cells_summary.get('control_zero_studies', 0)
+            main_method = summary.get('main_analysis_method', 'N/A')
+            
+            zero_cell_text = f"\n\n**【ゼロセル対応】**"
+            zero_cell_text += f"\n• ゼロセルを含む研究数: {studies_with_zero}件"
+            if double_zero > 0:
+                zero_cell_text += f"\n• 両群ゼロ研究数: {double_zero}件"
+            if intervention_zero > 0:
+                zero_cell_text += f"\n• 介入群ゼロ研究数: {intervention_zero}件"
+            if control_zero > 0:
+                zero_cell_text += f"\n• 対照群ゼロ研究数: {control_zero}件"
+            zero_cell_text += f"\n• 主解析手法: {main_method}"
+            
+            # 感度解析結果を追加
+            sensitivity_results = summary.get('sensitivity_analysis', {})
+            if sensitivity_results:
+                zero_cell_text += f"\n• 感度解析も実行（詳細はRスクリプト参照）"
+
     # メタ回帰結果を追加
     meta_regression_text = ""
     meta_regression_results = summary.get('meta_regression_results')
@@ -224,7 +250,7 @@ def create_analysis_result_message(analysis_result_from_r: Dict[str, Any]) -> st
 • 統合効果量: {pooled_effect}
 • 95%信頼区間: {ci_lower} - {ci_upper}
 • 異質性: I²={i2_value}%
-• 研究数: {num_studies}件{subgroup_text}{meta_regression_text}
+• 研究数: {num_studies}件{zero_cell_text}{subgroup_text}{meta_regression_text}
 
 ファイルが添付されています：
 • フォレストプロット
