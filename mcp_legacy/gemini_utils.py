@@ -80,12 +80,13 @@ def interpret_meta_analysis_results(results_summary, model_name=clean_env_var("G
         {json.dumps(results_summary, ensure_ascii=False, indent=2)}
         
         以下の点について言及してください：
-        1. 全体的な効果量とその統計的有意性
+        1. 全体的な効果量とその信頼区間、p値
         2. 異質性の程度とその解釈
         3. 結果の臨床的意義
         4. 結果の限界と注意点
         
         学術的な文体で、簡潔かつ正確に記述してください。
+        **重要**: "significant", "statistically significant"などの用語は使用せず、数値と信頼区間で客観的に記述してください。
         """
         
         response = client.models.generate_content( # Using the base client.models directly
@@ -116,13 +117,14 @@ def interpret_meta_regression_results(results_summary, model_name=clean_env_var(
         {json.dumps(results_summary, ensure_ascii=False, indent=2)}
         
         以下の点について言及してください：
-        1. モデレーター変数の効果とその統計的有意性
+        1. モデレーター変数の効果とその信頼区間、p値
         2. モデレーター変数が説明する異質性の割合（R²）
         3. 異質性の程度とその解釈
         4. 結果の臨床的・学術的意義
         5. 結果の限界と注意点
         
         学術的な文体で、簡潔かつ正確に記述してください。
+        **重要**: "significant", "statistically significant"などの用語は使用せず、数値と信頼区間で客観的に記述してください。
         """
         
         response = client.models.generate_content(
@@ -320,7 +322,9 @@ def generate_academic_writing_suggestion(results_summary, analysis_type="meta-an
         【重要な指示】
         - 提供された統計結果のみに基づいて記述
         - 研究選択や特性など、結果データに含まれない情報は記載しない
-        - "statistically significant"は使用せず、数値と信頼区間で客観的に記述
+        - **絶対に使用禁止の用語**: "significant", "significantly", "statistically significant", "non-significant", "insignificant"などの有意性を示す用語は一切使用しない
+        - **代替表現**: 数値、信頼区間、p値のみで客観的に記述する（例: "The effect size was 0.5 (95% CI: 0.2-0.8, p=0.001)" のように）
+        - **異質性の記述**: "Significant heterogeneity"ではなく、"Substantial heterogeneity (I²=75%)" や "High heterogeneity (I²=85%)" のように数値で表現
         - 各セクションは英語記述後に日本語訳を併記
         - 結果のセクション書くときには、点推定値、信頼区間といっしょに、Certainty of evidenceのプレースホルダーを書く
         - **Analysis Environment:** Include the R version and metafor package version used for the analysis. This information will be provided in the `results_summary` under keys like `r_version` and `metafor_version`. If available, list them under a subheading like "Analysis Environment".
@@ -366,7 +370,7 @@ def generate_academic_writing_suggestion(results_summary, analysis_type="meta-an
         - **Publication bias (if assessed):** 検定統計量とp値
         - 図についても言及（例：フォレストプロット、ファンネルプロット）
         - 実行された感度分析
-        - **Analysis Environment:** R version (e.g., R version 4.4.0 (2024-04-24 ucrt)) and metafor package version (e.g., metafor version 4.0-0). This should be mentioned at the end of the results or in a dedicated "Methods" or "Analysis Environment" section if appropriate for the context.
+        - **Analysis Environment:** R version (e.g., "R version 4.1.2 (2021-11-01)") and metafor package version (e.g., metafor version 4.0-0). This should be mentioned at the end of the results or in a dedicated "Methods" or "Analysis Environment" section if appropriate for the context.
         - [Note: Certainty of evidence assessment would be inserted here]
 
         【記述スタイル】
@@ -374,6 +378,8 @@ def generate_academic_writing_suggestion(results_summary, analysis_type="meta-an
         - 効果の方向性を明示（どちらのグループの値が高い/低いか）
         - 信頼区間とp値を併記
         - 客観的・記述的表現を使用
+        - **重要**: "significant"や類似の用語を絶対に使用しない
+        - 異質性は数値（I²値）で表現し、"low" (I²<25%), "moderate" (I²=25-50%), "substantial" (I²=50-75%), "considerable" (I²>75%)などの記述的用語を使用
 
         結果データに基づいて判断できる統計手法と数値結果のみを記述してください。
 

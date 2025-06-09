@@ -60,6 +60,11 @@
 - **目的**: エラーハンドリングとリトライ機構のテスト
 - **機能**: 各種エラーパターンの処理、自動修正
 
+### `test_no_significant_in_reports.py`
+- **目的**: Gemini生成レポートから"significant"用語が除去されているかを検証
+- **使用方法**: `python3 test_no_significant_in_reports.py`
+- **機能**: 学術論文生成、メタ解析解釈、メタ回帰解釈の各プロンプトをテスト
+
 ## 詳細デバッグファイル
 
 ### `comprehensive_r_test.py`
