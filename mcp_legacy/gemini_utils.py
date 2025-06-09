@@ -917,11 +917,44 @@ def generate_r_script_with_gemini(data_summary, analysis_preferences, template_i
         2.  **データの読み込み**:
             *   スクリプトの前提として、データは既に `dat` という名前のデータフレームに読み込まれているものとします。`dat <- read.csv(...)` のようなコードは含めないでください。
 
-        3.  **効果量の計算**:
+        3.  **ゼロセル検出と処理**:
+            *   **二値アウトカムデータ（OR, RR, RD, PETO）の場合、必ずゼロセル検出を実行してください。**
+            *   以下のコードを用いてゼロセル情報を収集してください：
+                ```r
+                # ゼロセル検出
+                zero_cells_summary <- list()
+                zero_cells_summary$total_studies <- nrow(dat)
+                zero_cells_summary$studies_with_zero_cells <- sum((dat$ai == 0) | (dat$ci == 0))
+                zero_cells_summary$double_zero_studies <- sum((dat$ai == 0) & (dat$ci == 0))
+                zero_cells_summary$intervention_zero_studies <- sum(dat$ai == 0)
+                zero_cells_summary$control_zero_studies <- sum(dat$ci == 0)
+                
+                print("ゼロセル分析:")
+                print(paste("総研究数:", zero_cells_summary$total_studies))
+                print(paste("ゼロセルを含む研究数:", zero_cells_summary$studies_with_zero_cells))
+                ```
+            *   **ゼロセルが検出された場合（studies_with_zero_cells > 0）、主解析としてMantel-Haenszel法を使用してください：**
+                ```r
+                if (zero_cells_summary$studies_with_zero_cells > 0) {
+                    print("ゼロセルが検出されました。主解析にMantel-Haenszel法を使用します。")
+                    res <- rma.mh(ai=ai, bi=bi, ci=ci, di=di, data=dat, measure="OR", 
+                                  add=0, to="none", drop00=TRUE, correct=TRUE)
+                    zero_cells_summary$main_analysis_method <- "Mantel-Haenszel"
+                    zero_cells_summary$adjustments <- list(
+                        method = "none",
+                        description = "Mantel-Haenszel method without continuity correction"
+                    )
+                } else {
+                    res <- rma(yi, vi, data=dat, method="REML")
+                    zero_cells_summary$main_analysis_method <- "Random-effects"
+                }
+                ```
+
+        4.  **効果量の計算**:
             *   `escalc()` 関数を使用し、指定された効果量 (`{effect_size_placeholder}`) と関連列 (`{escalc_columns_placeholder_str}`) を用いて、効果量 (`yi`) とその分散 (`vi`) を計算してください。
             *   研究ラベルを `slab` 引数で適切に設定してください（例: `paste(author, year, sep=", ")`、もし解析に使用しない `author` や `year`などの列が存在すれば）。存在しない場合は `slab` の設定は不要です。
 
-        4.  **全体のメタアナリシス (およびメタ回帰/サブグループモデレーション)**:
+        5.  **全体のメタアナリシス (およびメタ回帰/サブグループモデレーション)**:
             *   `rma()` 関数を使用し、計算した `yi` と `vi` を用いてメタアナリシスを実行してください。
             *   モデルは `{model_type_placeholder}` を使用してください (例: "REML", "FE")。
             *   もし `{analysis_preferences.get("moderator_columns", [])}` が空でなく、かつ `{subgroup_column_name_placeholder}` が "指定" されている場合、`mods = ~ {analysis_preferences.get("moderator_columns", [])[0]} + factor({subgroup_column_name_placeholder})` のように、最初のモデレーターとサブグループ変数を同時にモデルに含めることを検討してください。ただし、通常はメタ回帰とサブグループの差の検定は別々に行います。
@@ -931,7 +964,7 @@ def generate_r_script_with_gemini(data_summary, analysis_preferences, template_i
                 *   上記以外の場合は、`mods`なしで基本的なメタアナリシスを実行してください。
             *   基本的な全体のメタアナリシス結果は常に `res` という変数に格納してください（モデレーターやサブグループ指定がない場合、またはそれらとは別に全体の結果も必要な場合）。
 
-        5.  **フォレストプロットの作成 (metafor標準関数を使用)**:
+        6.  **フォレストプロットの作成 (metafor標準関数を使用)**:
             *   **ggplot2 は使用しないでください。** `metafor` パッケージの `forest()` 関数と `addpoly()` 関数を組み合わせて使用してください。
             *   まず、全体のメタアナリシス結果 (`res`) を用いて `forest()` 関数で基本的なフォレストプロットを描画し、`{forest_plot_path_placeholder}` に保存してください。
                 *   `xlim`, `at`, `atransf=exp` (または適切な変換) を効果量に応じて設定してください。
@@ -944,30 +977,46 @@ def generate_r_script_with_gemini(data_summary, analysis_preferences, template_i
             *   `par(cex=...)` などでフォントサイズを調整することも考慮してください。
             *   もし `{subgroup_column_name_placeholder}` が "指定" されている場合、サブグループ間の差の検定結果 (`res.subgroup.mods` などを使用) を、`text()` 関数や `bquote()` を使ってフォレストプロットの下部などに追加してください。
 
-        6.  **ファンネルプロットの作成 (オプション)**:
+        7.  **ファンネルプロットの作成 (オプション)**:
             *   もしファンネルプロットが必要な場合 (`{funnel_plot_path_placeholder}` が指定されている場合)、全体のメタアナリシス結果 (`res`) を用いて `funnel()` 関数でファンネルプロットを作成し、`{funnel_plot_path_placeholder}` に保存してください。
             *   Egger's test (`regtest(res)`) の結果を `res$egger_test` のように `res` オブジェクトに含めてください。
 
-        7.  **メタ回帰のバブルプロット作成 (メタ回帰分析の場合のみ)**:
+        8.  **メタ回帰のバブルプロット作成 (メタ回帰分析の場合のみ)**:
             *   もし `{analysis_preferences.get("moderator_columns", [])}` が空でない場合:
                 *   指定された各モデレーター変数（例: `mod_var`）について、`metafor::regplot(res.mods, mod=mod_var, ...)` (または `res` がメタ回帰モデルの結果を保持している場合は `regplot(res, mod=mod_var, ...)` ) を使用して個別のバブルプロットを作成してください。
                 *   各バブルプロットのファイル名は、`paste0("bubble_plot_", gsub("[^[:alnum:]_]", "_", tolower(mod_var)), ".png")` のように、モデレーター変数名をファイル名に適した英語の識別子（小文字化し、英数字とアンダースコア以外をアンダースコアに置換）にして生成してください。
                 *   生成した各バブルプロットを、対応するファイルパスに保存してください。
 
-        8.  **結果の保存**:
+        9.  **結果の保存**:
             *   主要な結果オブジェクト（`res`、存在すれば `res.mods` や `res.subgroup.mods`、`subgroup_results_list`、`egger_test_res` など）を `{rdata_path_placeholder}` に `save()` 関数で保存してください。
             *   **JSONサマリーの出力 (最重要)**:
-                *   メタアナリシスの主要な結果（全体の統合効果量、信頼区間、p値、I^2、τ^2、Q統計量、Qのp値、研究数k。もしサブグループ解析があれば、各サブグループの同様の統計量、サブグループ間差の検定結果QMとp値など。メタ回帰があれば、各モデレーターの係数、p値、残差異質性など。Egger's testの結果）を **`summary_list` という名前の構造化されたRのリスト** にまとめてください。
+                *   メタアナリシスの主要な結果（全体の統合効果量、信頼区間、p値、I^2、τ^2、Q統計量、Qのp値、研究数k。もしサブグループ解析があれば、各サブグループの同様の統計量、サブグループ間差の検定結果QMとp値など。メタ回帰があれば、各モデレーターの係数、p値、残差異質性など。Egger's testの結果。**二値アウトカムの場合は必ずゼロセル情報（zero_cells_summary）**）を **`summary_list` という名前の構造化されたRのリスト** にまとめてください。
                 *   **生成された全てのプロットファイルの情報を、`generated_plots_list` という名前の別のRリスト** にまとめてください。各要素は `list(label = "プロットの英語識別子", path = "実際のファイルパス")` という形式の名前付きリストであるべきです。
                     *   例: `generated_plots_list <- list()`
                     *   `generated_plots_list[[length(generated_plots_list) + 1]] <- list(label = "forest_plot", path = "{forest_plot_path_placeholder}")`
                     *   ファンネルプロットや各バブルプロットも同様に、実際に生成されたファイルパスと共にこのリストに追加してください。ラベルは `"funnel_plot"`, `"bubble_plot_publication_year"` のようにしてください。
                 *   `summary_list` に、この `generated_plots_list` を `generated_plots` というキーで含めてください。
+                *   **重要**: 二値アウトカムデータの場合、`summary_list` に必ず `zero_cells_summary` を含めてください：
+                    ```r
+                    summary_list$zero_cells_summary <- zero_cells_summary
+                    ```
                 *   この **`summary_list` のみを** `jsonlite::toJSON()` を使ってJSON文字列に変換し、**必ず `{json_summary_path_placeholder}` (これは "summary.json" というファイル名を指します) というパスに書き出してください。** `auto_unbox = TRUE`, `pretty = TRUE`, `null = "null"` オプションを使用してください。
-                *   **JSON出力の期待構造例 (generated_plots を含む)**:
+                *   **JSON出力の期待構造例 (zero_cells_summary を必ず含む)**:
                     ```json
                     {{
                       "overall_analysis": {{ ... }},
+                      "zero_cells_summary": {{ // 二値アウトカムの場合は必須
+                        "total_studies": 8,
+                        "studies_with_zero_cells": 4,
+                        "double_zero_studies": 1,
+                        "intervention_zero_studies": 2,
+                        "control_zero_studies": 3,
+                        "main_analysis_method": "Mantel-Haenszel",
+                        "adjustments": {{
+                          "method": "none",
+                          "description": "Mantel-Haenszel method without continuity correction"
+                        }}
+                      }},
                       "subgroup_analyses": [ ... ], // サブグループ解析がある場合のみ
                       "subgroup_moderation_test": {{ ... }}, // サブグループ解析がある場合のみ
                       "meta_regression_results": {{ // メタ回帰がある場合のみ
@@ -983,7 +1032,7 @@ def generate_r_script_with_gemini(data_summary, analysis_preferences, template_i
                     }}
                     ```
 
-        9.  **エラーハンドリング**:
+        10. **エラーハンドリング**:
             *   基本的なエラーハンドリングはRスクリプト内では最小限とし、Python側で実行時エラーを捕捉することを想定してください。
 
         生成されるRスクリプトは、上記の指示に厳密に従い、冗長なコメントや不要な処理を含まない、クリーンで効率的なものであるべきです。
