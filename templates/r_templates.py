@@ -1046,12 +1046,22 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
         subgroup_codes = []
         for subgroup_col in subgroup_columns:
             # サブグループテスト用のモデル (res_subgroup_test_{subgroup_col} に結果を格納)
-            subgroup_test_model_code = self._safe_format(
-                self.templates["rma_with_mods"], # mods を使うテンプレート
-                method=method, 
-                mods_formula=f"factor({subgroup_col})", # サブグループ列をfactorとして指定
-                yi_col=yi_col, vi_col=vi_col
-            ).replace("res <-", f"res_subgroup_test_{subgroup_col} <-")
+            subgroup_test_model_code = f"""
+# Subgroup moderation test for '{subgroup_col}'
+valid_data_for_subgroup_test <- dat[is.finite(dat$yi) & is.finite(dat$vi) & dat$vi > 0, ]
+
+if (nrow(valid_data_for_subgroup_test) >= 2 && "{subgroup_col}" %in% names(valid_data_for_subgroup_test)) {{
+    tryCatch({{
+        res_subgroup_test_{subgroup_col} <- rma({yi_col}, {vi_col}, mods = ~ factor({subgroup_col}), data=valid_data_for_subgroup_test, method="{method}")
+        print("Subgroup test for '{subgroup_col}' completed")
+    }}, error = function(e) {{
+        print(sprintf("Subgroup test for '{subgroup_col}' failed: %s", e$message))
+        res_subgroup_test_{subgroup_col} <- NULL
+    }})
+}} else {{
+    print("Subgroup test for '{subgroup_col}': 有効データが不足またはカラムが存在しません")
+    res_subgroup_test_{subgroup_col} <- NULL
+}}"""
             
             # 各サブグループごとの解析結果を格納するリストを作成 (res_by_subgroup_{subgroup_col} に結果を格納)
             # splitとlapplyを使って、各サブグループレベルでrmaを実行し、結果をリストにまとめる
@@ -1062,15 +1072,23 @@ if ("{subgroup_col}" %in% names(dat)) {{
     res_by_subgroup_{subgroup_col} <- lapply(names(dat_split_{subgroup_col}), function(level_name) {{
         current_data_sg <- dat_split_{subgroup_col}[[level_name]]
         if (nrow(current_data_sg) > 0) {{
-            tryCatch({{
-                rma_result_sg <- rma({yi_col}, {vi_col}, data=current_data_sg, method="{method}")
-                # 結果にレベル名を追加して返す (後でアクセスしやすくするため)
-                rma_result_sg$subgroup_level <- level_name 
-                return(rma_result_sg)
-            }}, error = function(e) {{
-                print(sprintf("RMA failed for subgroup '{subgroup_col}' level '%s': %s", level_name, e$message))
-                return(NULL) # エラー時はNULLを返す
-            }})
+            # 無限大値をチェックして除外
+            valid_sg_data <- current_data_sg[is.finite(current_data_sg$yi) & is.finite(current_data_sg$vi) & current_data_sg$vi > 0, ]
+            
+            if (nrow(valid_sg_data) >= 2) {{
+                tryCatch({{
+                    rma_result_sg <- rma({yi_col}, {vi_col}, data=valid_sg_data, method="{method}")
+                    # 結果にレベル名を追加して返す (後でアクセスしやすくするため)
+                    rma_result_sg$subgroup_level <- level_name 
+                    return(rma_result_sg)
+                }}, error = function(e) {{
+                    print(sprintf("RMA failed for subgroup '{subgroup_col}' level '%s': %s", level_name, e$message))
+                    return(NULL) # エラー時はNULLを返す
+                }})
+            }} else {{
+                print(sprintf("Subgroup '{subgroup_col}' level '%s': 有効データが不足 (n=%d)", level_name, nrow(valid_sg_data)))
+                return(NULL) # 有効データが不足の場合はNULL
+            }}
         }} else {{
             return(NULL) # データがない場合はNULL
         }}
@@ -1358,16 +1376,31 @@ if ("{subgroup_col}" %in% names(dat)) {{
                 moderator_analysis_code = """
 # モデレーター解析（主解析とは別途実行）
 if (exists("main_analysis_method") && main_analysis_method == "MH") {{
-    # MH法の場合は逆分散法でモデレーター解析
+    # MH法の場合は逆分散法でモデレーター解析（MH法はモデレーター未対応のため）
     print("モデレーター解析: MH法では直接モデレーター分析ができないため、逆分散法で実行")
-    res_moderator <- rma({yi_col}, {vi_col}, mods = ~ {mods_formula}, data=dat, method="{method}")
+    
+    # 無限大値をチェックして除外
+    valid_data_for_regression <- dat[is.finite(dat$yi) & is.finite(dat$vi) & dat$vi > 0, ]
+    
+    if (nrow(valid_data_for_regression) >= 2) {{
+        res_moderator <- rma(yi, vi, mods = ~ {mods_formula}, data=valid_data_for_regression, method="REML")
+        print(paste("モデレーター解析完了: 有効データ", nrow(valid_data_for_regression), "件で実行"))
+    }} else {{
+        print("モデレーター解析: 有効データが不足のため実行できません")
+        res_moderator <- NULL
+    }}
 }} else {{
     # 逆分散法の場合はそのままモデレーター解析
-    res_moderator <- rma({yi_col}, {vi_col}, mods = ~ {mods_formula}, data=dat, method="{method}")
+    valid_data_for_regression <- dat[is.finite(dat$yi) & is.finite(dat$vi) & dat$vi > 0, ]
+    
+    if (nrow(valid_data_for_regression) >= 2) {{
+        res_moderator <- rma(yi, vi, mods = ~ {mods_formula}, data=valid_data_for_regression, method="{method}")
+    }} else {{
+        print("モデレーター解析: 有効データが不足のため実行できません")
+        res_moderator <- NULL
+    }}
 }}
 """.format(
-                    yi_col=data_cols.get("yi", "yi"),
-                    vi_col=data_cols.get("vi", "vi"),
                     mods_formula=" + ".join(valid_moderators_in_code),
                     method=analysis_params.get("model", "REML")
                 )
