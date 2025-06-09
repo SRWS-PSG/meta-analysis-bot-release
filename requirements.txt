@@ -5,6 +5,7 @@ slack-bolt==1.23.0
 google-generativeai==0.8.3
 pandas==2.2.3
 openai==1.82.1
+openpyxl==3.1.2
 
 # R実行環境
 # rpy2==3.6.0  # Herokuではサポートされていない
