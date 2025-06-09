@@ -92,6 +92,29 @@ res <- rma.mh(ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, measure="{measure}",
 res <- rma.mh(ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, measure="{measure}", 
               add=c(0.5, 0), to=c("only0", "none"), drop00=TRUE, correct=TRUE)
 """,
+            "main_analysis_selection": """
+# 主解析手法の選択（ゼロセルがある場合はMH法、ない場合は逆分散法）
+if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells > 0) {{
+    print("ゼロセルが検出されました。主解析にMantel-Haenszel法を使用します。")
+    main_analysis_method <- "MH"
+    
+    # 主解析：Mantel-Haenszel法（補正なし）
+    res <- rma.mh(ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, measure="{measure}",
+                  add=0, to="none", drop00=TRUE, correct=TRUE)
+    res_for_plot <- res  # プロット用にも同じ結果を使用
+    
+    print("主解析完了: Mantel-Haenszel法（補正なし）")
+}} else {{
+    print("ゼロセルは検出されませんでした。主解析に逆分散法を使用します。")
+    main_analysis_method <- "IV"
+    
+    # 主解析：逆分散法（従来通り）
+    res <- rma(yi, vi, data=dat, method="{method}")
+    res_for_plot <- res  # プロット用にも同じ結果を使用
+    
+    print("主解析完了: 逆分散法")
+}}
+""",
             "zero_cell_analysis": """
 # ゼロセル分析
 zero_cells_summary <- list()
@@ -735,70 +758,81 @@ if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) &
 }}
 """,
             "zero_cell_sensitivity": """
-# ゼロセル対応の感度解析（補正の有無による比較）
+# ゼロセル対応の感度解析（主解析以外の手法で比較）
 if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells > 0) {{
     sensitivity_results <- list()
     
-    # 1. 逆分散法（デフォルト0.5補正）
+    # 主解析の結果を記録
+    sensitivity_results$main_analysis <- list(
+        method = paste0("Mantel-Haenszel (no correction) - MAIN ANALYSIS"),
+        estimate = as.numeric(res$b)[1],
+        ci_lb = as.numeric(res$ci.lb)[1],
+        ci_ub = as.numeric(res$ci.ub)[1],
+        pval = as.numeric(res$pval)[1],
+        I2 = res$I2,
+        note = "Primary analysis method for sparse data"
+    )
+    
+    # 感度解析1: 逆分散法（デフォルト0.5補正）
     tryCatch({{
         res_iv_corrected <- rma(yi, vi, data=dat, method="{method}")
-        sensitivity_results$iv_corrected <- list(
-            method = "Inverse Variance (0.5 correction)",
+        sensitivity_results$sensitivity_iv_corrected <- list(
+            method = "Inverse Variance (0.5 correction) - SENSITIVITY",
             estimate = as.numeric(res_iv_corrected$b)[1],
             ci_lb = as.numeric(res_iv_corrected$ci.lb)[1],
             ci_ub = as.numeric(res_iv_corrected$ci.ub)[1],
             pval = as.numeric(res_iv_corrected$pval)[1],
-            I2 = res_iv_corrected$I2
+            I2 = res_iv_corrected$I2,
+            note = "Traditional method with continuity correction"
         )
     }}, error = function(e) {{
-        sensitivity_results$iv_corrected <<- list(error = e$message)
-    }})
-    
-    # 2. Mantel-Haenszel法（補正なし）
-    tryCatch({{
-        res_mh_no_corr <- rma.mh(ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, 
-                                measure="{measure}", add=0, to="none", drop00=TRUE)
-        sensitivity_results$mh_no_correction <- list(
-            method = "Mantel-Haenszel (no correction)",
-            estimate = as.numeric(res_mh_no_corr$b)[1],
-            ci_lb = as.numeric(res_mh_no_corr$ci.lb)[1],
-            ci_ub = as.numeric(res_mh_no_corr$ci.ub)[1],
-            pval = as.numeric(res_mh_no_corr$pval)[1],
-            I2 = res_mh_no_corr$I2
+        sensitivity_results$sensitivity_iv_corrected <<- list(
+            method = "Inverse Variance (0.5 correction) - SENSITIVITY",
+            error = e$message
         )
-    }}, error = function(e) {{
-        sensitivity_results$mh_no_correction <<- list(error = e$message)
     }})
     
-    # 3. Mantel-Haenszel法（個別効果量のみ補正）
+    # 感度解析2: Mantel-Haenszel法（個別効果量のみ補正）
     tryCatch({{
         res_mh_corr <- rma.mh(ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, 
                              measure="{measure}", add=c(0.5, 0), to=c("only0", "none"), drop00=TRUE)
-        sensitivity_results$mh_with_correction <- list(
-            method = "Mantel-Haenszel (forest plot correction only)",
+        sensitivity_results$sensitivity_mh_with_correction <- list(
+            method = "Mantel-Haenszel (forest plot correction) - SENSITIVITY",
             estimate = as.numeric(res_mh_corr$b)[1],
             ci_lb = as.numeric(res_mh_corr$ci.lb)[1],
             ci_ub = as.numeric(res_mh_corr$ci.ub)[1],
             pval = as.numeric(res_mh_corr$pval)[1],
-            I2 = res_mh_corr$I2
+            I2 = res_mh_corr$I2,
+            note = "MH method with correction for visualization only"
         )
     }}, error = function(e) {{
-        sensitivity_results$mh_with_correction <<- list(error = e$message)
+        sensitivity_results$sensitivity_mh_with_correction <<- list(
+            method = "Mantel-Haenszel (forest plot correction) - SENSITIVITY", 
+            error = e$message
+        )
     }})
     
     # 結果の比較表示
-    print("\\n=== ゼロセル対応の感度解析結果 ===")
+    print("\\n=== 主解析とゼロセル対応感度解析の結果 ===")
+    print("主解析: Mantel-Haenszel法（補正なし）- Cochrane推奨手法")
+    print("感度解析: 他の補正手法との比較")
+    print("-------------------------------------------------------")
+    
     for (method_name in names(sensitivity_results)) {{
         result <- sensitivity_results[[method_name]]
         if ("error" %in% names(result)) {{
-            print(paste(method_name, ": エラー -", result$error))
+            print(paste(result$method, ": エラー -", result$error))
         }} else {{
-            print(sprintf("%s: %s = %.3f [%.3f, %.3f], p = %.3f, I² = %.1f%%",
-                         method_name, "{measure}", 
+            analysis_type <- if(grepl("MAIN", result$method)) "【主解析】" else "【感度解析】"
+            print(sprintf("%s %s: %s = %.3f [%.3f, %.3f], p = %.3f, I² = %.1f%%",
+                         analysis_type, result$method, "{measure}", 
                          if("{measure}" %in% c("OR", "RR")) exp(result$estimate) else result$estimate,
                          if("{measure}" %in% c("OR", "RR")) exp(result$ci_lb) else result$ci_lb,
                          if("{measure}" %in% c("OR", "RR")) exp(result$ci_ub) else result$ci_ub,
                          result$pval, result$I2))
+            if (!is.null(result$note)) {{
+                print(paste("   └", result$note))
+            }}
         }}
     }}
     
@@ -806,11 +840,13 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
     if (exists("summary_list")) {{
         summary_list$zero_cell_sensitivity <- sensitivity_results
         summary_list$zero_cell_analysis <- zero_cells_summary
+        summary_list$main_analysis_method <- "Mantel-Haenszel (no correction)"
     }}
 }} else {{
-    print("ゼロセルが検出されなかったため、感度解析をスキップします。")
+    print("ゼロセルが検出されなかったため、ゼロセル対応感度解析をスキップします。")
     if (exists("summary_list")) {{
         summary_list$zero_cell_sensitivity_skipped <- "No zero cells detected"
+        summary_list$main_analysis_method <- "Inverse Variance (standard)"
     }}
 }}
 """
@@ -886,6 +922,13 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
                 ci=ci_col, di=actual_di_col, slab_param_string=slab_param_string
             )
             
+            # 主解析手法の選択（ゼロセルがある場合はMH法を優先）
+            main_analysis_code = self._safe_format(
+                self.templates["main_analysis_selection"],
+                ai=ai_col, bi=actual_bi_col, ci=ci_col, di=actual_di_col,
+                measure=measure, method=analysis_params.get("model", "REML")
+            )
+            
             # ゼロセル対応の感度解析を追加
             sensitivity_code = self._safe_format(
                 self.templates["zero_cell_sensitivity"],
@@ -894,7 +937,7 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
             )
             
             # 組み合わせて返す
-            all_code_parts = pre_escalc_code + [zero_cell_analysis_code, escalc_call, sensitivity_code]
+            all_code_parts = pre_escalc_code + [zero_cell_analysis_code, escalc_call, main_analysis_code, sensitivity_code]
             return "\n\n".join(filter(None, all_code_parts))
         elif measure in ["SMD", "MD", "ROM"]: 
             required_cols = ["n1i", "n2i", "m1i", "m2i", "sd1i", "sd2i"]
@@ -1302,22 +1345,33 @@ if ("{subgroup_col}" %in% names(dat)) {{
         escalc_code = self._generate_escalc_code(analysis_params, data_summary)
         script_parts.append(escalc_code)
 
-        # メインのメタ解析モデル (プロット用、res_for_plot に格納)
-        # これはモデレーターやサブグループを含まないシンプルなモデルが良い場合が多い
-        plot_model_method = analysis_params.get("model", "REML") # "method" から "model" に変更
-        data_cols = analysis_params.get("data_columns", {})
-        yi_col = data_cols.get("yi", "yi")
-        vi_col = data_cols.get("vi", "vi")
+        # メインの解析は escalc_code内の main_analysis_selection で既に実行済み
+        # res と res_for_plot がここで設定される
         
-        rma_for_plot_code = self._safe_format(
-            self.templates["rma_basic"], method=plot_model_method,
-            yi_col=yi_col, vi_col=vi_col
-        ).replace("res <-", "res_for_plot <-") # 結果を res_for_plot に格納
-        script_parts.append(rma_for_plot_code)
-
-        # 詳細なメタ解析モデル (モデレーターやサブグループテスト用、res に格納)
-        rma_code = self._generate_rma_code(analysis_params) # analysis_params に基づく
-        script_parts.append(rma_code)
+        # モデレーターがある場合のみ追加の回帰解析を実行
+        moderators = analysis_params.get("moderator_columns", [])
+        if moderators:
+            # 有効なモデレーターのみを対象とする
+            valid_moderators_in_code = [m for m in moderators if m in data_summary.get("columns", [])]
+            if valid_moderators_in_code:
+                # モデレーター解析の追加（主解析とは別に実行）
+                moderator_analysis_code = """
+# モデレーター解析（主解析とは別途実行）
+if (exists("main_analysis_method") && main_analysis_method == "MH") {{
+    # MH法の場合は逆分散法でモデレーター解析
+    print("モデレーター解析: MH法では直接モデレーター分析ができないため、逆分散法で実行")
+    res_moderator <- rma({yi_col}, {vi_col}, mods = ~ {mods_formula}, data=dat, method="{method}")
+}} else {{
+    # 逆分散法の場合はそのままモデレーター解析
+    res_moderator <- rma({yi_col}, {vi_col}, mods = ~ {mods_formula}, data=dat, method="{method}")
+}}
+""".format(
+                    yi_col=data_cols.get("yi", "yi"),
+                    vi_col=data_cols.get("vi", "vi"),
+                    mods_formula=" + ".join(valid_moderators_in_code),
+                    method=analysis_params.get("model", "REML")
+                )
+                script_parts.append(moderator_analysis_code)
 
         # サブグループ解析 (res_subgroup_test_{col} と res_by_subgroup_{col} に結果格納)
         subgroup_cols = analysis_params.get("subgroup_columns", [])

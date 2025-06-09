@@ -9,7 +9,7 @@ import tempfile
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from templates.r_templates import RTemplateGenerator
-from core.r_executor import RExecutor
+from core.r_executor import RAnalysisExecutor
 
 def test_zero_cell_detection():
     """Test zero cell detection and Mantel-Haenszel method"""
@@ -59,10 +59,14 @@ def test_zero_cell_detection():
         # Check if key components are present
         required_components = [
             "zero_cells_summary",
-            "rma.mh",
+            "主解析手法の選択", 
+            "main_analysis_method",
+            "Mantel-Haenszel",
             "sensitivity_results",
             "add=0, to=\"none\"",
-            "add=c(0.5, 0)"
+            "add=c(0.5, 0)",
+            "【主解析】",
+            "【感度解析】"
         ]
         
         for component in required_components:
@@ -122,27 +126,55 @@ def test_r_execution():
                 analysis_params, data_summary, output_paths, csv_path
             )
             
-            # Execute R script
-            executor = RExecutor()
-            result = executor.execute_r_script(r_script, temp_dir)
+            # Write R script to temp file
+            r_script_path = os.path.join(temp_dir, "test_zero_cells.R")
+            with open(r_script_path, 'w', encoding='utf-8') as f:
+                f.write(r_script)
             
-            if result["success"]:
-                print("✅ R execution successful")
+            print(f"✅ R script generated: {r_script_path}")
+            
+            # Try to execute R script
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ["Rscript", r_script_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    cwd=temp_dir
+                )
                 
-                # Check if zero cell analysis was performed
-                if "ゼロセル分析" in result["output"]:
-                    print("✅ Zero cell analysis performed")
+                if result.returncode == 0:
+                    print("✅ R execution successful")
+                    output = result.stdout
                     
-                if "感度解析結果" in result["output"]:
-                    print("✅ Sensitivity analysis performed")
+                    # Check if zero cell analysis was performed
+                    if "ゼロセル分析" in output:
+                        print("✅ Zero cell analysis performed")
+                        
+                    if "主解析とゼロセル対応感度解析の結果" in output:
+                        print("✅ Main analysis and sensitivity analysis performed")
+                        
+                    if "主解析にMantel-Haenszel法を使用" in output:
+                        print("✅ Mantel-Haenszel method selected as main analysis")
+                        
+                    if "【主解析】" in output and "【感度解析】" in output:
+                        print("✅ Proper labeling of main vs sensitivity analysis")
+                        
+                    return True
+                else:
+                    print(f"❌ R execution failed with return code: {result.returncode}")
+                    print(f"STDOUT: {result.stdout}")
+                    print(f"STDERR: {result.stderr}")
+                    return False
                     
-                if "Mantel-Haenszel" in result["output"]:
-                    print("✅ Mantel-Haenszel method used")
-                    
-                return True
-            else:
-                print(f"❌ R execution failed: {result['error']}")
+            except subprocess.TimeoutExpired:
+                print("❌ R execution timed out")
                 return False
+            except FileNotFoundError:
+                print("❌ Rscript not found - R execution test skipped")
+                print("✅ Script generation successful (R execution test requires R installation)")
+                return True
                 
         except Exception as e:
             print(f"❌ ERROR: {e}")
@@ -174,9 +206,12 @@ def main():
         print("\n🎉 Zero cell handling is properly implemented!")
         print("\nKey features:")
         print("• Automatic zero cell detection")
-        print("• Mantel-Haenszel method for sparse data")
-        print("• Sensitivity analysis comparing correction methods")
+        print("• Mantel-Haenszel method as primary analysis for sparse data")
+        print("• Inverse variance method as sensitivity analysis")
+        print("• Three-way comparison of correction methods")
+        print("• Clear labeling of main vs sensitivity analyses")
         print("• Double-zero study handling")
+        print("• Cochrane-recommended approach (no continuity correction)")
     else:
         print("\n⚠️  Some tests failed. Check the output above for details.")
 

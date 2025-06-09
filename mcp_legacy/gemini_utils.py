@@ -348,17 +348,26 @@ def generate_academic_writing_suggestion(results_summary, analysis_type="meta-an
         結果データから判断できる以下の項目のみ：
         - 使用された効果指標（例：risk ratio, odds ratio, mean difference）
         - 適用されたメタアナリシスモデル（fixed-effect or random-effects）
+        - **ゼロセル対応**: sparse dataにおけるMantel-Haenszel法の使用（該当する場合、main_analysis_method="Mantel-Haenszel"）
+        - **連続性補正**: ゼロセルに対する補正の有無（add=0, to="none"で補正なし、またはadd=0.5で補正あり）
         - 異質性評価に使用された指標（I², τ², Q統計量）
         - 実行されたサブグループ解析（該当する場合のサブグループ変数）
         - 実行されたメタ回帰分析（該当する場合の共変量）
         - 実行された出版バイアス検定（該当する場合）
+        - **ゼロセル感度解析**: 複数の補正手法による比較（該当する場合）
         - 実行された感度分析（該当する場合）
 
 
         【Results記述内容】
         実際の数値結果のみ：
-        - **Overall analysis:** 統合効果推定値と95%信頼区間、p値
+        - **Overall analysis:** 統合効果推定値と95%信頼区間、p値（主解析手法を明記）
+        - **Zero cell information (if applicable):** ゼロセルを含む研究数、両群ゼロ研究数
         - **Heterogeneity:** I²値[95%CI]、τ²値、Q統計量（自由度、p値）
+        - **Zero cell sensitivity analysis (if performed):**
+          - 主解析（Mantel-Haenszel法、補正なし）の結果
+          - 感度解析1（逆分散法、0.5補正）の結果
+          - 感度解析2（Mantel-Haenszel法、forest plot補正のみ）の結果
+          - 各手法間の結果の一致性についてのコメント
         - **Subgroup analysis (if performed):** 
         - 各サブグループの効果推定値と95%信頼区間
         - サブグループごとの異質性指標（I², τ²）
