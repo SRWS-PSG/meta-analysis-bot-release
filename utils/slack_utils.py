@@ -197,8 +197,16 @@ def create_analysis_result_message(analysis_result_from_r: Dict[str, Any]) -> st
     # ゼロセル解析結果を追加
     zero_cell_text = ""
     zero_cells_summary = summary.get('zero_cells_summary')
+    
+    # DEBUG: Log summary structure
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"DEBUG: Full summary keys: {list(summary.keys())}")
+    logger.info(f"DEBUG: zero_cells_summary: {zero_cells_summary}")
+    
     if zero_cells_summary:
         studies_with_zero = zero_cells_summary.get('studies_with_zero_cells', 0)
+        logger.info(f"DEBUG: studies_with_zero: {studies_with_zero}")
         if studies_with_zero > 0:
             double_zero = zero_cells_summary.get('double_zero_studies', 0)
             intervention_zero = zero_cells_summary.get('intervention_zero_studies', 0)
