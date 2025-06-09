@@ -412,6 +412,12 @@ heroku logs --since "2024-01-01T00:00:00Z" --until "2024-01-01T01:00:00Z" --app=
 
 詳細な使用方法は`tests/README.md`を参照してください。
 
+## 謝辞
+
+本プロジェクトは、JSPS科研費 25K13585「大規模言語モデルが加速するエビデンスの統合」の助成を受けて開発されました。
+- 研究課題番号: 25K13585
+- 研究課題詳細: https://kaken.nii.ac.jp/ja/grant/KAKENHI-PROJECT-25K13585/
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
