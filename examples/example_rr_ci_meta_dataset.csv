@@ -1,0 +1,11 @@
+Study,Author,Year,RR,Lower_CI,Upper_CI,Treatment_Type,Sample_Size
+RCT_001,Thompson et al.,2020,0.85,0.72,1.01,Drug A,245
+RCT_002,Roberts et al.,2021,0.93,0.81,1.07,Drug A,312
+RCT_003,Clark et al.,2019,0.76,0.61,0.95,Drug B,189
+RCT_004,Lewis et al.,2022,0.88,0.74,1.05,Drug A,287
+RCT_005,Walker et al.,2020,0.69,0.55,0.87,Drug B,156
+RCT_006,Hall et al.,2021,0.91,0.78,1.06,Drug A,298
+RCT_007,Young et al.,2019,0.82,0.68,0.99,Drug B,201
+RCT_008,Allen et al.,2022,0.79,0.64,0.98,Drug B,167
+RCT_009,King et al.,2021,0.95,0.83,1.09,Drug A,334
+RCT_010,Wright et al.,2020,0.73,0.58,0.92,Drug B,178

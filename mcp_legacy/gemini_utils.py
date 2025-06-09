@@ -494,8 +494,8 @@ map_csv_columns_to_meta_analysis_roles_function = {
             },
             "data_format": {
                 "type": "string",
-                "description": "検出されたデータ形式（例: 2x2_table, pre_calculated）。OR/RRの場合に特に重要。不明な場合はnull。",
-                "enum": ["2x2_table", "pre_calculated", "mixed", "unknown"]
+                "description": "検出されたデータ形式（例: 2x2_table, pre_calculated, or_ci, rr_ci）。OR/RRの場合に特に重要。不明な場合はnull。",
+                "enum": ["2x2_table", "pre_calculated", "or_ci", "rr_ci", "mixed", "unknown"]
             },
             "detected_columns": {
                 "type": "object",
@@ -639,12 +639,21 @@ def map_csv_columns_to_meta_analysis_roles(csv_columns: List[str], csv_sample_da
             f"  - `data_format`: \"pre_calculated\"\n"
             f"  - `target_role_mappings` 内で、`log_hr` に対応するCSV列名を `yi` に、`se_log_hr` に対応するCSV列名を `vi` にマッピングしてください。\n"
             f"  - `detected_columns` にもこのマッピング (`{{'CSV列名_log_hr': 'yi', 'CSV列名_se_log_hr': 'vi'}}` の形式で) を含めてください。\n\n"
+            f"【OR/RRと信頼区間の自動検出ルール】\n"
+            f"CSV列に 'OR' または 'RR' と信頼区間（CI）の組み合わせが存在する場合:\n"
+            f"- 'or', 'odds_ratio' + ('ci_lower'/'ci_upper' または 'ci_low'/'ci_high' または 'lower_ci'/'upper_ci') → OR + CI形式として検出\n"
+            f"- 'rr', 'risk_ratio' + ('ci_lower'/'ci_upper' または 'ci_low'/'ci_high' または 'lower_ci'/'upper_ci') → RR + CI形式として検出\n"
+            f"これらの組み合わせが見つかった場合:\n"
+            f"  - `detected_effect_size`: \"OR\" または \"RR\"\n"
+            f"  - `data_format`: \"or_ci\" または \"rr_ci\"\n"
+            f"  - `detected_columns` に OR/RR列と CI列のマッピングを含める（例: {{'or': 'OR', 'ci_lower': 'CI_lower', 'ci_upper': 'CI_upper'}}）\n"
+            f"  - Rスクリプト内で自動的にlnOR/lnRRとSEに変換されます\n\n"
             f"【その他の効果量の自動検出ルール】\n"
             f"上記以外の場合、以下の列名パターンから効果量を検出してください:\n"
             f"- 'log_or', 'ln_or', 'logodds', 'log_odds_ratio' → OR（対数変換済み）\n"
-            f"- 'or', 'odds_ratio' → OR（元のスケール）\n"
+            f"- 'or', 'odds_ratio' → OR（元のスケール）※CI列がない場合\n"
             f"- 'log_rr', 'ln_rr', 'logrisk', 'log_risk_ratio' → RR（対数変換済み）\n"
-            f"- 'rr', 'risk_ratio' → RR（元のスケール）\n"
+            f"- 'rr', 'risk_ratio' → RR（元のスケール）※CI列がない場合\n"
             f"- 'yi', 'effect_size', 'es' → yi（事前計算済み効果量）\n"
             f"- 'smd', 'standardized_mean_diff' → SMD\n"
             f"- 'md', 'mean_diff' → MD\n\n"

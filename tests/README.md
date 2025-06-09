@@ -65,6 +65,11 @@
 - **使用方法**: `python3 test_no_significant_in_reports.py`
 - **機能**: 学術論文生成、メタ解析解釈、メタ回帰解釈の各プロンプトをテスト
 
+### `test_or_ci_conversion.py`
+- **目的**: OR/RRと信頼区間からlnOR/lnRRとSEへの自動変換機能をテスト
+- **使用方法**: `python3 test_or_ci_conversion.py`
+- **機能**: Geminiの列検出、Rテンプレート生成、OR/CI → lnOR/SE変換の検証
+
 ## 詳細デバッグファイル
 
 ### `comprehensive_r_test.py`

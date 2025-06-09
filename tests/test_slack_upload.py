@@ -162,7 +162,7 @@ def main():
     parser.add_argument("--codeblock", action="store_true", help="コードブロックとして投稿")
     parser.add_argument("--message", default="", help="追加メッセージ")
     parser.add_argument("--bot-id", help="メンションするボットのユーザーID", required=True)
-    parser.add_argument("--example", choices=["binary", "continuous", "hazard", "proportion"], 
+    parser.add_argument("--example", choices=["binary", "continuous", "hazard", "proportion", "or_ci", "rr_ci"], 
                        help="サンプルCSVを使用")
     
     args = parser.parse_args()
@@ -200,7 +200,9 @@ def main():
             "binary": "example_binary_meta_dataset.csv",
             "continuous": "example_continuous_meta_dataset.csv",
             "hazard": "example_hazard_ratio_meta_dataset.csv",
-            "proportion": "example_proportion_meta_dataset.csv"
+            "proportion": "example_proportion_meta_dataset.csv",
+            "or_ci": "example_or_ci_meta_dataset.csv",
+            "rr_ci": "example_rr_ci_meta_dataset.csv"
         }
         file_path = examples_dir / example_files[args.example]
         if not file_path.exists():
