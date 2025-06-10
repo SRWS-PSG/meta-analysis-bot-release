@@ -1334,8 +1334,28 @@ if ("{subgroup_col}" %in% names(dat)) {{
         script_parts = [self.templates["library_load"]]
         
         # データ読み込み (パスはバックスラッシュをスラッシュに置換)
+        # na.stringsで"NA"文字列を欠損値として処理
         csv_path_cleaned = csv_file_path_in_script.replace('\\\\', '/')
-        script_parts.append(f"dat <- read.csv('{csv_path_cleaned}')")
+        script_parts.append(f"dat <- read.csv('{csv_path_cleaned}', na.strings = c('NA', 'na', 'N/A', 'n/a', ''))")
+        
+        # データ品質チェック（NA値の確認）
+        script_parts.append("""
+# データ品質チェック
+cat("データ読み込み完了\\n")
+cat("総行数:", nrow(dat), "\\n")
+if (any(is.na(dat))) {
+    na_summary <- sapply(dat, function(x) sum(is.na(x)))
+    na_cols <- na_summary[na_summary > 0]
+    if (length(na_cols) > 0) {
+        cat("欠損値を含む列:\\n")
+        for (col_name in names(na_cols)) {
+            cat("  ", col_name, ":", na_cols[col_name], "個\\n")
+        }
+    }
+} else {
+    cat("欠損値なし\\n")
+}
+""")
         
         # SE列を分散に変換する処理
         data_cols = analysis_params.get("data_columns", {})

@@ -36,8 +36,21 @@ def create_analysis_start_message(analysis_result: Dict[str, Any], initial_param
         binary_candidates.extend(binary_intervention_events[:1])
     if binary_control_events:
         binary_candidates.extend(binary_control_events[:1])
+    
+    # 総数列も含める
+    binary_total_info = []
+    binary_intervention_total = detected_cols.get("binary_intervention_total", [])
+    binary_control_total = detected_cols.get("binary_control_total", [])
+    if binary_intervention_total:
+        binary_total_info.extend(binary_intervention_total[:1])
+    if binary_control_total:
+        binary_total_info.extend(binary_control_total[:1])
+    
     if binary_candidates:
-        data_type_info.append(f"二値アウトカム: {', '.join(binary_candidates)}")
+        display_text = f"二値アウトカム: {', '.join(binary_candidates)}"
+        if binary_total_info:
+            display_text += f" (総数: {', '.join(binary_total_info)})"
+        data_type_info.append(display_text)
     
     # 連続アウトカムデータ
     continuous_candidates = []
@@ -101,6 +114,12 @@ def create_analysis_start_message(analysis_result: Dict[str, Any], initial_param
         if auto_params:
             auto_detected_params = f"\n\n**🤖 自動検出済みパラメータ:**\n• " + "\n• ".join(auto_params)
     
+    # 事前計算済み効果量として検出された場合の確認メッセージ
+    confirmation_message = ""
+    if effect_candidates and not binary_candidates and not continuous_candidates:
+        # 事前計算済み効果量のみが検出された場合
+        confirmation_message = f"\n\n**❓ 確認事項:**\n検出された列 ({', '.join(effect_candidates[:2])}) は事前計算済みの効果量でしょうか？\n• はい → そのまま解析を続行します\n• いいえ → 二値アウトカム（OR/RR等）として扱います"
+    
     message = f"""📊 **CSVファイルを分析しました！**
 
 **データセット概要:**
@@ -111,7 +130,7 @@ def create_analysis_start_message(analysis_result: Dict[str, Any], initial_param
 • サブグループ候補列: {subgroup_display}
 • メタ回帰候補列: {moderator_display}
 • 推奨効果量: {suggested_effect_type}
-• 推奨モデル: {suggested_model_type}{auto_detected_params}
+• 推奨モデル: {suggested_model_type}{auto_detected_params}{confirmation_message}
 
 **解析パラメータを教えてください。**
 
