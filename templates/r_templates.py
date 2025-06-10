@@ -119,10 +119,10 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
 # ゼロセル分析
 zero_cells_summary <- list()
 zero_cells_summary$total_studies <- nrow(dat)
-zero_cells_summary$studies_with_zero_cells <- sum((dat${ai} == 0) | (dat${bi} == 0) | (dat${ci} == 0) | (dat${di} == 0))
-zero_cells_summary$double_zero_studies <- sum((dat${ai} == 0 & dat${ci} == 0))
-zero_cells_summary$zero_in_treatment <- sum(dat${ai} == 0)
-zero_cells_summary$zero_in_control <- sum(dat${ci} == 0)
+zero_cells_summary$studies_with_zero_cells <- sum((dat$`{ai}` == 0) | (dat$`{bi}` == 0) | (dat$`{ci}` == 0) | (dat$`{di}` == 0))
+zero_cells_summary$double_zero_studies <- sum((dat$`{ai}` == 0 & dat$`{ci}` == 0))
+zero_cells_summary$zero_in_treatment <- sum(dat$`{ai}` == 0)
+zero_cells_summary$zero_in_control <- sum(dat$`{ci}` == 0)
 
 print("ゼロセル分析:")
 print(paste("総研究数:", zero_cells_summary$total_studies))
@@ -718,10 +718,10 @@ tryCatch({
 """,
             "sensitivity_analysis": """
 # 感度分析: {sensitivity_variable} = {sensitivity_value} に限定
-if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) && "{sensitivity_value}" %in% dat${sensitivity_variable}) {{
+if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) && "{sensitivity_value}" %in% dat$`{sensitivity_variable}`) {{
     n_total_sensitivity <- nrow(dat)
-    n_category_sensitivity <- sum(dat${sensitivity_variable} == "{sensitivity_value}")
-    dat_sensitivity <- dat[dat${sensitivity_variable} == "{sensitivity_value}", ]
+    n_category_sensitivity <- sum(dat$`{sensitivity_variable}` == "{sensitivity_value}")
+    dat_sensitivity <- dat[dat$`{sensitivity_variable}` == "{sensitivity_value}", ]
     
     if (nrow(dat_sensitivity) > 0) {{
         res_sensitivity <- tryCatch({{
@@ -902,7 +902,7 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
             if not bi_col: 
                 if n1i_col and ai_col:
                     calculated_bi_col_name = f"{ai_col}_n_minus_event"
-                    pre_escalc_code.append(f"dat${calculated_bi_col_name} <- dat${n1i_col} - dat${ai_col}")
+                    pre_escalc_code.append(f"dat${calculated_bi_col_name} <- dat$`{n1i_col}` - dat$`{ai_col}`")
                     actual_bi_col = calculated_bi_col_name
                 else:
                     logger.error(f"列 'bi' がなく、'n1i' または 'ai' もないため計算できません。")
@@ -911,7 +911,7 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
             if not di_col: 
                 if n2i_col and ci_col:
                     calculated_di_col_name = f"{ci_col}_n_minus_event"
-                    pre_escalc_code.append(f"dat${calculated_di_col_name} <- dat${n2i_col} - dat${ci_col}")
+                    pre_escalc_code.append(f"dat${calculated_di_col_name} <- dat$`{n2i_col}` - dat$`{ci_col}`")
                     actual_di_col = calculated_di_col_name
                 else:
                     logger.error(f"列 'di' がなく、'n2i' または 'ci' もないため計算できません。")
@@ -1363,7 +1363,7 @@ if (any(is.na(dat))) {
         if se_col_needs_squaring:
             squared_col_name = f"{se_col_needs_squaring}_squared"
             script_parts.append(f"# SE列を分散に変換")
-            script_parts.append(f"dat${squared_col_name} <- dat${se_col_needs_squaring}^2")
+            script_parts.append(f"dat${squared_col_name} <- dat$`{se_col_needs_squaring}`^2")
         
         # 研究ラベル(slab)の準備
         data_cols = analysis_params.get("data_columns", {})
@@ -1375,9 +1375,9 @@ if (any(is.na(dat))) {
         if study_label_author_col and study_label_year_col and \
            study_label_author_col in data_summary.get("columns", []) and \
            study_label_year_col in data_summary.get("columns", []):
-            slab_expression = f"paste(dat${study_label_author_col}, dat${study_label_year_col}, sep=\", \")"
+            slab_expression = f"paste(dat$`{study_label_author_col}`, dat$`{study_label_year_col}`, sep=\", \")"
         elif study_label_col and study_label_col in data_summary.get("columns", []):
-            slab_expression = f"dat${study_label_col}"
+            slab_expression = f"dat$`{study_label_col}`"
         
         if slab_expression:
             script_parts.append(f"dat$slab <- {slab_expression}")
