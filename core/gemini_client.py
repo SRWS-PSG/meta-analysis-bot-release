@@ -44,6 +44,7 @@ class GeminiClient:
            - ログ変換済みデータ: log_hr, log_or, log_rr, ln_hr, logHR, logOR, logRR
            - 分散/標準誤差列: variance, vi, standard_error, se, se_log_hr, se_log_or, stderr
         2. 二値アウトカムデータ: 介入群・対照群のイベント数と総数
+           - 重要: "mortality", "death", "event"などの列名があっても、対応する"total", "patients", "n"などの総数列がある場合は二値アウトカムとして扱う
         3. 連続アウトカムデータ: 各群の平均値、標準偏差、サンプルサイズ
         4. 単一群比率データ: イベント数と総数
         5. 発生率データ: イベント数と観察時間
@@ -91,7 +92,9 @@ class GeminiClient:
             "suggested_analysis": {{
                 "effect_type_suggestion": "データの種類に基づいた推奨効果量（OR, RR, SMD, MD, HR, PRE等、単一の文字列）",
                 "model_type_suggestion": "randomまたはfixed（通常はrandomを推奨）",
-                "transformation_recommendation": "必要な変換の説明（例：「HRデータは既にログ変換済みです」「ORデータの対数変換が必要です」）"
+                "transformation_recommendation": "必要な変換の説明（例：「HRデータは既にログ変換済みです」「ORデータの対数変換が必要です」）",
+                "ambiguity_detected": boolean,
+                "ambiguity_reason": "データタイプが曖昧な場合の理由（例：「mortality列が効果量か二値アウトカムか判断できません」）"
             }},
             "column_descriptions": {{
                 "column_name1": "列1の内容の簡単な説明とデータ型（例: 数値、文字列）",
