@@ -192,15 +192,15 @@ def register_mention_handlers(app: App):
             logger.info(f"Clean text length: {len(clean_text)}")
             logger.info(f"Clean text first 100 chars: {clean_text[:100] if clean_text else 'EMPTY'}")
             
-            # Check for CSV files
-            csv_files = [f for f in files if f.get("name", "").lower().endswith(".csv")]
-            if csv_files:
-                # CSVファイルが添付されている場合
-                logger.info(f"CSV files found: {[f.get('name') for f in csv_files]}")
+            # Check for CSV/XLSX files
+            data_files = [f for f in files if f.get("name", "").lower().endswith((".csv", ".xlsx", ".xls"))]
+            if data_files:
+                # CSV/XLSXファイルが添付されている場合
+                logger.info(f"Data files found: {[f.get('name') for f in data_files]}")
                 client.chat_postMessage(
                     channel=channel_id,
                     thread_ts=thread_ts,
-                    text="📊 CSVファイルを検出しました。分析を開始します..."
+                    text="📊 データファイルを検出しました。分析を開始します..."
                 )
                 
                 # CSV処理を実行
@@ -216,12 +216,12 @@ def register_mention_handlers(app: App):
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         
-                        # 各CSVファイルを処理
-                        for csv_file in csv_files:
-                            logger.info(f"Processing CSV file: {csv_file.get('name', 'unknown')} via job manager")
+                        # 各データファイルを処理
+                        for data_file in data_files:
+                            logger.info(f"Processing data file: {data_file.get('name', 'unknown')} via job manager")
                             try:
                                 loop.run_until_complete(process_csv_async(
-                                    file_info=csv_file,
+                                    file_info=data_file,
                                     channel_id=channel_id,
                                     user_id=user_id,
                                     client=client,
@@ -229,13 +229,13 @@ def register_mention_handlers(app: App):
                                     thread_ts=thread_ts
                                 ))
                             except Exception as file_error:
-                                logger.error(f"Error processing {csv_file.get('name')}: {file_error}", exc_info=True)
+                                logger.error(f"Error processing {data_file.get('name')}: {file_error}", exc_info=True)
                                 # ファイル単位のエラーを通知
                                 try:
                                     client.chat_postMessage(
                                         channel=channel_id,
                                         thread_ts=thread_ts,
-                                        text=f"❌ {csv_file.get('name', 'CSVファイル')}の処理中にエラーが発生しました: {str(file_error)}"
+                                        text=f"❌ {data_file.get('name', 'データファイル')}の処理中にエラーが発生しました: {str(file_error)}"
                                     )
                                 except Exception as notify_error:
                                     logger.error(f"Failed to notify file error: {notify_error}")
@@ -268,11 +268,11 @@ def register_mention_handlers(app: App):
                 help_text = (
                     "👋 こんにちは！メタ解析ボットです。\n\n"
                     "使い方:\n"
-                    "1. CSVファイルをアップロードしてください\n"
+                    "1. CSV、XLSX、XLSファイルをアップロードしてください\n"
                     "2. ボットが自動でメタ解析に適したデータかチェックします\n"
                     "3. 適していれば解析パラメータを対話で設定し、\n"
                     "4. 解析を実行してレポートを返却します\n\n"
-                    "お困りの場合は、CSVファイルをアップロードしてお試しください！"
+                    "お困りの場合は、データファイルをアップロードしてお試しください！"
                 )
                 
                 client.chat_postMessage(
@@ -394,16 +394,16 @@ def register_mention_handlers(app: App):
                 logger.info(f"Files in message: {len(files)} files")
                 logger.info(f"Thread TS: {thread_ts}, Channel: {channel_id}, Is thread message: {is_thread_message}")
                 
-                # CSVファイルがあるかチェック
-                csv_files = [f for f in files if f.get("name", "").lower().endswith(".csv")]
-                if csv_files:
-                    # CSVファイルが添付されている場合
+                # CSV/XLSXファイルがあるかチェック
+                data_files = [f for f in files if f.get("name", "").lower().endswith((".csv", ".xlsx", ".xls"))]
+                if data_files:
+                    # CSV/XLSXファイルが添付されている場合
                     
-                    logger.info(f"CSV files found in thread: {[f.get('name') for f in csv_files]}")
+                    logger.info(f"Data files found in thread: {[f.get('name') for f in data_files]}")
                     client.chat_postMessage(
                         channel=channel_id,
                         thread_ts=thread_ts,
-                        text="📊 CSVファイルを検出しました。分析を開始します..."
+                        text="📊 データファイルを検出しました。分析を開始します..."
                     )
                     
                     # CSV処理を実行
@@ -418,11 +418,11 @@ def register_mention_handlers(app: App):
                             loop = asyncio.new_event_loop()
                             asyncio.set_event_loop(loop)
                             
-                            for csv_file in csv_files:
-                                logger.info(f"Processing CSV file in DM: {csv_file.get('name', 'unknown')}")
+                            for data_file in data_files:
+                                logger.info(f"Processing data file in DM: {data_file.get('name', 'unknown')}")
                                 try:
                                     loop.run_until_complete(process_csv_async(
-                                        file_info=csv_file,
+                                        file_info=data_file,
                                         channel_id=channel_id,
                                         user_id=user_id,
                                         client=client,
@@ -430,12 +430,12 @@ def register_mention_handlers(app: App):
                                         thread_ts=thread_ts
                                     ))
                                 except Exception as file_error:
-                                    logger.error(f"Error processing {csv_file.get('name')} in DM: {file_error}", exc_info=True)
+                                    logger.error(f"Error processing {data_file.get('name')} in DM: {file_error}", exc_info=True)
                                     try:
                                         client.chat_postMessage(
                                             channel=channel_id,
                                             thread_ts=thread_ts,
-                                            text=f"❌ {csv_file.get('name', 'CSVファイル')}の処理中にエラーが発生しました: {str(file_error)}"
+                                            text=f"❌ {data_file.get('name', 'データファイル')}の処理中にエラーが発生しました: {str(file_error)}"
                                         )
                                     except Exception as notify_error:
                                         logger.error(f"Failed to notify file error in DM: {notify_error}")

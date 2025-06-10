@@ -2,6 +2,8 @@ import asyncio
 import threading
 import time
 import logging
+import pandas as pd
+import io
 from slack_bolt import App
 from core.metadata_manager import MetadataManager
 from core.gemini_client import GeminiClient
@@ -10,6 +12,27 @@ from utils.file_utils import download_slack_file_content_async # download_slack_
 from utils.conversation_state import get_or_create_state, save_state
 
 logger = logging.getLogger(__name__)
+
+async def _convert_excel_to_csv(file_bytes, logger):
+    """Excel ファイルを CSV 形式の文字列に変換する"""
+    try:
+        # BytesIO を使ってメモリ上でファイルを処理
+        file_buffer = io.BytesIO(file_bytes)
+        
+        # pandas で Excel ファイルを読み込み
+        df = pd.read_excel(file_buffer, engine='openpyxl')
+        
+        # CSV 形式の文字列に変換
+        csv_buffer = io.StringIO()
+        df.to_csv(csv_buffer, index=False)
+        csv_content = csv_buffer.getvalue()
+        
+        logger.info(f"Successfully converted Excel file to CSV. Rows: {len(df)}, Columns: {len(df.columns)}")
+        return csv_content
+        
+    except Exception as e:
+        logger.error(f"Excel to CSV conversion failed: {e}")
+        raise Exception(f"Excel ファイルの変換に失敗しました: {str(e)}")
 
 def register_csv_handlers(app: App):
     """CSV関連のハンドラーを登録"""
@@ -21,11 +44,16 @@ def register_csv_handlers(app: App):
         logger.info(f"Event: {event}")
         file_info = event.get("file")
         
-        if not file_info or not file_info.get("name", "").endswith(".csv"):
-            logger.info(f"Not a CSV file or no file info. File name: {file_info.get('name', 'No file') if file_info else 'No file info'}")
+        if not file_info:
+            logger.info("No file info provided")
             return
         
-        logger.info(f"CSV file detected: {file_info.get('name')}")
+        file_name = file_info.get("name", "").lower()
+        if not (file_name.endswith(".csv") or file_name.endswith(".xlsx") or file_name.endswith(".xls")):
+            logger.info(f"Not a CSV/XLSX file. File name: {file_info.get('name', 'No file')}")
+            return
+        
+        logger.info(f"CSV/XLSX file detected: {file_info.get('name')}")
         
         # 非同期でCSV分析を実行
         import threading
@@ -144,31 +172,51 @@ async def process_csv_async(file_info, channel_id, user_id, client, logger, thre
         logger.info(f"Channel ID: {channel_id}, User ID: {user_id}, Thread TS: {thread_ts}")
         logger.info(f"Processing in thread: {threading.current_thread().name}")
         
-        # CSVダウンロード
-        csv_content_bytes = await download_slack_file_content_async(
+        # ファイルダウンロード
+        file_content_bytes = await download_slack_file_content_async(
             file_url=file_info["url_private_download"], # プライベートダウンロードURLを使用
             bot_token=client.token
         )
-        # ダウンロードしたバイト列をUTF-8でデコード（CSVが他のエンコーディングの可能性も考慮が必要）
+        
+        # ファイル形式に応じて処理
+        file_name = file_info.get("name", "").lower()
         try:
-            csv_content = csv_content_bytes.decode('utf-8')
-        except UnicodeDecodeError:
-            logger.warning("UTF-8でのデコードに失敗。Shift-JISで試行します。")
-            try:
-                csv_content = csv_content_bytes.decode('shift_jis')
-            except UnicodeDecodeError:
-                logger.error("CSVファイルのデコードに失敗しました。")
-                message_kwargs = {
-                    "channel": channel_id,
-                    "text": "❌ CSVファイルのエンコーディングが不明で処理できませんでした。"
-                }
-                if thread_ts:
-                    message_kwargs["thread_ts"] = thread_ts
-                client.chat_postMessage(**message_kwargs)
-                return
+            if file_name.endswith(".xlsx") or file_name.endswith(".xls"):
+                # XLSX/XLSファイルの処理
+                logger.info("Processing XLSX/XLS file")
+                csv_content = await _convert_excel_to_csv(file_content_bytes, logger)
+            else:
+                # CSVファイルの処理（従来通り）
+                logger.info("Processing CSV file")
+                try:
+                    csv_content = file_content_bytes.decode('utf-8')
+                except UnicodeDecodeError:
+                    logger.warning("UTF-8でのデコードに失敗。Shift-JISで試行します。")
+                    try:
+                        csv_content = file_content_bytes.decode('shift_jis')
+                    except UnicodeDecodeError:
+                        logger.error("CSVファイルのデコードに失敗しました。")
+                        message_kwargs = {
+                            "channel": channel_id,
+                            "text": "❌ CSVファイルのエンコーディングが不明で処理できませんでした。"
+                        }
+                        if thread_ts:
+                            message_kwargs["thread_ts"] = thread_ts
+                        client.chat_postMessage(**message_kwargs)
+                        return
+        except Exception as e:
+            logger.error(f"ファイル処理エラー: {e}")
+            message_kwargs = {
+                "channel": channel_id,
+                "text": f"❌ ファイルの処理中にエラーが発生しました: {str(e)}"
+            }
+            if thread_ts:
+                message_kwargs["thread_ts"] = thread_ts
+            client.chat_postMessage(**message_kwargs)
+            return
 
-        # Gemini APIでCSV分析
-        logger.info(f"Analyzing CSV content with Gemini. Content size: {len(csv_content)} chars")
+        # Gemini APIでデータ分析
+        logger.info(f"Analyzing file content with Gemini. Content size: {len(csv_content)} chars")
         logger.info("Creating GeminiClient instance...")
         gemini_client = GeminiClient()
         logger.info("Calling Gemini API to analyze CSV...")
