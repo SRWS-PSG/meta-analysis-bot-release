@@ -78,6 +78,76 @@ library(jsonlite)
 # 二値アウトカムの効果量計算 (例: オッズ比)
 dat <- escalc(measure="{measure}", ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat{slab_param_string})
 """,
+            "escalc_binary_no_correction": """
+# 二値アウトカムの効果量計算（連続性補正なし）
+dat <- escalc(measure="{measure}", ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, add=0, to="none"{slab_param_string})
+""",
+            "rma_mh": """
+# Mantel-Haenszel法による解析（補正なし）
+res <- rma.mh(ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, measure="{measure}", 
+              add=0, to="none", drop00=TRUE, correct=TRUE)
+""",
+            "rma_mh_with_correction": """
+# Mantel-Haenszel法による解析（個別効果量のみ補正、集計は補正なし）
+res <- rma.mh(ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, measure="{measure}", 
+              add=c(0.5, 0), to=c("only0", "none"), drop00=TRUE, correct=TRUE)
+""",
+            "main_analysis_selection": """
+# 主解析手法の選択（ゼロセルがある場合はMH法、ない場合は逆分散法）
+if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells > 0) {{
+    print("ゼロセルが検出されました。主解析にMantel-Haenszel法を使用します。")
+    main_analysis_method <- "MH"
+    
+    # 主解析：Mantel-Haenszel法（補正なし）
+    res <- rma.mh(ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, measure="{measure}",
+                  add=0, to="none", drop00=TRUE, correct=TRUE)
+    res_for_plot <- res  # プロット用にも同じ結果を使用
+    
+    print("主解析完了: Mantel-Haenszel法（補正なし）")
+}} else {{
+    print("ゼロセルは検出されませんでした。主解析に逆分散法を使用します。")
+    main_analysis_method <- "IV"
+    
+    # 主解析：逆分散法（従来通り）
+    res <- rma(yi, vi, data=dat, method="{method}")
+    res_for_plot <- res  # プロット用にも同じ結果を使用
+    
+    print("主解析完了: 逆分散法")
+}}
+""",
+            "zero_cell_analysis": """
+# ゼロセル分析
+zero_cells_summary <- list()
+zero_cells_summary$total_studies <- nrow(dat)
+zero_cells_summary$studies_with_zero_cells <- sum((dat${ai} == 0) | (dat${bi} == 0) | (dat${ci} == 0) | (dat${di} == 0))
+zero_cells_summary$double_zero_studies <- sum((dat${ai} == 0 & dat${ci} == 0))
+zero_cells_summary$zero_in_treatment <- sum(dat${ai} == 0)
+zero_cells_summary$zero_in_control <- sum(dat${ci} == 0)
+
+print("ゼロセル分析:")
+print(paste("総研究数:", zero_cells_summary$total_studies))
+print(paste("ゼロセルを含む研究数:", zero_cells_summary$studies_with_zero_cells))
+print(paste("両群ゼロ研究数:", zero_cells_summary$double_zero_studies))
+print(paste("介入群ゼロ研究数:", zero_cells_summary$zero_in_treatment))
+print(paste("対照群ゼロ研究数:", zero_cells_summary$zero_in_control))
+
+# ゼロセルがある場合の推奨手法の判定
+if (zero_cells_summary$studies_with_zero_cells > 0) {{
+    print("ゼロセルが検出されました。Mantel-Haenszel法を推奨します。")
+    recommended_method <- "MH"
+}} else {{
+    print("ゼロセルは検出されませんでした。逆分散法で問題ありません。")
+    recommended_method <- "IV"
+}}
+""",
+            "or_ci_conversion": """
+# OR/RRと信頼区間からlnOR/lnRRとSEへの変換
+dat$yi <- log(dat${or_col})
+dat$vi <- ((log(dat${ci_upper_col}) - log(dat${ci_lower_col})) / (2 * 1.96))^2
+# 変換後の確認
+print("OR/RR to log scale conversion completed:")
+print(head(dat[, c("{or_col}", "{ci_lower_col}", "{ci_upper_col}", "yi", "vi")]))
+""",
             "escalc_continuous": """
 # 連続アウトカムの効果量計算 (例: 標準化平均差)
 dat <- escalc(measure="{measure}", n1i={n1i}, n2i={n2i}, m1i={m1i}, m2i={m2i}, sd1i={sd1i}, sd2i={sd2i}, data=dat{slab_param_string})
@@ -102,18 +172,13 @@ res <- rma({yi_col}, {vi_col}, data=dat, method="{method}")
 # モデレーターを用いたメタ回帰実行
 res <- rma({yi_col}, {vi_col}, mods = ~ {mods_formula}, data=dat, method="{method}")
 """,
-            "subgroup_analysis": """
-# サブグループ解析 (必要な場合)
-# 各サブグループ変数ごとに解析を実行
-# for (subgroup_col in c({subgroup_columns_list})) {{
-#     if (subgroup_col %in% names(dat)) {{
-#         # サブグループ間の差の検定
-#         res_subgroup_test_{subgroup_col} <- rma(yi, vi, mods = ~ factor(dat[[subgroup_col]]), data=dat, method="{method}")
-#         # 各サブグループごとの解析 (これは通常プロットや詳細表示用)
-#         # by = factor(dat[[subgroup_col]]) を使用
-#         res_by_subgroup_{subgroup_col} <- rma(yi, vi, data=dat, method="{method}", by = factor(dat[[subgroup_col}]))
-#     }}
-# }}
+            "subgroup_single": """
+# Subgroup analysis for '{subgroup_col}'
+res_subgroup_test_{subgroup_col} <- rma({yi_col}, {vi_col}, mods = ~ factor({subgroup_col}), data=dat, method="{method}")
+
+# 各サブグループ '{subgroup_col}' ごとの解析 (splitとlapplyを使用し、個別のrmaオブジェクトのリストを作成)
+dat_split_{subgroup_col} <- split(dat, dat[['{subgroup_col}']])
+res_by_subgroup_{subgroup_col} <- lapply(dat_split_{subgroup_col}, function(x) rma({yi_col}, {vi_col}, data=x, method="{method}"))
 """,
             "forest_plot": """
 # フォレストプロット作成
@@ -155,19 +220,34 @@ tryCatch({{
         ai_col <- "{ai_col}"
         bi_col <- "{bi_col}" 
         ci_col <- "{ci_col}"
-        di_col <- "{di_col}" 
+        di_col <- "{di_col}"
+        n1i_col <- "{n1i_col}"
+        n2i_col <- "{n2i_col}"
         
-        required_ilab_cols <- c(ai_col, bi_col, ci_col, di_col)
-        required_ilab_cols <- required_ilab_cols[required_ilab_cols != ""]
-
-        if (length(required_ilab_cols) == 4 && all(required_ilab_cols %in% names(dat))) {{
-            ilab_data <- cbind(dat[[ai_col]], dat[[bi_col]], dat[[ci_col]], dat[[di_col]])
-            ilab_xpos <- c(-9.5, -8, -6, -4.5) 
-            ilab_lab <- c("Events", "No Events", "Events", "No Events") 
-        }} else if (length(required_ilab_cols) == 2 && all(required_ilab_cols %in% names(dat))) {{
+        # 二値アウトカムでEvents/Total形式で表示
+        if (ai_col != "" && ci_col != "" && n1i_col != "" && n2i_col != "" &&
+            all(c(ai_col, ci_col, n1i_col, n2i_col) %in% names(dat))) {{
+            # Events/Total 形式で表示
+            treatment_display <- paste(dat[[ai_col]], "/", dat[[n1i_col]], sep="")
+            control_display <- paste(dat[[ci_col]], "/", dat[[n2i_col]], sep="")
+            ilab_data <- cbind(treatment_display, control_display)
+            ilab_xpos <- c(-8.5, -5.5)
+            ilab_lab <- c("Events/Total", "Events/Total")
+        }} else if (ai_col != "" && ci_col != "" && all(c(ai_col, ci_col) %in% names(dat))) {{
+            # フォールバック: イベント数のみ
             ilab_data <- cbind(dat[[ai_col]], dat[[ci_col]])
-            ilab_xpos <- c(-9.5, -6)
-            ilab_lab <- c("Events", "Events") 
+            ilab_xpos <- c(-8.5, -5.5)
+            ilab_lab <- c("Events", "Events")
+        }}
+    }} else if (current_measure %in% c("SMD", "MD", "ROM")) {{
+        # 連続アウトカムの場合: n1i, n2i を表示
+        n1i_col <- "{n1i_col}"
+        n2i_col <- "{n2i_col}"
+        
+        if (n1i_col != "" && n2i_col != "" && all(c(n1i_col, n2i_col) %in% names(dat))) {{
+            ilab_data <- cbind(dat[[n1i_col]], dat[[n2i_col]])
+            ilab_xpos <- c(-8.5, -5.5)
+            ilab_lab <- c("N", "N")
         }}
     }}
 
@@ -196,9 +276,37 @@ tryCatch({{
     # 引数リストを使って forest 関数を呼び出し
     do.call(forest, forest_args)
 
-    if (!is.null(ilab_data) && length(ilab_xpos) == 4) { 
-        text(c(-8.75, -5.25), res_for_plot$k+2.8, c("Treatment", "Control"), cex=0.75, font=2)
+    if (!is.null(ilab_data) && length(ilab_xpos) == 2) { 
+        text(c(-8.5, -5.5), res_for_plot$k+2.8, c("Treatment", "Control"), cex=0.75, font=2)
     }
+    
+    # 合計行を追加（二値アウトカムの場合のみ）
+    if (current_measure %in% c("OR", "RR", "RD", "PETO") && !is.null(ilab_data)) {{
+        ai_col <- "{ai_col}"
+        ci_col <- "{ci_col}"
+        n1i_col <- "{n1i_col}"
+        n2i_col <- "{n2i_col}"
+        
+        # 全体合計の計算と表示
+        if (ai_col != "" && ci_col != "" && n1i_col != "" && n2i_col != "" &&
+            all(c(ai_col, ci_col, n1i_col, n2i_col) %in% names(dat))) {{
+            
+            total_ai <- sum(dat[[ai_col]], na.rm = TRUE)
+            total_n1i <- sum(dat[[n1i_col]], na.rm = TRUE)
+            total_ci <- sum(dat[[ci_col]], na.rm = TRUE)
+            total_n2i <- sum(dat[[n2i_col]], na.rm = TRUE)
+            
+            # 合計行の位置（最下部）
+            total_row_y <- 0.3
+            
+            # 合計行のラベルと数値を表示
+            text(-16, total_row_y, "Total", font = 2, pos = 4, cex = 0.75)
+            text(c(-8.5, -5.5), total_row_y, 
+                 c(paste(total_ai, "/", total_n1i, sep=""),
+                   paste(total_ci, "/", total_n2i, sep="")),
+                 font = 2, cex = 0.75)
+        }}
+    }}
     
     text(-16, -1, pos=4, cex=0.75, bquote(paste(
         "RE Model (Q = ", .(formatC(res_for_plot$QE, digits=2, format="f")),
@@ -211,7 +319,7 @@ tryCatch({{
 }}, error = function(e) {{
     plot(1, type="n", main="Forest Plot Error", xlab="", ylab="")
     text(1, 1, paste("Error generating forest plot:\n", e$message), col="red")
-    logger::log_error(sprintf("Forest plot generation failed: %s", e$message))
+    print(sprintf("Forest plot generation failed: %s", e$message))
 }})
 dev.off()
 """,
@@ -292,13 +400,32 @@ if (exists("res_by_subgroup_{subgroup_col_name}") && !is.null(res_by_subgroup_{s
             bi_col_main <- "{bi_col}"
             ci_col_main <- "{ci_col}"
             di_col_main <- "{di_col}"
-            required_ilab_cols_main <- c(ai_col_main, bi_col_main, ci_col_main, di_col_main)
-            required_ilab_cols_main <- required_ilab_cols_main[required_ilab_cols_main != ""]
-            if (length(required_ilab_cols_main) == 4 && all(required_ilab_cols_main %in% names(dat))) {{
-                ilab_data_main <- cbind(dat_ordered[[ai_col_main]], dat_ordered[[bi_col_main]], 
-                                      dat_ordered[[ci_col_main]], dat_ordered[[di_col_main]])
-                ilab_xpos_main <- c(-9.5, -8, -6, -4.5)
-                ilab_lab_main <- c("Events", "No Events", "Events", "No Events")
+            n1i_col_main <- "{n1i_col}"
+            n2i_col_main <- "{n2i_col}"
+            
+            # Events/Total 形式で表示
+            if (ai_col_main != "" && ci_col_main != "" && n1i_col_main != "" && n2i_col_main != "" &&
+                all(c(ai_col_main, ci_col_main, n1i_col_main, n2i_col_main) %in% names(dat))) {{
+                treatment_display_main <- paste(dat_ordered[[ai_col_main]], "/", dat_ordered[[n1i_col_main]], sep="")
+                control_display_main <- paste(dat_ordered[[ci_col_main]], "/", dat_ordered[[n2i_col_main]], sep="")
+                ilab_data_main <- cbind(treatment_display_main, control_display_main)
+                ilab_xpos_main <- c(-8.5, -5.5)
+                ilab_lab_main <- c("Events/Total", "Events/Total")
+            }} else if (ai_col_main != "" && ci_col_main != "" && all(c(ai_col_main, ci_col_main) %in% names(dat))) {{
+                # フォールバック: イベント数のみ
+                ilab_data_main <- cbind(dat_ordered[[ai_col_main]], dat_ordered[[ci_col_main]])
+                ilab_xpos_main <- c(-8.5, -5.5)
+                ilab_lab_main <- c("Events", "Events")
+            }}
+        }} else if (current_measure %in% c("SMD", "MD", "ROM")) {{
+            # 連続アウトカムの場合: n1i, n2i を表示
+            n1i_col_main <- "{n1i_col}"
+            n2i_col_main <- "{n2i_col}"
+            
+            if (n1i_col_main != "" && n2i_col_main != "" && all(c(n1i_col_main, n2i_col_main) %in% names(dat))) {{
+                ilab_data_main <- cbind(dat_ordered[[n1i_col_main]], dat_ordered[[n2i_col_main]])
+                ilab_xpos_main <- c(-8.5, -5.5)
+                ilab_lab_main <- c("N", "N")
             }}
         }}
         
@@ -327,8 +454,8 @@ if (exists("res_by_subgroup_{subgroup_col_name}") && !is.null(res_by_subgroup_{s
         do.call(forest, forest_sg_args)
         
         # Treatment/Control ヘッダーの追加
-        if (!is.null(ilab_data_main) && length(ilab_xpos_main) == 4) {{
-             text(c(-8.75,-5.25), ylim_top - 1, c("Treatment", "Control"), font=2, cex=0.75)
+        if (!is.null(ilab_data_main) && length(ilab_xpos_main) == 2) {{
+             text(c(-8.5,-5.5), ylim_top - 1, c("Treatment", "Control"), font=2, cex=0.75)
         }}
         
         # サブグループラベルとサマリーポリゴンを追加
@@ -342,6 +469,58 @@ if (exists("res_by_subgroup_{subgroup_col_name}") && !is.null(res_by_subgroup_{s
                 text(-16, max(rows_list[[sg_name]]) + 0.5, 
                      paste0(sg_name, " (k=", res_sg_obj$k, ")"), 
                      pos=4, font=4, cex=0.75)
+                
+                # サブグループの合計行を追加（二値アウトカムの場合のみ）
+                if (current_measure %in% c("OR", "RR", "RD", "PETO") && !is.null(ilab_data_main)) {{
+                    ai_col_sg <- "{ai_col}"
+                    ci_col_sg <- "{ci_col}"
+                    n1i_col_sg <- "{n1i_col}"
+                    n2i_col_sg <- "{n2i_col}"
+                    
+                    if (ai_col_sg != "" && ci_col_sg != "" && n1i_col_sg != "" && n2i_col_sg != "" &&
+                        all(c(ai_col_sg, ci_col_sg, n1i_col_sg, n2i_col_sg) %in% names(dat))) {{
+                        
+                        # このサブグループのデータのみを抽出
+                        sg_data <- dat_ordered[dat_ordered[['{subgroup_col_name}']] == sg_name, ]
+                        
+                        if (nrow(sg_data) > 0) {{
+                            sg_total_ai <- sum(sg_data[[ai_col_sg]], na.rm = TRUE)
+                            sg_total_n1i <- sum(sg_data[[n1i_col_sg]], na.rm = TRUE)
+                            sg_total_ci <- sum(sg_data[[ci_col_sg]], na.rm = TRUE)
+                            sg_total_n2i <- sum(sg_data[[n2i_col_sg]], na.rm = TRUE)
+                            
+                            # サブグループ合計行の位置（サブグループの最小行の0.3行上）
+                            sg_total_row_y <- min(rows_list[[sg_name]]) - 0.3
+                            
+                            # サブグループ合計行のラベルと数値を表示
+                            text(-16, sg_total_row_y, paste0(sg_name, " Total"), font = 2, pos = 4, cex = 0.7)
+                            text(c(-8.5, -5.5), sg_total_row_y, 
+                                 c(paste(sg_total_ai, "/", sg_total_n1i, sep=""),
+                                   paste(sg_total_ci, "/", sg_total_n2i, sep="")),
+                                 font = 2, cex = 0.7)
+                        }}
+                    }}
+                }} else if (current_measure %in% c("SMD", "MD", "ROM") && !is.null(ilab_data_main)) {{
+                    # 連続アウトカムの場合: サブグループ別のサンプルサイズ合計
+                    n1i_col_sg <- "{n1i_col}"
+                    n2i_col_sg <- "{n2i_col}"
+                    
+                    if (n1i_col_sg != "" && n2i_col_sg != "" && all(c(n1i_col_sg, n2i_col_sg) %in% names(dat))) {{
+                        sg_data <- dat_ordered[dat_ordered[['{subgroup_col_name}']] == sg_name, ]
+                        
+                        if (nrow(sg_data) > 0) {{
+                            sg_total_n1i <- sum(sg_data[[n1i_col_sg]], na.rm = TRUE)
+                            sg_total_n2i <- sum(sg_data[[n2i_col_sg]], na.rm = TRUE)
+                            
+                            sg_total_row_y <- min(rows_list[[sg_name]]) - 0.3
+                            
+                            text(-16, sg_total_row_y, paste0(sg_name, " Total"), font = 2, pos = 4, cex = 0.7)
+                            text(c(-8.5, -5.5), sg_total_row_y, 
+                                 c(sg_total_n1i, sg_total_n2i),
+                                 font = 2, cex = 0.7)
+                        }}
+                    }}
+                }}
                 
                 # サブグループサマリーポリゴンを追加
                 if (apply_exp_transform) {{
@@ -391,7 +570,7 @@ if (exists("res_by_subgroup_{subgroup_col_name}") && !is.null(res_by_subgroup_{s
     }}, error = function(e) {{
         plot(1, type="n", main="Subgroup Forest Plot Error ({subgroup_col_name})", xlab="", ylab="")
         text(1, 1, paste("Error generating subgroup forest plot for {subgroup_col_name}:\n", e$message), col="red")
-        logger::log_error(sprintf("Subgroup forest plot generation failed for {subgroup_col_name}: %s", e$message))
+        print(sprintf("Subgroup forest plot generation failed for {subgroup_col_name}: %s", e$message))
     }})
     dev.off()
 }}
@@ -407,7 +586,7 @@ tryCatch({{
 }}, error = function(e) {{
     plot(1, type="n", main="Funnel Plot Error", xlab="", ylab="")
     text(1, 1, paste("Error generating funnel plot:\n", e$message), col="red")
-    logger::log_error(sprintf("Funnel plot generation failed: %s", e$message))
+    print(sprintf("Funnel plot generation failed: %s", e$message))
 }})
 dev.off()
 """,
@@ -419,7 +598,7 @@ if ("{moderator_column_for_bubble}" %in% names(dat) && exists("res") && !is.null
    is_moderator_in_model <- FALSE
    if (!is.null(rownames(res$beta))) {{
        if (any(grepl(paste0("^", actual_moderator_name_in_model), rownames(res$beta)[-1], fixed = FALSE)) ||
-           any(grepl(paste0("^factor\\(", actual_moderator_name_in_model, "\\)"), rownames(res$beta)[-1], fixed = FALSE)) ){{
+           any(grepl(paste0("^factor\\\\(", actual_moderator_name_in_model, "\\\\)"), rownames(res$beta)[-1], fixed = FALSE)) ){{
            is_moderator_in_model <- TRUE
        }}
    }}
@@ -435,7 +614,7 @@ if ("{moderator_column_for_bubble}" %in% names(dat) && exists("res") && !is.null
        }}, error = function(e) {{
            plot(1, type="n", main="Bubble Plot Error", xlab="", ylab="")
            text(1, 1, paste("Error generating bubble plot for {moderator_column_for_bubble}:\n", e$message), col="red")
-           logger::log_error(sprintf("Bubble plot generation failed for {moderator_column_for_bubble}: %s", e$message))
+           print(sprintf("Bubble plot generation failed for {moderator_column_for_bubble}: %s", e$message))
        }})
        dev.off()
    }} else {{
@@ -448,6 +627,33 @@ if ("{moderator_column_for_bubble}" %in% names(dat) && exists("res") && !is.null
             "save_results": """
 # 結果の保存
 summary_list <- list()
+
+# バージョン情報を最初に追加（エラーが発生しても保持されるように）
+summary_list$r_version <- R.version.string
+summary_list$metafor_version <- as.character(packageVersion("metafor"))
+
+# 詳細な解析環境情報
+summary_list$analysis_environment <- list(
+    r_version_full = R.version.string,
+    r_version_short = paste(R.version$major, R.version$minor, sep="."),
+    metafor_version = as.character(packageVersion("metafor")),
+    jsonlite_version = as.character(packageVersion("jsonlite")),
+    platform = R.version$platform,
+    os_type = .Platform$OS.type,
+    analysis_date = as.character(Sys.Date()),
+    analysis_time = as.character(Sys.time()),
+    packages_info = list(
+        metafor = list(
+            version = as.character(packageVersion("metafor")),
+            description = "Conducting Meta-Analyses in R"
+        ),
+        jsonlite = list(
+            version = as.character(packageVersion("jsonlite")),
+            description = "JSON output generation"
+        )
+    )
+)
+
 tryCatch({
     summary_list$overall_summary_text <- paste(capture.output(summary(res)), collapse = "\n")
     
@@ -472,14 +678,16 @@ tryCatch({
     {regression_json_update_code}
     
     {egger_json_update_code}
-
-    # Add R and metafor versions
-    summary_list$r_version <- R.version.string
-    summary_list$metafor_version <- as.character(packageVersion("metafor"))
+    
+    # ゼロセル情報を追加（存在する場合）
+    if (exists("zero_cells_summary") && !is.null(zero_cells_summary)) {
+        summary_list$zero_cells_summary <- zero_cells_summary
+        print("Zero cell summary added to JSON output")
+    }
 
 }, error = function(e_sum) {
     summary_list$error_in_summary_generation <- paste("Error creating parts of summary:", e_sum$message)
-    logger::log_error(sprintf("Error creating parts of summary_list: %s", e_sum$message))
+    print(sprintf("Error creating parts of summary_list: %s", e_sum$message))
 })
 
 {generated_plots_r_code}
@@ -497,7 +705,7 @@ tryCatch({
     }, error = function(e_json_fallback) {
         print(paste("Error saving fallback error JSON:", e_json_fallback$message))
     })
-    logger::log_error(sprintf("Error saving summary_list as JSON: %s", e_json$message))
+    print(sprintf("Error saving summary_list as JSON: %s", e_json$message))
 })
 
 tryCatch({
@@ -505,7 +713,7 @@ tryCatch({
     print(paste("RData saved to:", '{rdata_path}'))
 }, error = function(e_rdata) {
     print(paste("Error saving RData:", e_rdata$message))
-    logger::log_error(sprintf("Error saving RData: %s", e_rdata$message))
+    print(sprintf("Error saving RData: %s", e_rdata$message))
 })
 """,
             "sensitivity_analysis": """
@@ -519,7 +727,7 @@ if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) &
         res_sensitivity <- tryCatch({{
             rma(yi, vi, data=dat_sensitivity, method="{method}")
         }}, error = function(e) {{
-            logger::log_error(sprintf("Error in sensitivity analysis rma for {sensitivity_variable}={sensitivity_value}: %s", e$message))
+            print(sprintf("Error in sensitivity analysis rma for {sensitivity_variable}={sensitivity_value}: %s", e$message))
             return(NULL)
         }})
         
@@ -554,6 +762,99 @@ if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) &
         summary_list$sensitivity_analysis_skipped <- paste("Sensitivity analysis for {sensitivity_variable}={sensitivity_value} skipped: variable not found or value not in data.")
     }}
 }}
+""",
+            "zero_cell_sensitivity": """
+# ゼロセル対応の感度解析（主解析以外の手法で比較）
+if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells > 0) {{
+    sensitivity_results <- list()
+    
+    # 主解析の結果を記録
+    sensitivity_results$main_analysis <- list(
+        method = paste0("Mantel-Haenszel (no correction) - MAIN ANALYSIS"),
+        estimate = as.numeric(res$b)[1],
+        ci_lb = as.numeric(res$ci.lb)[1],
+        ci_ub = as.numeric(res$ci.ub)[1],
+        pval = as.numeric(res$pval)[1],
+        I2 = res$I2,
+        note = "Primary analysis method for sparse data"
+    )
+    
+    # 感度解析1: 逆分散法（デフォルト0.5補正）
+    tryCatch({{
+        res_iv_corrected <- rma(yi, vi, data=dat, method="{method}")
+        sensitivity_results$sensitivity_iv_corrected <- list(
+            method = "Inverse Variance (0.5 correction) - SENSITIVITY",
+            estimate = as.numeric(res_iv_corrected$b)[1],
+            ci_lb = as.numeric(res_iv_corrected$ci.lb)[1],
+            ci_ub = as.numeric(res_iv_corrected$ci.ub)[1],
+            pval = as.numeric(res_iv_corrected$pval)[1],
+            I2 = res_iv_corrected$I2,
+            note = "Traditional method with continuity correction"
+        )
+    }}, error = function(e) {{
+        sensitivity_results$sensitivity_iv_corrected <<- list(
+            method = "Inverse Variance (0.5 correction) - SENSITIVITY",
+            error = e$message
+        )
+    }})
+    
+    # 感度解析2: Mantel-Haenszel法（個別効果量のみ補正）
+    tryCatch({{
+        res_mh_corr <- rma.mh(ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, 
+                             measure="{measure}", add=c(0.5, 0), to=c("only0", "none"), drop00=TRUE)
+        sensitivity_results$sensitivity_mh_with_correction <- list(
+            method = "Mantel-Haenszel (forest plot correction) - SENSITIVITY",
+            estimate = as.numeric(res_mh_corr$b)[1],
+            ci_lb = as.numeric(res_mh_corr$ci.lb)[1],
+            ci_ub = as.numeric(res_mh_corr$ci.ub)[1],
+            pval = as.numeric(res_mh_corr$pval)[1],
+            I2 = res_mh_corr$I2,
+            note = "MH method with correction for visualization only"
+        )
+    }}, error = function(e) {{
+        sensitivity_results$sensitivity_mh_with_correction <<- list(
+            method = "Mantel-Haenszel (forest plot correction) - SENSITIVITY", 
+            error = e$message
+        )
+    }})
+    
+    # 結果の比較表示
+    print("\\n=== 主解析とゼロセル対応感度解析の結果 ===")
+    print("主解析: Mantel-Haenszel法（補正なし）- Cochrane推奨手法")
+    print("感度解析: 他の補正手法との比較")
+    print("-------------------------------------------------------")
+    
+    for (method_name in names(sensitivity_results)) {{
+        result <- sensitivity_results[[method_name]]
+        if ("error" %in% names(result)) {{
+            print(paste(result$method, ": エラー -", result$error))
+        }} else {{
+            analysis_type <- if(grepl("MAIN", result$method)) "【主解析】" else "【感度解析】"
+            print(sprintf("%s %s: %s = %.3f [%.3f, %.3f], p = %.3f, I² = %.1f%%",
+                         analysis_type, result$method, "{measure}", 
+                         if("{measure}" %in% c("OR", "RR")) exp(result$estimate) else result$estimate,
+                         if("{measure}" %in% c("OR", "RR")) exp(result$ci_lb) else result$ci_lb,
+                         if("{measure}" %in% c("OR", "RR")) exp(result$ci_ub) else result$ci_ub,
+                         result$pval, result$I2))
+            if (!is.null(result$note)) {{
+                print(paste("   └", result$note))
+            }}
+        }}
+    }}
+    
+    # JSONに保存
+    if (exists("summary_list")) {{
+        summary_list$zero_cell_sensitivity <- sensitivity_results
+        summary_list$zero_cell_analysis <- zero_cells_summary
+        summary_list$main_analysis_method <- "Mantel-Haenszel (no correction)"
+    }}
+}} else {{
+    print("ゼロセルが検出されなかったため、ゼロセル対応感度解析をスキップします。")
+    if (exists("summary_list")) {{
+        summary_list$zero_cell_sensitivity_skipped <- "No zero cells detected"
+        summary_list$main_analysis_method <- "Inverse Variance (standard)"
+    }}
+}}
 """
         }
         return templates
@@ -561,12 +862,30 @@ if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) &
     def _generate_escalc_code(self, analysis_params: Dict[str, Any], data_summary: Dict[str, Any]) -> str:
         measure = analysis_params.get("measure", "RR") 
         data_cols = analysis_params.get("data_columns", {})
+        data_format = analysis_params.get("data_format", "")
+        detected_columns = analysis_params.get("detected_columns", {})
         
         slab_param_string = ""
         if data_cols.get("study_label_author") and data_cols.get("study_label_year"):
             slab_param_string = ", slab=slab"
         elif data_cols.get("study_label"):
             slab_param_string = ", slab=slab"
+
+        # OR/RR + CI形式の場合の処理
+        if data_format in ["or_ci", "rr_ci"] and detected_columns:
+            or_col = detected_columns.get("or") or detected_columns.get("rr")
+            ci_lower_col = detected_columns.get("ci_lower") or detected_columns.get("ci_low") or detected_columns.get("lower_ci")
+            ci_upper_col = detected_columns.get("ci_upper") or detected_columns.get("ci_high") or detected_columns.get("upper_ci")
+            
+            if or_col and ci_lower_col and ci_upper_col:
+                return self._safe_format(
+                    self.templates["or_ci_conversion"],
+                    or_col=or_col,
+                    ci_lower_col=ci_lower_col,
+                    ci_upper_col=ci_upper_col
+                )
+            else:
+                logger.warning(f"OR/CI形式が検出されましたが、必要な列が見つかりません: or={or_col}, ci_lower={ci_lower_col}, ci_upper={ci_upper_col}")
 
         if measure in ["OR", "RR", "RD", "PETO"]: 
             ai_col = data_cols.get("ai")
@@ -597,12 +916,35 @@ if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) &
                 else:
                     logger.error(f"列 'di' がなく、'n2i' または 'ci' もないため計算できません。")
                     return f"# Error: Column 'di' is missing and cannot be calculated from 'n2i' (present: {bool(n2i_col)}) and 'ci' (present: {bool(ci_col)}) for measure {measure}."
+            # ゼロセル分析を追加
+            zero_cell_analysis_code = self._safe_format(
+                self.templates["zero_cell_analysis"],
+                ai=ai_col, bi=actual_bi_col, ci=ci_col, di=actual_di_col
+            )
+            
             escalc_call = self._safe_format(
                 self.templates["escalc_binary"],
                 measure=measure, ai=ai_col, bi=actual_bi_col,
                 ci=ci_col, di=actual_di_col, slab_param_string=slab_param_string
             )
-            return "\n".join(pre_escalc_code) + f"\n{escalc_call.lstrip()}" if pre_escalc_code else escalc_call
+            
+            # 主解析手法の選択（ゼロセルがある場合はMH法を優先）
+            main_analysis_code = self._safe_format(
+                self.templates["main_analysis_selection"],
+                ai=ai_col, bi=actual_bi_col, ci=ci_col, di=actual_di_col,
+                measure=measure, method=analysis_params.get("model", "REML")
+            )
+            
+            # ゼロセル対応の感度解析を追加
+            sensitivity_code = self._safe_format(
+                self.templates["zero_cell_sensitivity"],
+                ai=ai_col, bi=actual_bi_col, ci=ci_col, di=actual_di_col,
+                measure=measure, method=analysis_params.get("model", "REML")
+            )
+            
+            # 組み合わせて返す
+            all_code_parts = pre_escalc_code + [zero_cell_analysis_code, escalc_call, main_analysis_code, sensitivity_code]
+            return "\n\n".join(filter(None, all_code_parts))
         elif measure in ["SMD", "MD", "ROM"]: 
             required_cols = ["n1i", "n2i", "m1i", "m2i", "sd1i", "sd2i"]
             if not all(data_cols.get(col) for col in required_cols):
@@ -710,12 +1052,22 @@ if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) &
         subgroup_codes = []
         for subgroup_col in subgroup_columns:
             # サブグループテスト用のモデル (res_subgroup_test_{subgroup_col} に結果を格納)
-            subgroup_test_model_code = self._safe_format(
-                self.templates["rma_with_mods"], # mods を使うテンプレート
-                method=method, 
-                mods_formula=f"factor({subgroup_col})", # サブグループ列をfactorとして指定
-                yi_col=yi_col, vi_col=vi_col
-            ).replace("res <-", f"res_subgroup_test_{subgroup_col} <-")
+            subgroup_test_model_code = f"""
+# Subgroup moderation test for '{subgroup_col}'
+valid_data_for_subgroup_test <- dat[is.finite(dat$yi) & is.finite(dat$vi) & dat$vi > 0, ]
+
+if (nrow(valid_data_for_subgroup_test) >= 2 && "{subgroup_col}" %in% names(valid_data_for_subgroup_test)) {{
+    tryCatch({{
+        res_subgroup_test_{subgroup_col} <- rma({yi_col}, {vi_col}, mods = ~ factor({subgroup_col}), data=valid_data_for_subgroup_test, method="{method}")
+        print("Subgroup test for '{subgroup_col}' completed")
+    }}, error = function(e) {{
+        print(sprintf("Subgroup test for '{subgroup_col}' failed: %s", e$message))
+        res_subgroup_test_{subgroup_col} <- NULL
+    }})
+}} else {{
+    print("Subgroup test for '{subgroup_col}': 有効データが不足またはカラムが存在しません")
+    res_subgroup_test_{subgroup_col} <- NULL
+}}"""
             
             # 各サブグループごとの解析結果を格納するリストを作成 (res_by_subgroup_{subgroup_col} に結果を格納)
             # splitとlapplyを使って、各サブグループレベルでrmaを実行し、結果をリストにまとめる
@@ -726,15 +1078,23 @@ if ("{subgroup_col}" %in% names(dat)) {{
     res_by_subgroup_{subgroup_col} <- lapply(names(dat_split_{subgroup_col}), function(level_name) {{
         current_data_sg <- dat_split_{subgroup_col}[[level_name]]
         if (nrow(current_data_sg) > 0) {{
-            tryCatch({{
-                rma_result_sg <- rma({yi_col}, {vi_col}, data=current_data_sg, method="{method}")
-                # 結果にレベル名を追加して返す (後でアクセスしやすくするため)
-                rma_result_sg$subgroup_level <- level_name 
-                return(rma_result_sg)
-            }}, error = function(e) {{
-                logger::log_warn(sprintf("RMA failed for subgroup '{subgroup_col}' level '%s': %s", level_name, e$message))
-                return(NULL) # エラー時はNULLを返す
-            }})
+            # 無限大値をチェックして除外
+            valid_sg_data <- current_data_sg[is.finite(current_data_sg$yi) & is.finite(current_data_sg$vi) & current_data_sg$vi > 0, ]
+            
+            if (nrow(valid_sg_data) >= 2) {{
+                tryCatch({{
+                    rma_result_sg <- rma({yi_col}, {vi_col}, data=valid_sg_data, method="{method}")
+                    # 結果にレベル名を追加して返す (後でアクセスしやすくするため)
+                    rma_result_sg$subgroup_level <- level_name 
+                    return(rma_result_sg)
+                }}, error = function(e) {{
+                    print(sprintf("RMA failed for subgroup '{subgroup_col}' level '%s': %s", level_name, e$message))
+                    return(NULL) # エラー時はNULLを返す
+                }})
+            }} else {{
+                print(sprintf("Subgroup '{subgroup_col}' level '%s': 有効データが不足 (n=%d)", level_name, nrow(valid_sg_data)))
+                return(NULL) # 有効データが不足の場合はNULL
+            }}
         }} else {{
             return(NULL) # データがない場合はNULL
         }}
@@ -748,7 +1108,7 @@ if ("{subgroup_col}" %in% names(dat)) {{
 }} else {{
     res_subgroup_test_{subgroup_col} <- NULL
     res_by_subgroup_{subgroup_col} <- NULL
-    logger::log_warn("Subgroup column '{subgroup_col}' not found in data for subgroup analysis.")
+    print("Subgroup column '{subgroup_col}' not found in data for subgroup analysis.")
 }}
 """
             subgroup_codes.append(f"\n# --- Subgroup analysis for '{subgroup_col}' ---\n{subgroup_test_model_code}\n{subgroup_by_level_code}")
@@ -762,6 +1122,8 @@ if ("{subgroup_col}" %in% names(dat)) {{
         bi_col = data_cols.get("bi", "") 
         ci_col = data_cols.get("ci", "")
         di_col = data_cols.get("di", "")
+        n1i_col = data_cols.get("n1i", "")
+        n2i_col = data_cols.get("n2i", "")
 
         # 1. メインフォレストプロット
         main_forest_plot_path = output_paths.get("forest_plot_path", "forest_plot_overall.png")
@@ -771,6 +1133,7 @@ if ("{subgroup_col}" %in% names(dat)) {{
                 forest_plot_path=main_forest_plot_path.replace('\\', '/'),
                 measure_for_plot=analysis_params.get("measure", "RR"),
                 ai_col=ai_col, bi_col=bi_col, ci_col=ci_col, di_col=di_col,
+                n1i_col=n1i_col, n2i_col=n2i_col,
                 row_h_in_placeholder=self.PLOT_ROW_H_IN,
                 base_h_in_placeholder=self.PLOT_BASE_H_IN,
                 plot_width_in_placeholder=self.PLOT_WIDTH_IN,
@@ -797,6 +1160,7 @@ if ("{subgroup_col}" %in% names(dat)) {{
                         subgroup_forest_plot_path=sg_forest_plot_path,
                         measure_for_plot=analysis_params.get("measure", "RR"),
                         ai_col=ai_col, bi_col=bi_col, ci_col=ci_col, di_col=di_col,
+                        n1i_col=n1i_col, n2i_col=n2i_col,
                         res_for_plot_model_name="res_for_plot", # メインモデルのプロット用オブジェクト名
                         row_h_in_placeholder=self.PLOT_ROW_H_IN,
                         base_h_in_placeholder=self.PLOT_BASE_H_IN,
@@ -1005,22 +1369,48 @@ if ("{subgroup_col}" %in% names(dat)) {{
         escalc_code = self._generate_escalc_code(analysis_params, data_summary)
         script_parts.append(escalc_code)
 
-        # メインのメタ解析モデル (プロット用、res_for_plot に格納)
-        # これはモデレーターやサブグループを含まないシンプルなモデルが良い場合が多い
-        plot_model_method = analysis_params.get("model", "REML") # "method" から "model" に変更
-        data_cols = analysis_params.get("data_columns", {})
-        yi_col = data_cols.get("yi", "yi")
-        vi_col = data_cols.get("vi", "vi")
+        # メインの解析は escalc_code内の main_analysis_selection で既に実行済み
+        # res と res_for_plot がここで設定される
         
-        rma_for_plot_code = self._safe_format(
-            self.templates["rma_basic"], method=plot_model_method,
-            yi_col=yi_col, vi_col=vi_col
-        ).replace("res <-", "res_for_plot <-") # 結果を res_for_plot に格納
-        script_parts.append(rma_for_plot_code)
-
-        # 詳細なメタ解析モデル (モデレーターやサブグループテスト用、res に格納)
-        rma_code = self._generate_rma_code(analysis_params) # analysis_params に基づく
-        script_parts.append(rma_code)
+        # モデレーターがある場合のみ追加の回帰解析を実行
+        moderators = analysis_params.get("moderator_columns", [])
+        if moderators:
+            # 有効なモデレーターのみを対象とする
+            valid_moderators_in_code = [m for m in moderators if m in data_summary.get("columns", [])]
+            if valid_moderators_in_code:
+                # モデレーター解析の追加（主解析とは別に実行）
+                moderator_analysis_code = """
+# モデレーター解析（主解析とは別途実行）
+if (exists("main_analysis_method") && main_analysis_method == "MH") {{
+    # MH法の場合は逆分散法でモデレーター解析（MH法はモデレーター未対応のため）
+    print("モデレーター解析: MH法では直接モデレーター分析ができないため、逆分散法で実行")
+    
+    # 無限大値をチェックして除外
+    valid_data_for_regression <- dat[is.finite(dat$yi) & is.finite(dat$vi) & dat$vi > 0, ]
+    
+    if (nrow(valid_data_for_regression) >= 2) {{
+        res_moderator <- rma(yi, vi, mods = ~ {mods_formula}, data=valid_data_for_regression, method="REML")
+        print(paste("モデレーター解析完了: 有効データ", nrow(valid_data_for_regression), "件で実行"))
+    }} else {{
+        print("モデレーター解析: 有効データが不足のため実行できません")
+        res_moderator <- NULL
+    }}
+}} else {{
+    # 逆分散法の場合はそのままモデレーター解析
+    valid_data_for_regression <- dat[is.finite(dat$yi) & is.finite(dat$vi) & dat$vi > 0, ]
+    
+    if (nrow(valid_data_for_regression) >= 2) {{
+        res_moderator <- rma(yi, vi, mods = ~ {mods_formula}, data=valid_data_for_regression, method="{method}")
+    }} else {{
+        print("モデレーター解析: 有効データが不足のため実行できません")
+        res_moderator <- NULL
+    }}
+}}
+""".format(
+                    mods_formula=" + ".join(valid_moderators_in_code),
+                    method=analysis_params.get("model", "REML")
+                )
+                script_parts.append(moderator_analysis_code)
 
         # サブグループ解析 (res_subgroup_test_{col} と res_by_subgroup_{col} に結果格納)
         subgroup_cols = analysis_params.get("subgroup_columns", [])
@@ -1039,7 +1429,7 @@ if ("{subgroup_col}" %in% names(dat)) {{
 
         # Egger's test (ファンネルプロットが要求されている場合)
         if output_paths.get("funnel_plot_path"):
-            script_parts.append("egger_test_res <- tryCatch(regtest(res_for_plot), error = function(e) { logger::log_warn(sprintf(\"Egger's test failed: %s\", e$message)); return(NULL) })")
+            script_parts.append("egger_test_res <- tryCatch(regtest(res_for_plot), error = function(e) { print(sprintf(\"Egger's test failed: %s\", e$message)); return(NULL) })")
 
 
         # プロット生成

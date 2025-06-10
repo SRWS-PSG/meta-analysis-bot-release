@@ -127,7 +127,10 @@ class GeminiClient:
             else:
                 json_str = raw_response_text.strip()
             
-            result = json.loads(json_str)
+            # 制御文字を除去してからJSONをパース
+            import re
+            cleaned_json_str = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', json_str)
+            result = json.loads(cleaned_json_str)
             logger.info(f"Successfully parsed JSON response: is_suitable={result.get('is_suitable')}")
             return result
         except Exception as e:
@@ -143,23 +146,72 @@ class GeminiClient:
             }
 
     async def generate_interpretation(self, result_summary: Dict[str, Any], job_id: str) -> Dict[str, Any]:
-        """解析結果の学術的解釈を生成"""
+        """解析結果の学術的解釈を生成（統計解析とGRADE準拠結果のみ）"""
         prompt = f"""
-        以下のメタ解析結果に基づいて、学術論文の「方法」セクション、「結果」セクションの主要部分、および「考察」のポイントを日本語で記述してください。
-        結果の要約も1-2文で含めてください。
+        あなたは医学研究と統計学の専門家です。以下のメタアナリシス結果に基づいて、学術論文の「Statistical Analysis」と「Results」セクションの統計解析部分のみを作成してください。
 
         解析ジョブID: {job_id}
         解析結果サマリー:
         {json.dumps(result_summary, ensure_ascii=False, indent=2)}
 
+        以下の指示に従って2つのセクションを執筆してください：
+
+        【重要な指示】
+        - 提供された統計結果のみに基づいて記述
+        - 研究選択や特性など、結果データに含まれない情報は記載しない
+        - "statistically significant"は使用せず、数値と信頼区間で客観的に記述
+        - 各セクションは英語記述後に日本語訳を併記
+        - 結果のセクション書くときには、点推定値、信頼区間といっしょに、Certainty of evidenceのプレースホルダーを書く
+        - **Analysis Environment:** 必ずR version and metafor package versionを記載してください。この情報は`result_summary`の`r_version`と`metafor_version`キーに含まれています。
+
+        【Statistical Analysis記述内容】
+        結果データから判断できる以下の項目のみ：
+        - 使用された効果指標（例：risk ratio, odds ratio, mean difference）
+        - 適用されたメタアナリシスモデル（fixed-effect or random-effects）
+        - 異質性評価に使用された指標（I², τ², Q統計量）
+        - 実行されたサブグループ解析（該当する場合のサブグループ変数）
+        - 実行されたメタ回帰分析（該当する場合の共変量）
+        - 実行された出版バイアス検定（該当する場合）
+        - 実行された感度分析（該当する場合）
+        - **Analysis Environment:** `result_summary`の`r_version`と`metafor_version`を必ず記載（例：All analyses were conducted using {result_summary.get('r_version', 'R version not available')} with the metafor package {result_summary.get('metafor_version', 'metafor version not available')}.）
+
+        【Results記述内容】
+        実際の数値結果のみ：
+        - **Overall analysis:** 統合効果推定値と95%信頼区間、p値
+        - **Heterogeneity:** I²値[95%CI]、τ²値、Q統計量（自由度、p値）
+        - **Subgroup analysis (if performed):** 
+        - 各サブグループの効果推定値と95%信頼区間
+        - サブグループごとの異質性指標（I², τ²）
+        - サブグループ間検定結果（QM統計量、自由度、p値）
+        - **Meta-regression (if performed):**
+        - 回帰係数、標準誤差、95%信頼区間、p値
+        - 説明された異質性割合（R²）
+        - 残差異質性（I²_res, τ²_res）
+        - **Publication bias (if assessed):** 検定統計量とp値
+        - 図についても言及（例：フォレストプロット、ファンネルプロット）
+        - 実行された感度分析
+        - **Analysis Environment:** 必ずR version（例：R version 4.4.0 (2024-04-24 ucrt)）とmetafor package version（例：metafor version 4.0-0）を記載してください。`result_summary`の`r_version`と`metafor_version`の実際の値を使用してください。Statistical Analysisセクションの最後に記載してください。
+        - [Note: Certainty of evidence assessment would be inserted here]
+
+        【記述スタイル】
+        - 数値は適切な精度で報告（小数点以下2-3桁）
+        - 効果の方向性を明示（どちらのグループの値が高い/低いか）
+        - 信頼区間とp値を併記
+        - 客観的・記述的表現を使用
+
         以下のJSON形式で、キーと値がダブルクォートで囲まれた厳密なJSONで回答してください:
         {{
-            "methods_section": "方法セクションの記述例（どのような解析が行われたか、主要な設定など）",
-            "results_section": "結果セクションの記述例（主要な統合効果量、信頼区間、異質性など）",
-            "discussion_points": ["考察のポイント1（結果の意義、先行研究との比較など）", "考察のポイント2"],
-            "limitations": ["本解析の限界や注意点1", "本解析の限界や注意点2"],
+            "methods_section": "Statistical Analysis セクションの記述（英語記述後に日本語訳を併記、必ずAnalysis Environment情報を含む）",
+            "results_section": "Results セクションの記述（英語記述後に日本語訳を併記、エビデンス確実性のプレースホルダー含む）",
             "summary": "解析結果全体の簡潔な要約（1-2文）"
         }}
+
+        【重要】Statistical Analysisセクションには必ずAnalysis Environment情報を含めてください：
+        - 英語例：All statistical analyses were performed using {result_summary.get('r_version', 'R version not available')} with the metafor package version {result_summary.get('metafor_version', 'metafor version not available')}.
+        - 日本語例：統計解析は{result_summary.get('r_version', 'R version not available')}、metaforパッケージversion {result_summary.get('metafor_version', 'metafor version not available')}を用いて実施しました。
+
+        結果データに基づいて判断できる統計手法と数値結果のみを記述してください。
+        国際的な医学雑誌の投稿基準（ICMJE）に準拠し、簡潔かつ正確に記述してください。
         """
         
         try:
@@ -172,13 +224,14 @@ class GeminiClient:
             else:
                 json_str = raw_response_text.strip()
 
-            return json.loads(json_str)
+            # 制御文字を除去してからJSONをパース
+            import re
+            cleaned_json_str = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', json_str)
+            return json.loads(cleaned_json_str)
         except Exception as e:
             return {
                 "methods_section": "解釈生成中にエラーが発生しました。",
                 "results_section": f"エラー詳細: {str(e)}",
-                "discussion_points": [],
-                "limitations": [],
                 "summary": "解釈レポートの生成に失敗しました。"
             }
     
@@ -217,8 +270,10 @@ class GeminiClient:
             else:
                 json_str = raw_response_text
             
-            # JSONとしてパース
-            result = json.loads(json_str)
+            # 制御文字を除去してからJSONをパース
+            import re
+            cleaned_json_str = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', json_str)
+            result = json.loads(cleaned_json_str)
             logger.info(f"Successfully extracted structured data: {result}")
             return result
             

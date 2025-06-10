@@ -90,10 +90,27 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
         r_executor = RAnalysisExecutor(r_output_dir=r_output_dir, csv_file_path=temp_csv_path, job_id=payload["job_id"])
         
         # data_summary を準備（CSVの基本情報）
+        csv_analysis = payload.get("csv_analysis", {})
+        
+        # CSVの列情報を取得（Geminiの分析結果から）
+        column_descriptions = csv_analysis.get("column_descriptions", {})
+        csv_columns = list(column_descriptions.keys()) if column_descriptions else []
+        
+        # data_previewからも列名を取得（フォールバック）
+        data_preview = csv_analysis.get("data_preview", [])
+        if not csv_columns and data_preview:
+            csv_columns = list(data_preview[0].keys()) if data_preview else []
+        
+        # デバッグログ追加
+        logger.info(f"Debug - CSV column extraction: column_descriptions keys: {list(column_descriptions.keys()) if column_descriptions else 'None'}")
+        logger.info(f"Debug - CSV column extraction: data_preview sample: {data_preview[0] if data_preview else 'None'}")
+        logger.info(f"Debug - CSV column extraction: final csv_columns: {csv_columns}")
+        
         data_summary = {
             "csv_file_path": str(temp_csv_path),
-            "csv_analysis": payload.get("csv_analysis", {}),
-            "detected_columns": payload.get("csv_analysis", {}).get("detected_columns", {}),
+            "csv_analysis": csv_analysis,
+            "detected_columns": csv_analysis.get("detected_columns", {}),
+            "columns": csv_columns,  # 列情報を追加
             "file_info": {
                 "filename": original_file_name,
                 "job_id": payload["job_id"]
@@ -122,6 +139,12 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
                     "path": analysis_result_from_r["rdata_path"],
                     "title": f"result_{payload['job_id']}.RData"
                 })
+            if analysis_result_from_r.get("r_script_path"):
+                 files_to_upload_for_slack.append({
+                    "type": "r_script",
+                    "path": analysis_result_from_r["r_script_path"],
+                    "title": f"run_meta_{payload['job_id']}.R"
+                })
 
 
         files_uploaded_info = await upload_files_to_slack( # 実際の関数呼び出し
@@ -136,10 +159,39 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
         r_summary_for_metadata = {}
         if analysis_result_from_r.get("success") and analysis_result_from_r.get("structured_summary_content"):
             try:
-                r_summary_for_metadata = json.loads(analysis_result_from_r["structured_summary_content"])
-                # 必要ならさらに絞り込む
-                if "overall_analysis" in r_summary_for_metadata:
-                    r_summary_for_metadata = r_summary_for_metadata["overall_analysis"] 
+                full_r_summary = json.loads(analysis_result_from_r["structured_summary_content"])
+                
+                # デバッグ: R出力のキーを確認
+                logger.info(f"Debug - R script output keys: {list(full_r_summary.keys()) if isinstance(full_r_summary, dict) else 'Not a dict'}")
+                logger.info(f"Debug - R version in output: {'r_version' in full_r_summary if isinstance(full_r_summary, dict) else 'N/A'}")
+                logger.info(f"Debug - metafor version in output: {'metafor_version' in full_r_summary if isinstance(full_r_summary, dict) else 'N/A'}")
+                
+                # バージョン情報を含む完全なサマリーを保持し、レポート生成で使用する
+                r_summary_for_metadata = full_r_summary.copy()
+                
+                # overall_analysisが存在する場合、そのフィールドをトップレベルに追加（後方互換性のため）
+                # ただし、バージョン情報は上書きしない
+                if "overall_analysis" in full_r_summary:
+                    # バージョン情報を保持（full_r_summaryから直接取得）
+                    version_info = {
+                        'r_version': full_r_summary.get('r_version'),
+                        'metafor_version': full_r_summary.get('metafor_version'),
+                        'analysis_environment': full_r_summary.get('analysis_environment')
+                    }
+                    
+                    logger.info(f"Debug - Preserving version info from full_r_summary: r_version={version_info['r_version']}, metafor_version={version_info['metafor_version']}")
+                    
+                    # overall_analysisの内容を追加
+                    r_summary_for_metadata.update(full_r_summary["overall_analysis"])
+                    
+                    # バージョン情報を確実に復元（Noneでも上書き）
+                    r_summary_for_metadata['r_version'] = version_info['r_version']
+                    r_summary_for_metadata['metafor_version'] = version_info['metafor_version']
+                    if version_info['analysis_environment'] is not None:
+                        r_summary_for_metadata['analysis_environment'] = version_info['analysis_environment']
+                    
+                    logger.info(f"Debug - After version restoration: r_version={r_summary_for_metadata.get('r_version')}, metafor_version={r_summary_for_metadata.get('metafor_version')}")
+                    
             except json.JSONDecodeError:
                 logger.error("RからのJSONサマリーのパースに失敗しました。")
                 r_summary_for_metadata = {"error": "Failed to parse R summary JSON"}
@@ -158,12 +210,12 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
             "original_file_url": payload.get("file_url") # これは run_analysis_async に渡されたもの
         })
         
+        # 最終的なresult_summaryをログ出力してデバッグ
+        logger.info(f"Debug - Final result_summary keys: {list(r_summary_for_metadata.keys()) if isinstance(r_summary_for_metadata, dict) else 'Not a dict'}")
+        logger.info(f"Debug - Final r_version: {r_summary_for_metadata.get('r_version') if isinstance(r_summary_for_metadata, dict) else 'N/A'}")
+        logger.info(f"Debug - Final metafor_version: {r_summary_for_metadata.get('metafor_version') if isinstance(r_summary_for_metadata, dict) else 'N/A'}")
+
         # create_analysis_result_blocks に渡すデータ構造をRの出力に合わせる
-        # RExecutorの戻り値の "summary" が create_analysis_result_blocks の期待する構造と異なる場合、ここで変換する
-        # ここでは、r_summary_for_metadata をそのまま使えるように create_analysis_result_blocks 側を調整するか、
-        # ここで期待される構造に整形する。
-        # 今回は r_summary_for_metadata をそのまま渡し、create_analysis_result_blocks で対応すると仮定。
-        # ただし、ログ表示のために analysis_result_from_r 全体も渡す。
         display_result_for_blocks = {
             "summary": r_summary_for_metadata,
             "r_log": analysis_result_from_r.get("stdout","") + "\n" + analysis_result_from_r.get("stderr","")
@@ -192,13 +244,21 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
             "r_stderr": analysis_result_from_r.get("stderr", "")
         }
         
-        asyncio.create_task(generate_report_async(
+        # レポート生成中メッセージを送信
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text="📝 解釈レポートを生成中です..."
+        )
+        
+        # 同期的にレポート生成を実行
+        await generate_report_async(
             payload=report_payload,
             channel_id=channel_id,
             thread_ts=thread_ts,
             client=client,
             logger=logger
-        ))
+        )
         
     except Exception as e:
         logger.error(f"解析実行エラー: {e}")

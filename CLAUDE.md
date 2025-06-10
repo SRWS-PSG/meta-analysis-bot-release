@@ -7,7 +7,12 @@ If you want to execute "sudo" commands, please ask user to execute.
 
 This is a Meta-Analysis Slack Bot that performs statistical meta-analyses on CSV files shared in Slack channels. It uses Google Gemini AI for natural language processing (Japanese) and generates academic-quality reports in English using R's metafor package. The app is deployed in heroku.
 
-## 満たすべき要件
+## お願い
+- テスト、デバッグのために使うコードは、すべて test/ の中に入れてレポジトリを汚さないこと。あと、test/ 内のreadmeに何をするファイルなのかの説明を入れること
+- secretは.envに入れる。ハードコードはしない。
+- herokuへのデプロイには5分かかる
+
+## ボットが満たすべき要件
 
 ### 起動条件
 - ボットが存在するSlackチャンネルでCSV/XLSXファイルを共有+メンションで起動
@@ -17,10 +22,11 @@ This is a Meta-Analysis Slack Bot that performs statistical meta-analyses on CSV
 
 ### 機能要件
 - ボットはCSV/XLSX/XLSファイルを分析し、適切な列が見つかった場合にメタ解析を実行
+- 列が適切であるか、ユーザーが何をしたいかはGemini APIを使いながらユーザーと対話してコンテキストをうめる
+- コンテキストが十分に溜まったら、その内容で良いか、ユーザーに承認をもらってからメタ解析を実行
 - すべてチャット内で完結させて、別のページへの遷移はしない
 - コード、実行結果の図、結果を保持したRDataは添付でSlackへ、地の文で簡単な解析結果
 - そのあとに解釈レポートを地の文で提供
-- ユーザーは自然な日本語で分析の意図を伝える
 - 結果はスレッド内に共有され、スレッド内で会話コンテキストが維持される
 - **パラメータ収集はGemini AIが対話的に行い、キーワードマッチングは使用しない**
 - **Geminiが会話の文脈を理解し、必要な情報が揃うまで適切な質問を続ける**
@@ -29,9 +35,15 @@ This is a Meta-Analysis Slack Bot that performs statistical meta-analyses on CSV
 - **ログ変換データの自動検出**
 - 十分なコンテキストがそろったら、それを元にRのコードを作り、実行
 - 戻り値の図、データを返す
-- **英語の学術論文形式（Methods・Results）のレポートを生成**
-- **日本語での要約と解釈も提供**
-- **解析環境情報（Rバージョン、metaforバージョン）の記録**
+- **英語の学術論文形式（Statistical Analysis・Results）のレポートを生成**
+- **レポートの日本版も提供（英語+日本語併記）**
+- **GRADE準拠のエビデンス確実性評価プレースホルダー**
+- **解析環境情報の詳細記録**：
+  - Rバージョン（R.version.string）
+  - metaforパッケージバージョン
+  - プラットフォーム情報
+  - 解析実行日時
+  - 使用パッケージ詳細情報
 
 ### 対応する解析タイプ
 - **二値アウトカム**: OR (オッズ比)、RR (リスク比)、RD (リスク差)、PETO
@@ -116,10 +128,28 @@ docker cp [CONTAINER_ID]:/app/filename.ext ./filename.ext
 
 ### Testing & Development
 ```bash
-# No automated tests exist - test manually by:
-# 1. Upload CSV file to Slack channel with bot mention
-# 2. Follow Japanese prompts to configure analysis
-# 3. Verify forest plot and report generation
+# 対話型テスト（推奨）
+cd tests/
+python3 test_slack_upload.py --bot-id YOUR_BOT_ID --example binary --message "オッズ比で解析してください"
+
+# ユーザー応答をシミュレート（ボットの質問に対して）
+python3 send_message.py --message "<@YOUR_BOT_ID> はい、ランダム効果モデルでお願いします" --thread "スレッドTS"
+
+# 対話状況の確認（30秒待機後にボット応答を確認）
+python3 debug_channel_messages.py
+
+# 待機時間を短縮する場合
+python3 debug_channel_messages.py --wait 10
+
+# チャンネル参加状況の確認
+python3 check_channels.py
+
+# Manual testing steps:
+# 1. test_slack_upload.py でCSVファイル+メンションを投稿
+# 2. ボットの応答を確認（CSV分析結果と最初の質問）
+# 3. send_message.py でユーザー応答をシミュレート
+# 4. 対話が完了するまで継続
+# 5. 最終的な解析結果とレポート生成を確認
 ```
 
 ## Natural Language Parameter Collection
@@ -306,6 +336,56 @@ heroku config
 
 ## Testing Guide
 
+### 対話型テストの実行手順
+
+#### 1. 初期セットアップ
+```bash
+cd tests/
+# 環境変数が設定されていることを確認
+python3 check_channels.py
+```
+
+#### 2. 基本的な対話テスト
+```bash
+# Step 1: CSVファイル+メンションを投稿（test-messengerボット使用）
+python3 test_slack_upload.py --bot-id U08TKJ1JQ77 --example binary --message "オッズ比で解析してください"
+
+# Step 2: ボットの応答確認（meta-analysis-botからの質問）
+python3 debug_channel_messages.py
+
+# Step 3: ユーザー応答をシミュレート（スレッド内でメンション必須）
+python3 send_message.py --message "<@U08TKJ1JQ77> はい、ランダム効果モデルでお願いします" --thread "THREAD_TS_FROM_STEP1"
+
+# Step 4: 対話継続（必要に応じて繰り返し）
+python3 send_message.py --message "<@U08TKJ1JQ77> 地域別のサブグループ解析もお願いします" --thread "THREAD_TS"
+
+# Step 5: 最終結果確認
+python3 debug_channel_messages.py
+```
+
+#### 3. 異なる解析タイプのテスト
+```bash
+# 連続アウトカムデータ
+python3 test_slack_upload.py --bot-id U08TKJ1JQ77 --example continuous --message "標準化平均差で解析してください"
+
+# 比率データ
+python3 test_slack_upload.py --bot-id U08TKJ1JQ77 --example proportion --message "比率データの解析をお願いします"
+
+# ハザード比データ
+python3 test_slack_upload.py --bot-id U08TKJ1JQ77 --example hazard_ratio --message "ハザード比で解析してください"
+```
+
+#### 4. 複雑な対話シナリオのテスト
+```bash
+# 曖昧な要求のテスト
+python3 test_slack_upload.py --bot-id U08TKJ1JQ77 --example binary --message "普通に解析して"
+# → ボットが適切な質問を生成するかテスト
+
+# 段階的な要求変更のテスト
+python3 send_message.py --message "<@U08TKJ1JQ77> やっぱり固定効果モデルで" --thread "THREAD_TS"
+# → 途中での変更要求に対応するかテスト
+```
+
 ### 起動条件のテスト
 
 1. **メンション＋CSVファイル添付**
@@ -336,6 +416,39 @@ heroku config
    [CSVファイルを添付]
    → ❌ ボットは起動しない（仕様通り）
    ```
+
+### 対話テストの確認ポイント
+
+#### ✅ 正常動作の確認項目
+1. **初回応答**: CSV分析結果が3秒以内に投稿される
+2. **質問生成**: データに適した質問が日本語で投稿される  
+3. **文脈理解**: ユーザーの曖昧な回答を適切に解釈する
+4. **対話継続**: 必要な情報が揃うまで質問を続ける
+5. **パラメータ確認**: 収集した情報を最終確認する
+6. **解析実行**: 承認後に解析が非同期で開始される
+7. **結果投稿**: 図、コード、レポートが添付される
+
+#### 🔍 デバッグが必要な症状
+1. **ボット無応答**: test-messengerの投稿に全く反応しない
+2. **スレッド対話失敗**: スレッド内メンションに応答しない
+3. **対話ループ**: 同じ質問を繰り返す
+4. **パラメータ未抽出**: ユーザー応答を理解できない
+5. **解析未開始**: パラメータ収集後に解析が始まらない
+
+#### 🛠️ デバッグ手順
+```bash
+# 1. Herokuログでエラー確認
+heroku logs --tail --app=meta-analysis-bot | grep -E "(ERROR|Exception|Failed)"
+
+# 2. 会話状態の確認
+heroku logs --app=meta-analysis-bot | grep -E "(conversation.*state|DialogState)" | tail -10
+
+# 3. 非同期ジョブの状況確認
+heroku logs --app=meta-analysis-bot | grep -E "(Job ID|parameter.*collection)" | tail -10
+
+# 4. Gemini API呼び出しの確認
+heroku logs --app=meta-analysis-bot | grep -E "(Gemini|Function.*call)" | tail -10
+```
 
 ### トラブルシューティング
 
@@ -563,6 +676,66 @@ def handle_direct_message(body, event, client, logger, ack):
 has_thread_ts = "thread_ts" in event
 if channel_type == "im" or is_thread_message or has_thread_ts:
 ```
+
+### デバッグに関して
+別にSLACK_UPLOAD_BOT_TOKEN,SLACK_UPLOAD_CHANNEL_IDで指定されたボットを作っているので、それをSlack API経由で投稿して、実際のmeta-analysis-botがうまく動いているかを検証できるようにする
+
+### テストファイルの詳細
+全てのテスト・デバッグファイルは`tests/`ディレクトリに整理されており、詳細な説明は`tests/README.md`を参照。
+
+#### 主要テストツール
+- **test_slack_upload.py**: CSVファイル+メンション投稿（test-messengerボット使用）
+- **send_message.py**: ユーザー応答シミュレート（スレッド内メンション対応）  
+- **debug_channel_messages.py**: チャンネル履歴確認とボット応答状況の診断
+- **check_channels.py**: ボットのチャンネル参加状況と権限確認
+
+#### 環境変数要件
+```bash
+# .envファイルに以下を設定
+SLACK_BOT_TOKEN=xoxb-meta-analysis-bot-token
+SLACK_UPLOAD_BOT_TOKEN=xoxb-test-messenger-token  
+SLACK_UPLOAD_CHANNEL_ID=C066EQ49QVD
+GEMINI_API_KEY=your-gemini-key
+```
+
+
+#### 7. ゼロセル情報がSlackに表示されない問題（2025-06-09）
+**問題**: Rスクリプトでゼロセル検出とMantel-Haenszel法が正常実行されているのに、Slack結果メッセージにゼロセル情報が表示されない
+
+**原因**: 
+1. JSONサマリーの構造と期待される構造の不一致
+2. `utils/slack_utils.py`の`create_analysis_result_message`関数でゼロセル情報を抽出・表示していなかった
+
+**デバッグ手順**:
+```bash
+# 1. R実行ログでゼロセル処理を確認
+heroku logs --app=meta-analysis-bot | grep -A10 "ゼロセル\|Zero cell\|Mantel"
+
+# 2. JSONサマリー構造を確認
+heroku logs --app=meta-analysis-bot | grep -A20 "summary.*json"
+
+# 3. Slack表示関数にデバッグログ追加
+logger.info(f"DEBUG: Full summary keys: {list(summary.keys())}")
+logger.info(f"DEBUG: zero_cells_summary: {zero_cells_summary}")
+```
+
+**修正**: `utils/slack_utils.py`にゼロセル情報表示セクション追加
+```python
+# ゼロセル解析結果を追加
+zero_cell_text = ""
+zero_cells_summary = summary.get('zero_cells_summary')
+if zero_cells_summary:
+    studies_with_zero = zero_cells_summary.get('studies_with_zero_cells', 0)
+    if studies_with_zero > 0:
+        # ゼロセル情報を表示するテキスト生成
+```
+
+**学習ポイント**:
+- R→JSON→Python→Slackの全データフローを確認することが重要
+- 機能が「動いている」ことと「表示されている」ことは別問題
+- デバッグログを戦略的に配置（JSONパース前後、表示関数内）
+
+**詳細なデバッグ手順**: `docs/DEBUGGING_GUIDE.md`を参照
 
 ### アンチパターン集
 

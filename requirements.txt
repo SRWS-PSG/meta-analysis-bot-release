@@ -1,5 +1,6 @@
 # Slack関連
 slack-bolt==1.23.0
+slack-sdk
 
 # AI/ML
 google-generativeai==0.8.3

@@ -78,6 +78,14 @@ library(jsonlite)
 # 二値アウトカムの効果量計算 (例: オッズ比)
 dat <- escalc(measure="{measure}", ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat{slab_param_string})
 """,
+            "or_ci_conversion": """
+# OR/RRと信頼区間からlnOR/lnRRとSEへの変換
+dat$yi <- log(dat${or_col})
+dat$vi <- ((log(dat${ci_upper_col}) - log(dat${ci_lower_col})) / (2 * 1.96))^2
+# 変換後の確認
+print("OR/RR to log scale conversion completed:")
+print(head(dat[, c("{or_col}", "{ci_lower_col}", "{ci_upper_col}", "yi", "vi")]))
+""",
             "escalc_continuous": """
 # 連続アウトカムの効果量計算 (例: 標準化平均差)
 dat <- escalc(measure="{measure}", n1i={n1i}, n2i={n2i}, m1i={m1i}, m2i={m2i}, sd1i={sd1i}, sd2i={sd2i}, data=dat{slab_param_string})
@@ -557,12 +565,30 @@ if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) &
     def _generate_escalc_code(self, analysis_params: Dict[str, Any], data_summary: Dict[str, Any]) -> str:
         measure = analysis_params.get("measure", "RR") 
         data_cols = analysis_params.get("data_columns", {})
+        data_format = analysis_params.get("data_format", "")
+        detected_columns = analysis_params.get("detected_columns", {})
         
         slab_param_string = ""
         if data_cols.get("study_label_author") and data_cols.get("study_label_year"):
             slab_param_string = ", slab=slab"
         elif data_cols.get("study_label"):
             slab_param_string = ", slab=slab"
+
+        # OR/RR + CI形式の場合の処理
+        if data_format in ["or_ci", "rr_ci"] and detected_columns:
+            or_col = detected_columns.get("or") or detected_columns.get("rr")
+            ci_lower_col = detected_columns.get("ci_lower") or detected_columns.get("ci_low") or detected_columns.get("lower_ci")
+            ci_upper_col = detected_columns.get("ci_upper") or detected_columns.get("ci_high") or detected_columns.get("upper_ci")
+            
+            if or_col and ci_lower_col and ci_upper_col:
+                return self._safe_format(
+                    self.templates["or_ci_conversion"],
+                    or_col=or_col,
+                    ci_lower_col=ci_lower_col,
+                    ci_upper_col=ci_upper_col
+                )
+            else:
+                logger.warning(f"OR/CI形式が検出されましたが、必要な列が見つかりません: or={or_col}, ci_lower={ci_lower_col}, ci_upper={ci_upper_col}")
 
         if measure in ["OR", "RR", "RD", "PETO"]: 
             ai_col = data_cols.get("ai")

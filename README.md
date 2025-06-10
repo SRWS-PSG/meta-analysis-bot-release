@@ -1,18 +1,35 @@
 # メタ解析Slack Bot
 
-Slackで共有されたCSVファイルからメタ解析を実行し、結果を返すボットです。
-pairwise meta-analysis、サブグループ解析、メタ回帰分析に対応しています。
+Slackで共有されたCSVファイルからメタ解析を実行し、学術論文形式のレポートを返すボットです。
+Google Gemini AIによる自然言語対話で解析パラメータを収集し、R（metafor）を使用してpairwise meta-analysis、サブグループ解析、メタ回帰分析を実行します。
+現状はpairwise meta-analysisのみに対応しています。
 
 ## 概要
 
-このボットはSlackでアップロードされたCSVファイルを監視し、`mcp/meta_analysis.py`内の`analyze_csv`関数を用いてpandasとGemini APIによる初期分析（CSV構造分析、メタ解析への適合性評価、列の役割マッピング）を行います。その後、ユーザーとの対話を通じて収集されたパラメータに基づき、同モジュール内の`run_meta_analysis`関数が`RTemplateGenerator`を用いてRスクリプトを動的に生成し、Rのmetaforパッケージを使用してメタ解析を実行します。最終的に、プロット、Rコード、およびGemini APIによって生成された学術論文形式のテキストレポートをSlackチャンネルに返します。
+このボットはSlackでアップロードされたCSVファイルを監視し、Gemini APIによる自然言語理解でCSV構造分析、メタ解析への適合性評価、列の役割マッピングを行います。ユーザーとの自然な日本語対話を通じてパラメータを収集し、`templates/r_templates.py`の`RTemplateGenerator`を用いてRスクリプトを動的に生成、Rのmetaforパッケージでメタ解析を実行します。最終的に、プロット（フォレスト・ファンネル・バブル）、Rコード、RDataファイル、およびGemini APIによるテキストレポート（Statistical Analysis・Resultsセクション）をSlackに返します。
 
 ## 使用方法
 
-1. ボットが存在するSlackチャンネルでCSVファイルを共有
-2. ボットはCSVを分析し、適切な列が見つかった場合にメタ解析を実行
-3. ユーザーは自然な日本語で分析の意図を伝える
-4. 結果はスレッド内に共有され、スレッド内で会話コンテキストが維持される（Heroku dyno再起動まで）
+### 起動条件
+- **メンション＋CSVファイル添付**: ボットが存在するSlackチャンネルでCSVファイルを共有し、@ボットでメンション
+- **メンション＋CSVデータ（コードブロック）**: メンション付きメッセージ内にCSVデータをコードブロックで投稿
+- **メンションのみ**: CSVファイル共有を依頼するメッセージが表示される
+
+### 解析フロー
+1. **CSV自動分析**: ボットがアップロードされたCSVを分析し、データ構造と効果量候補を検出
+2. **自然言語パラメータ収集**: Gemini AIが日本語で対話しながら解析パラメータを収集（効果量、モデル、サブグループなど）
+3. **メタ解析実行**: Rのmetaforパッケージを使用して非同期でメタ解析を実行
+4. **結果返却**: フォレストプロット、Rコード、RDataファイル、学術論文形式のレポートをスレッド内に投稿
+
+### 対話例
+```
+ユーザー: @bot [CSVファイル添付] オッズ比で解析してください
+ボット: CSVファイルを分析しました！データセット概要：...
+       解析パラメータを自然な日本語で教えてください
+ユーザー: @bot ランダム効果モデルで、地域別のサブグループ解析もお願いします
+ボット: 承知しました！解析を開始します...
+       [解析完了後] フォレストプロット、Rコード、学術レポートを添付
+```
 
 ## 動作モード
 
@@ -32,108 +49,131 @@ pairwise meta-analysis、サブグループ解析、メタ回帰分析に対応�
 
 動作モードは環境変数`SOCKET_MODE`で制御できます（`true`: Socket Mode (ローカル開発時), `false`または未設定: HTTP Mode (Herokuデプロイ時)）。
 
+## プロジェクト構成
+
+```
+.
+├── main.py                 # エントリーポイント
+├── requirements.txt        # Python依存関係
+├── init.R                  # R初期化スクリプト
+├── Dockerfile             # Docker設定（ローカル開発用）
+├── Procfile               # Heroku設定
+├── README.md              # プロジェクト概要（本ファイル）
+├── CLAUDE.md              # Claude AI開発ガイドライン
+├── LICENSE                # ライセンス情報
+│
+├── core/                  # コア機能
+│   ├── gemini_client.py   # Gemini API統合
+│   ├── metadata_manager.py # メタデータ管理
+│   └── r_executor.py      # R実行エンジン
+│
+├── handlers/              # Slackイベントハンドラー
+│   ├── analysis_handler.py
+│   ├── csv_handler.py
+│   ├── mention_handler.py
+│   ├── parameter_handler.py
+│   └── report_handler.py
+│
+├── mcp_legacy/            # レガシー実装（移行中）
+│   ├── slack_bot.py       # メインボットロジック
+│   ├── gemini_utils.py    # Gemini統合ユーティリティ
+│   └── ...
+│
+├── utils/                 # ユーティリティ
+│   ├── conversation_state.py
+│   ├── gemini_dialogue.py
+│   └── slack_utils.py
+│
+├── templates/             # Rテンプレート
+│   └── r_templates.py
+│
+├── docs/                  # 追加ドキュメント
+│   ├── DEBUG_SLACK_BOT.md
+│   ├── REDIS_SETUP.md
+│   └── TEST_PLAN.md
+│
+├── scripts/               # ユーティリティスクリプト
+│   ├── add_redis.sh
+│   ├── add_redis_direct.sh
+│   └── install_heroku_wsl.sh
+│
+├── tests/                 # テストスイート
+│   ├── test_slack_upload.py
+│   ├── test_gemini.py
+│   └── ...
+│
+└── examples/              # サンプルCSVファイル
+    ├── example_binary_meta_dataset.csv
+    └── ...
+```
+
 ## 機能
 
-- ✅ Slackで共有されたCSVファイルの受信と初期分析
-- ✅ pandasとGemini APIによるCSV構造分析、メタ解析への適合性評価、列の役割マッピング
-- ✅ ユーザーとの対話を通じた分析パラメータの収集
-- ✅ Rのmetaforパッケージを使用したメタ解析の実行（ペアワイズ、サブグループ、メタ回帰対応）
-- ✅ フォレストプロット、ファンネルプロット、バブルプロットの生成
-- ✅ Rコード、およびGemini APIによる学術論文形式のテキストレポートの生成と返信
-- ✅ スレッド内での会話コンテキスト維持（メモリベース）
-- ✅ 非同期処理によるSlack APIの3秒タイムアウトルールへの対応
-- ✅ Gemini APIを活用した高度な自然言語理解と処理
-    - Function Callingによるパラメータ抽出
-    - CSVの適合性分析と自動列マッピング
-    - Rスクリプトエラーのデバッグ支援
-    - 分析結果からの学術的な記述生成
-- ✅ 強化された対話フロー（パラメータ抽出、不足時の質問生成、多層フォールバック戦略）
-- ✅ テンプレートベースでの一貫した分析設定とRスクリプト生成
-- ✅ データ互換性の自動検証
-- ✅ エラー処理とGemini支援による再試行メカニズム
-- ✅ 感度分析機能
-- ✅ 効果量の自動検出（OR, RR, HR, SMD, MD等）
-- ✅ 英語論文形式のMethods・Resultsセクション生成
+### コア機能
+- ✅ **CSV自動分析**: Gemini AIによるデータ構造分析、適合性評価、列の自動マッピング
+- ✅ **自然言語対話**: 日本語でのパラメータ収集、文脈理解、適切な質問生成
+- ✅ **多様な効果量対応**: OR, RR, RD, HR, SMD, MD, PLO, IR, COR, 事前計算済み効果量
+- ✅ **OR/CI自動変換**: オッズ比・リスク比と信頼区間から対数スケールへの自動変換（新機能）
+- ✅ **ゼロセル対応**: Mantel-Haenszel法による補正なし解析、自動感度解析（新機能）
+- ✅ **高度な解析機能**: サブグループ解析、メタ回帰、感度分析
+- ✅ **学術レポート生成**: 英語論文形式（Statistical Analysis・Resultsセクション）+ 日本語併記
+
+### 技術機能
+- ✅ **非同期処理**: Slack 3秒タイムアウト対応、バックグラウンド解析実行
+- ✅ **エラー処理**: Gemini AIによるRスクリプト自動デバッグ（最大3回リトライ）
+- ✅ **プロット生成**: 動的サイズ調整、Events/Total表示、合計行付きフォレストプロット
+- ✅ **ファイル出力**: Rスクリプト、フォレスト/ファンネル/バブルプロット、RDataファイル
+- ✅ **スレッド対話**: 会話コンテキスト維持、メンション必須、状態管理
+
+### 対応データ形式
+- **二値アウトカム**: イベント数/総数（OR, RR, RD, PETO）
+- **OR/RRと信頼区間**: 自動的にlnOR/lnRRとSEに変換（新機能）
+- **連続アウトカム**: 平均値/標準偏差/サンプルサイズ（SMD, MD, ROM）
+- **ハザード比**: ログ変換済みデータの自動検出
+- **単一群比率**: イベント数/総数（PLO, PR, PAS, PFT, PRAW）
+- **発生率**: イベント数/観察時間（IR, IRLN, IRS, IRFT）
+- **相関**: 相関係数/サンプルサイズ（COR）
+- **事前計算済み**: 効果量yi/分散vi
 
 ## アーキテクチャ
 
 システムは以下の主要コンポーネントで構成されています：
 
-1. **メインアプリケーション (main.py)**
-   - アプリケーションのエントリーポイント
-   - Socket Mode/HTTP Modeの選択
-   - Gunicorn用のWSGI アプリケーション定義
+### 1. エントリーポイント
+- **main.py**: Socket Mode/HTTP Modeの選択、Slack Boltアプリケーション起動
 
-2. **Slack Bot (mcp/slack_bot.py)**
-   - `MetaAnalysisBot`クラスのメインコンテナ
-   - 各モジュールのインスタンス化とイベントハンドラーへの登録
-   - アプリケーションの起動
+### 2. コアモジュール (core/)
+- **gemini_client.py**: Gemini API統合クライアント、CSV分析・パラメータ抽出・レポート生成
+- **metadata_manager.py**: Slackメッセージメタデータの管理とペイロード処理
+- **r_executor.py**: R実行エンジン、metaforによるメタ解析実行、エラーハンドリング
 
-3. **メッセージハンドラー (mcp/message_handlers.py)**
-   - Slackの各種イベント（`app_mention`, `message`, `file_shared`）の処理
-   - イベント内容に応じて適切な処理モジュールにディスパッチ
-   - 一般的な質問への応答処理
+### 3. イベントハンドラー (handlers/)
+- **mention_handler.py**: @ボットメンション処理、CSV検出、状態振り分け
+- **csv_handler.py**: CSVファイル分析、Gemini APIによる適合性評価
+- **parameter_handler.py**: 自然言語パラメータ収集、Gemini対話管理
+- **analysis_handler.py**: メタ解析実行、結果ファイルアップロード
+- **report_handler.py**: 学術レポート生成、Gemini解釈処理
 
-4. **ダイアログ状態管理 (mcp/dialog_state_manager.py)**
-   - ユーザーとの対話状態（ファイル待機中、パラメータ収集中など）を管理
-   - 状態遷移ロジックを提供
+### 4. テンプレート管理 (templates/)
+- **r_templates.py**: RTemplateGenerator、動的Rスクリプト生成、プロット管理
 
-5. **CSVプロセッサー (mcp/csv_processor.py)**
-   - アップロードされたCSVファイルのダウンロードと非同期での初期分析
-   - 分析結果（適合性、列情報、Geminiによる初期解釈など）をスレッドコンテキストに保存
-   - 分析結果に応じた対話状態の遷移
+### 5. ユーティリティ (utils/)
+- **conversation_state.py**: 会話状態管理、Redis/メモリストレージ、対話フロー制御
+- **slack_utils.py**: Slackメッセージ生成、ファイルアップロード、UI作成
+- **file_utils.py**: ファイル管理、一時ディレクトリ操作、ダウンロード処理
+- **parameter_extraction.py**: パラメータ抽出ロジック
+- **gemini_dialogue.py**: Gemini対話管理（レガシー）
 
-6. **パラメータコレクター (mcp/parameter_collector.py)**
-   - ユーザーのテキスト入力からメタアナリシスに必要なパラメータをGemini Function Callingで収集
-   - 不足パラメータに関する質問を生成し、対話的に収集
-   - 自動列マッピングとパラメータ検証
-
-7. **分析エクゼキューター (mcp/analysis_executor.py)**
-   - 収集されたパラメータに基づいてメタアナリシスジョブを非同期で実行
-   - 分析ジョブの進捗と完了状態を監視
-   - 分析結果（Rスクリプト、プロット、RDataファイルなど）のアップロード
-   - レポート生成処理の呼び出し
-
-8. **レポートハンドラー (mcp/report_handler.py)**
-   - 分析結果とGemini APIを使用して学術論文形式のレポート（Methods, Resultsセクション）を生成
-   - 感度分析結果の表示
-   - 生成されたレポートをSlackに投稿
-
-9. **メタ解析エンジン (mcp/meta_analysis.py)**
-   - CSVファイルのダウンロード
-   - pandasとGemini APIを用いたCSV内容の分析と列の役割マッピング
-   - Rスクリプトの動的生成（`RTemplateGenerator`利用）
-   - R (metafor) を使用したメタ解析の実行
-   - 結果ファイル（プロット、RData、構造化JSON）の生成
-   - エラー時のGeminiデバッグ
-   - Slackへのファイルアップロードユーティリティ
-
-10. **Rテンプレートジェネレーター (mcp/r_template_generator.py)**
-    - 分析パラメータに応じたRスクリプトの動的生成
-    - テンプレートベースの一貫したRコード生成
-    - プロット生成とJSONサマリー出力の管理
-
-11. **スレッドコンテキスト管理 (mcp/thread_context.py)**
-    - スレッドごとの会話履歴、データ状態、分析状態の管理
-    - Heroku環境ではメモリベースストレージを使用（dyno再起動で揮発）
-    - 結果はSlackに投稿されるため、永続的なストレージは不要
-
-12. **非同期処理 (mcp/async_processing.py)**
-    - 時間のかかるタスクのバックグラウンド実行
-    - Slack APIの3秒タイムアウトルールへの対応
-
-13. **AIユーティリティ (mcp/gemini_utils.py)**
-    - Function Callingによるパラメータ抽出
-    - CSV適合性分析と列マッピング
-    - Rスクリプトエラーのデバッグ
-    - 学術的な記述生成
-
-14. **エラー処理 (mcp/error_handling.py)**
-    - アプリケーション全体のエラーハンドリング
-    - Rスクリプト実行エラーのデバッグ支援
-
-15. **プロンプト管理 (mcp/prompt_manager.py)**
-    - 分析テンプレートの管理とカスタマイズ
+### 6. データフロー
+```
+CSV添付+メンション → mention_handler → csv_handler → Gemini分析
+                                      ↓
+parameter_handler ← Gemini対話 ← ユーザー応答検出
+         ↓
+analysis_handler → R実行 → プロット生成 → ファイルアップロード
+         ↓
+report_handler → Gemini解釈 → 学術レポート → Slack投稿
+```
 
 ## 要件
 
@@ -144,27 +184,52 @@ pairwise meta-analysis、サブグループ解析、メタ回帰分析に対応�
 
 ## セットアップ
 
-このアプリケーションはDockerコンテナとしての実行を前提としています。
-
 ### 1. 前提条件
 
-- Docker Desktopがインストールされていること
-- Gitがインストールされていること
-- Heroku CLIがインストールされていること
-- VS Code（推奨、拡張機能：Heroku Extension, GitHub Actions, PowerShell）
+- **Python 3.12+** がインストールされていること
+- **R (4.0+)** とmetaforパッケージがインストールされていること  
+- **Git** がインストールされていること
+- **Heroku CLI** がインストールされていること（デプロイ時）
 
-### 2. 環境変数の準備 (ローカル開発用)
+### 2. ローカル環境セットアップ
 
-ローカル開発用に、プロジェクトルートに`.env`ファイルを作成し、必要な環境変数を設定します。`.env.example`をコピーして編集してください。
-
+#### a. リポジトリのクローン
 ```bash
-cp .env.example .env
-# .envファイルに必要な情報を記述
+git clone https://github.com/your-username/meta-analysis-bot-release.git
+cd meta-analysis-bot-release
 ```
 
-Herokuデプロイ時は、これらの変数をHerokuのConfig Varsに設定します。
+#### b. Python依存関係のインストール
+```bash
+pip install -r requirements.txt
+```
 
-### 2.1. Slack Botの設定
+#### c. R環境のセットアップ
+Rとmetaforパッケージが必要です：
+```r
+# Rコンソールで実行
+install.packages("metafor")
+install.packages("jsonlite")
+```
+
+#### d. 環境変数の設定
+プロジェクトルートに`.env`ファイルを作成し、必要な環境変数を設定します：
+
+```bash
+# .envファイル例
+SLACK_BOT_TOKEN=xoxb-your-bot-token
+SLACK_SIGNING_SECRET=your-signing-secret
+GEMINI_API_KEY=your-gemini-api-key
+SOCKET_MODE=true  # ローカル開発時
+SLACK_APP_TOKEN=xapp-your-app-token  # Socket Mode使用時
+
+# テスト用環境変数（テスト実行時に必要）
+SLACK_UPLOAD_BOT_TOKEN=xoxb-test-messenger-token
+SLACK_UPLOAD_CHANNEL_ID=C123456789  # テスト用チャンネルID
+META_ANALYSIS_BOT_ID=U123456789     # メタ解析ボットのユーザーID
+```
+
+### 3. Slack Botの設定
 
 Slack Botをセットアップするには、以下の手順に従ってください。
 
@@ -209,44 +274,25 @@ Slack Botをセットアップするには、以下の手順に従ってくだ�
    - 「Request URL」に、HerokuアプリケーションのイベントエンドポイントURLを設定します。これは通常、 `https://<YOUR_HEROKU_APP_NAME>.herokuapp.com/slack/events` という形式になります
    - 「Subscribe to bot events」セクションで、ボットが購読するイベント（例: `app_mention`, `message.channels`, `file_shared`など）を追加します
 
-### 3. ローカル環境での実行 (Docker使用)
+### 4. ローカル環境での実行
 
-#### a. Dockerイメージのビルド
-
-```bash
-docker build -t meta-analysis-bot .
-```
-
-#### b. Dockerコンテナの実行
-
-**通常の実行 (ローカル開発用):**
+環境変数を設定した後、以下のコマンドでボットを起動できます：
 
 ```bash
-docker run --env-file .env meta-analysis-bot
+# 直接実行
+python main.py
+
+# または環境変数を指定して実行
+SOCKET_MODE=true python main.py
 ```
 
-**デバッグモード (ローカルのコード変更を即時反映):**
+Socket Modeを使用する場合、ボットは自動的にSlackに接続し、メンションやファイル共有イベントを監視します。
 
-開発中にローカルのコード変更をコンテナに即座に反映させたい場合は、ボリュームマウントを使用します。
-
-- **Windows PowerShell:**
-  ```powershell
-  docker run -it --env-file .env -v "${PWD}:/app" meta-analysis-bot
-  ```
-- **Windows コマンドプロンプト:**
-  ```cmd
-  docker run -it --env-file .env -v "%cd%:/app" meta-analysis-bot
-  ```
-- **Linux/Mac:**
-  ```bash
-  docker run -it --env-file .env -v $(pwd):/app meta-analysis-bot
-  ```
-
-### 4. Herokuへのデプロイ
+### 5. Herokuへのデプロイ
 
 このアプリケーションはHerokuのEco Dynosプランでの運用を想定しています。
 
-#### 4.1. Heroku側の準備
+#### 5.1. Heroku側の準備
 
 1. **Eco Dynosプランへの加入**:
    - Herokuダッシュボードの Account → Billing → Eco Dynos から加入します (月$5で1000 dyno-hours)
@@ -266,7 +312,7 @@ docker run --env-file .env meta-analysis-bot
      - `STORAGE_BACKEND=memory`
      - その他必要なAPIキーなど
 
-#### 4.2. GitHub側の準備
+#### 5.2. GitHub側の準備
 
 1. **Secretsの登録**:
    - リポジトリの Settings → Secrets and variables → Actions で、以下のリポジトリシークレットを登録します
@@ -276,11 +322,11 @@ docker run --env-file .env meta-analysis-bot
 2. **Secret Scanning & Push Protectionの有効化**:
    - リポジトリの Settings → Code security and analysis で有効化します
 
-#### 4.3. デプロイの実行
+#### 5.3. デプロイの実行
 
 変更をGitHubにプッシュし、`main`ブランチにマージすると、GitHub Actionsが起動し、Herokuへのデプロイが実行されます。
 
-### 5. Herokuでの運用 (低アクセス想定)
+### 6. Herokuでの運用 (低アクセス想定)
 
 - **スリープ仕様**: Eco dynoは30分間通信がないと自動的にスリープします。再度アクセスがあると約5～10秒で再起動します
 - **Dyno Hoursの確認**: `heroku ps -a YOUR_HEROKU_APP_NAME`でdynoの状態や使用時間を確認できます
@@ -300,10 +346,83 @@ docker run --env-file .env meta-analysis-bot
 - `SOCKET_MODE`: Socket Modeの有効化 (true/false、デフォルト: false)
 - `SLACK_APP_TOKEN`: Socket Mode使用時のアプリレベルトークン
 - `STORAGE_BACKEND`: ストレージバックエンド (memory、デフォルト: memory)
-- `GEMINI_MODEL_NAME`: 使用するGeminiモデル (デフォルト: gemini-2.5-flash-preview-05-20)
+- `GEMINI_MODEL_NAME`: 使用するGeminiモデル (デフォルト: gemini-1.5-flash)
 - `MAX_HISTORY_LENGTH`: 会話履歴の最大保持件数 (デフォルト: 20)
 - `R_EXECUTABLE_PATH`: Rscriptの実行パス (Dockerコンテナ内では通常不要)
 - `PORT`: HTTPモード時のポート番号 (Herokuが自動設定)
+
+## テスト・デバッグ
+
+### 対話テスト方法
+
+`tests/`ディレクトリには包括的なテストツールが用意されています。
+
+**注意**: テストコマンドの`YOUR_BOT_ID`は、実際のボットのSlack User IDに置き換えてください。Slack APIの`auth.test`やボットのプロフィールから確認できます。
+
+#### 1. 基本的な対話テスト
+```bash
+cd tests/
+# Step 1: CSVファイル+メンションを投稿（test-messengerボット使用）
+python3 test_slack_upload.py --bot-id YOUR_BOT_ID --example binary --message "オッズ比で解析してください"
+
+# Step 2: ボットの応答確認
+python3 debug_channel_messages.py
+
+# Step 3: ユーザー応答をシミュレート（スレッド内でメンション必須）
+python3 send_message.py --message "<@YOUR_BOT_ID> はい、ランダム効果モデルでお願いします" --thread "THREAD_TS"
+
+# Step 4: 最終結果確認
+python3 debug_channel_messages.py
+```
+
+#### 2. 異なる解析タイプのテスト
+```bash
+# 連続アウトカムデータ
+python3 test_slack_upload.py --bot-id YOUR_BOT_ID --example continuous --message "標準化平均差で解析してください"
+
+# 比率データ
+python3 test_slack_upload.py --bot-id YOUR_BOT_ID --example proportion --message "比率データの解析をお願いします"
+
+# ハザード比データ
+python3 test_slack_upload.py --bot-id YOUR_BOT_ID --example hazard_ratio --message "ハザード比で解析してください"
+
+# ゼロセルデータ（Mantel-Haenszel法のテスト）
+python3 test_slack_upload.py --bot-id YOUR_BOT_ID --example zero_cells --message "ゼロセルがあるデータでMantel-Haenszel法をお願いします"
+```
+
+#### 3. バージョン情報テスト
+```bash
+# R version、metafor versionの表示確認
+python3 test_version_info_debug.py
+```
+
+### デバッグ手順
+
+#### Herokuログ確認
+```bash
+# リアルタイムログ
+heroku logs --tail --app=meta-analysis-bot
+
+# エラーログのみ
+heroku logs --app=meta-analysis-bot | grep -E "(ERROR|Exception|Failed)"
+
+# 特定時間のログ
+heroku logs --since "2024-01-01T00:00:00Z" --until "2024-01-01T01:00:00Z" --app=meta-analysis-bot
+```
+
+#### 起動条件の確認
+- ✅ **メンション＋CSVファイル添付**: ボット起動、CSV分析開始
+- ✅ **メンション＋CSVコードブロック**: ボット起動、CSV分析開始  
+- ✅ **メンションのみ**: ボット起動、CSV共有依頼
+- ❌ **CSV共有のみ（メンションなし）**: ボット起動しない（仕様通り）
+
+詳細な使用方法は`tests/README.md`を参照してください。
+
+## 謝辞
+
+本プロジェクトは、JSPS科研費 25K13585「大規模言語モデルが加速するエビデンスの統合」の助成を受けて開発されました。
+- 研究課題番号: 25K13585
+- 研究課題詳細: https://kaken.nii.ac.jp/ja/grant/KAKENHI-PROJECT-25K13585/
 
 ## License
 

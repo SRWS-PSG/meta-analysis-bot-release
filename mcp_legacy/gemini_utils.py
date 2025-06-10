@@ -80,12 +80,13 @@ def interpret_meta_analysis_results(results_summary, model_name=clean_env_var("G
         {json.dumps(results_summary, ensure_ascii=False, indent=2)}
         
         以下の点について言及してください：
-        1. 全体的な効果量とその統計的有意性
+        1. 全体的な効果量とその信頼区間、p値
         2. 異質性の程度とその解釈
         3. 結果の臨床的意義
         4. 結果の限界と注意点
         
         学術的な文体で、簡潔かつ正確に記述してください。
+        **重要**: "significant", "statistically significant"などの用語は使用せず、数値と信頼区間で客観的に記述してください。
         """
         
         response = client.models.generate_content( # Using the base client.models directly
@@ -116,13 +117,14 @@ def interpret_meta_regression_results(results_summary, model_name=clean_env_var(
         {json.dumps(results_summary, ensure_ascii=False, indent=2)}
         
         以下の点について言及してください：
-        1. モデレーター変数の効果とその統計的有意性
+        1. モデレーター変数の効果とその信頼区間、p値
         2. モデレーター変数が説明する異質性の割合（R²）
         3. 異質性の程度とその解釈
         4. 結果の臨床的・学術的意義
         5. 結果の限界と注意点
         
         学術的な文体で、簡潔かつ正確に記述してください。
+        **重要**: "significant", "statistically significant"などの用語は使用せず、数値と信頼区間で客観的に記述してください。
         """
         
         response = client.models.generate_content(
@@ -320,7 +322,9 @@ def generate_academic_writing_suggestion(results_summary, analysis_type="meta-an
         【重要な指示】
         - 提供された統計結果のみに基づいて記述
         - 研究選択や特性など、結果データに含まれない情報は記載しない
-        - "statistically significant"は使用せず、数値と信頼区間で客観的に記述
+        - **絶対に使用禁止の用語**: "significant", "significantly", "statistically significant", "non-significant", "insignificant"などの有意性を示す用語は一切使用しない
+        - **代替表現**: 数値、信頼区間、p値のみで客観的に記述する（例: "The effect size was 0.5 (95% CI: 0.2-0.8, p=0.001)" のように）
+        - **異質性の記述**: "Significant heterogeneity"ではなく、"Substantial heterogeneity (I²=75%)" や "High heterogeneity (I²=85%)" のように数値で表現
         - 各セクションは英語記述後に日本語訳を併記
         - 結果のセクション書くときには、点推定値、信頼区間といっしょに、Certainty of evidenceのプレースホルダーを書く
         - **Analysis Environment:** Include the R version and metafor package version used for the analysis. This information will be provided in the `results_summary` under keys like `r_version` and `metafor_version`. If available, list them under a subheading like "Analysis Environment".
@@ -344,17 +348,26 @@ def generate_academic_writing_suggestion(results_summary, analysis_type="meta-an
         結果データから判断できる以下の項目のみ：
         - 使用された効果指標（例：risk ratio, odds ratio, mean difference）
         - 適用されたメタアナリシスモデル（fixed-effect or random-effects）
+        - **ゼロセル対応**: sparse dataにおけるMantel-Haenszel法の使用（該当する場合、main_analysis_method="Mantel-Haenszel"）
+        - **連続性補正**: ゼロセルに対する補正の有無（add=0, to="none"で補正なし、またはadd=0.5で補正あり）
         - 異質性評価に使用された指標（I², τ², Q統計量）
         - 実行されたサブグループ解析（該当する場合のサブグループ変数）
         - 実行されたメタ回帰分析（該当する場合の共変量）
         - 実行された出版バイアス検定（該当する場合）
+        - **ゼロセル感度解析**: 複数の補正手法による比較（該当する場合）
         - 実行された感度分析（該当する場合）
 
 
         【Results記述内容】
         実際の数値結果のみ：
-        - **Overall analysis:** 統合効果推定値と95%信頼区間、p値
+        - **Overall analysis:** 統合効果推定値と95%信頼区間、p値（主解析手法を明記）
+        - **Zero cell information (if applicable):** ゼロセルを含む研究数、両群ゼロ研究数
         - **Heterogeneity:** I²値[95%CI]、τ²値、Q統計量（自由度、p値）
+        - **Zero cell sensitivity analysis (if performed):**
+          - 主解析（Mantel-Haenszel法、補正なし）の結果
+          - 感度解析1（逆分散法、0.5補正）の結果
+          - 感度解析2（Mantel-Haenszel法、forest plot補正のみ）の結果
+          - 各手法間の結果の一致性についてのコメント
         - **Subgroup analysis (if performed):** 
         - 各サブグループの効果推定値と95%信頼区間
         - サブグループごとの異質性指標（I², τ²）
@@ -366,7 +379,7 @@ def generate_academic_writing_suggestion(results_summary, analysis_type="meta-an
         - **Publication bias (if assessed):** 検定統計量とp値
         - 図についても言及（例：フォレストプロット、ファンネルプロット）
         - 実行された感度分析
-        - **Analysis Environment:** R version (e.g., R version 4.4.0 (2024-04-24 ucrt)) and metafor package version (e.g., metafor version 4.0-0). This should be mentioned at the end of the results or in a dedicated "Methods" or "Analysis Environment" section if appropriate for the context.
+        - **Analysis Environment:** R version (e.g., "R version 4.1.2 (2021-11-01)") and metafor package version (e.g., metafor version 4.0-0). This should be mentioned at the end of the results or in a dedicated "Methods" or "Analysis Environment" section if appropriate for the context.
         - [Note: Certainty of evidence assessment would be inserted here]
 
         【記述スタイル】
@@ -374,6 +387,8 @@ def generate_academic_writing_suggestion(results_summary, analysis_type="meta-an
         - 効果の方向性を明示（どちらのグループの値が高い/低いか）
         - 信頼区間とp値を併記
         - 客観的・記述的表現を使用
+        - **重要**: "significant"や類似の用語を絶対に使用しない
+        - 異質性は数値（I²値）で表現し、"low" (I²<25%), "moderate" (I²=25-50%), "substantial" (I²=50-75%), "considerable" (I²>75%)などの記述的用語を使用
 
         結果データに基づいて判断できる統計手法と数値結果のみを記述してください。
 
@@ -488,8 +503,8 @@ map_csv_columns_to_meta_analysis_roles_function = {
             },
             "data_format": {
                 "type": "string",
-                "description": "検出されたデータ形式（例: 2x2_table, pre_calculated）。OR/RRの場合に特に重要。不明な場合はnull。",
-                "enum": ["2x2_table", "pre_calculated", "mixed", "unknown"]
+                "description": "検出されたデータ形式（例: 2x2_table, pre_calculated, or_ci, rr_ci）。OR/RRの場合に特に重要。不明な場合はnull。",
+                "enum": ["2x2_table", "pre_calculated", "or_ci", "rr_ci", "mixed", "unknown"]
             },
             "detected_columns": {
                 "type": "object",
@@ -633,12 +648,21 @@ def map_csv_columns_to_meta_analysis_roles(csv_columns: List[str], csv_sample_da
             f"  - `data_format`: \"pre_calculated\"\n"
             f"  - `target_role_mappings` 内で、`log_hr` に対応するCSV列名を `yi` に、`se_log_hr` に対応するCSV列名を `vi` にマッピングしてください。\n"
             f"  - `detected_columns` にもこのマッピング (`{{'CSV列名_log_hr': 'yi', 'CSV列名_se_log_hr': 'vi'}}` の形式で) を含めてください。\n\n"
+            f"【OR/RRと信頼区間の自動検出ルール】\n"
+            f"CSV列に 'OR' または 'RR' と信頼区間（CI）の組み合わせが存在する場合:\n"
+            f"- 'or', 'odds_ratio' + ('ci_lower'/'ci_upper' または 'ci_low'/'ci_high' または 'lower_ci'/'upper_ci') → OR + CI形式として検出\n"
+            f"- 'rr', 'risk_ratio' + ('ci_lower'/'ci_upper' または 'ci_low'/'ci_high' または 'lower_ci'/'upper_ci') → RR + CI形式として検出\n"
+            f"これらの組み合わせが見つかった場合:\n"
+            f"  - `detected_effect_size`: \"OR\" または \"RR\"\n"
+            f"  - `data_format`: \"or_ci\" または \"rr_ci\"\n"
+            f"  - `detected_columns` に OR/RR列と CI列のマッピングを含める（例: {{'or': 'OR', 'ci_lower': 'CI_lower', 'ci_upper': 'CI_upper'}}）\n"
+            f"  - Rスクリプト内で自動的にlnOR/lnRRとSEに変換されます\n\n"
             f"【その他の効果量の自動検出ルール】\n"
             f"上記以外の場合、以下の列名パターンから効果量を検出してください:\n"
             f"- 'log_or', 'ln_or', 'logodds', 'log_odds_ratio' → OR（対数変換済み）\n"
-            f"- 'or', 'odds_ratio' → OR（元のスケール）\n"
+            f"- 'or', 'odds_ratio' → OR（元のスケール）※CI列がない場合\n"
             f"- 'log_rr', 'ln_rr', 'logrisk', 'log_risk_ratio' → RR（対数変換済み）\n"
-            f"- 'rr', 'risk_ratio' → RR（元のスケール）\n"
+            f"- 'rr', 'risk_ratio' → RR（元のスケール）※CI列がない場合\n"
             f"- 'yi', 'effect_size', 'es' → yi（事前計算済み効果量）\n"
             f"- 'smd', 'standardized_mean_diff' → SMD\n"
             f"- 'md', 'mean_diff' → MD\n\n"
@@ -892,12 +916,46 @@ def generate_r_script_with_gemini(data_summary, analysis_preferences, template_i
 
         2.  **データの読み込み**:
             *   スクリプトの前提として、データは既に `dat` という名前のデータフレームに読み込まれているものとします。`dat <- read.csv(...)` のようなコードは含めないでください。
+            *   **重要**: 二値アウトカムデータの場合、最終的な`summary_list`に`zero_cells_summary`を必ず含める必要があります。
 
-        3.  **効果量の計算**:
+        3.  **ゼロセル検出と処理**:
+            *   **二値アウトカムデータ（OR, RR, RD, PETO）の場合、必ずゼロセル検出を実行してください。**
+            *   以下のコードを用いてゼロセル情報を収集してください：
+                ```r
+                # ゼロセル検出
+                zero_cells_summary <- list()
+                zero_cells_summary$total_studies <- nrow(dat)
+                zero_cells_summary$studies_with_zero_cells <- sum((dat$ai == 0) | (dat$ci == 0))
+                zero_cells_summary$double_zero_studies <- sum((dat$ai == 0) & (dat$ci == 0))
+                zero_cells_summary$intervention_zero_studies <- sum(dat$ai == 0)
+                zero_cells_summary$control_zero_studies <- sum(dat$ci == 0)
+                
+                print("ゼロセル分析:")
+                print(paste("総研究数:", zero_cells_summary$total_studies))
+                print(paste("ゼロセルを含む研究数:", zero_cells_summary$studies_with_zero_cells))
+                ```
+            *   **ゼロセルが検出された場合（studies_with_zero_cells > 0）、主解析としてMantel-Haenszel法を使用してください：**
+                ```r
+                if (zero_cells_summary$studies_with_zero_cells > 0) {
+                    print("ゼロセルが検出されました。主解析にMantel-Haenszel法を使用します。")
+                    res <- rma.mh(ai=ai, bi=bi, ci=ci, di=di, data=dat, measure="OR", 
+                                  add=0, to="none", drop00=TRUE, correct=TRUE)
+                    zero_cells_summary$main_analysis_method <- "Mantel-Haenszel"
+                    zero_cells_summary$adjustments <- list(
+                        method = "none",
+                        description = "Mantel-Haenszel method without continuity correction"
+                    )
+                } else {
+                    res <- rma(yi, vi, data=dat, method="REML")
+                    zero_cells_summary$main_analysis_method <- "Random-effects"
+                }
+                ```
+
+        4.  **効果量の計算**:
             *   `escalc()` 関数を使用し、指定された効果量 (`{effect_size_placeholder}`) と関連列 (`{escalc_columns_placeholder_str}`) を用いて、効果量 (`yi`) とその分散 (`vi`) を計算してください。
             *   研究ラベルを `slab` 引数で適切に設定してください（例: `paste(author, year, sep=", ")`、もし解析に使用しない `author` や `year`などの列が存在すれば）。存在しない場合は `slab` の設定は不要です。
 
-        4.  **全体のメタアナリシス (およびメタ回帰/サブグループモデレーション)**:
+        5.  **全体のメタアナリシス (およびメタ回帰/サブグループモデレーション)**:
             *   `rma()` 関数を使用し、計算した `yi` と `vi` を用いてメタアナリシスを実行してください。
             *   モデルは `{model_type_placeholder}` を使用してください (例: "REML", "FE")。
             *   もし `{analysis_preferences.get("moderator_columns", [])}` が空でなく、かつ `{subgroup_column_name_placeholder}` が "指定" されている場合、`mods = ~ {analysis_preferences.get("moderator_columns", [])[0]} + factor({subgroup_column_name_placeholder})` のように、最初のモデレーターとサブグループ変数を同時にモデルに含めることを検討してください。ただし、通常はメタ回帰とサブグループの差の検定は別々に行います。
@@ -907,7 +965,7 @@ def generate_r_script_with_gemini(data_summary, analysis_preferences, template_i
                 *   上記以外の場合は、`mods`なしで基本的なメタアナリシスを実行してください。
             *   基本的な全体のメタアナリシス結果は常に `res` という変数に格納してください（モデレーターやサブグループ指定がない場合、またはそれらとは別に全体の結果も必要な場合）。
 
-        5.  **フォレストプロットの作成 (metafor標準関数を使用)**:
+        6.  **フォレストプロットの作成 (metafor標準関数を使用)**:
             *   **ggplot2 は使用しないでください。** `metafor` パッケージの `forest()` 関数と `addpoly()` 関数を組み合わせて使用してください。
             *   まず、全体のメタアナリシス結果 (`res`) を用いて `forest()` 関数で基本的なフォレストプロットを描画し、`{forest_plot_path_placeholder}` に保存してください。
                 *   `xlim`, `at`, `atransf=exp` (または適切な変換) を効果量に応じて設定してください。
@@ -920,30 +978,48 @@ def generate_r_script_with_gemini(data_summary, analysis_preferences, template_i
             *   `par(cex=...)` などでフォントサイズを調整することも考慮してください。
             *   もし `{subgroup_column_name_placeholder}` が "指定" されている場合、サブグループ間の差の検定結果 (`res.subgroup.mods` などを使用) を、`text()` 関数や `bquote()` を使ってフォレストプロットの下部などに追加してください。
 
-        6.  **ファンネルプロットの作成 (オプション)**:
+        7.  **ファンネルプロットの作成 (オプション)**:
             *   もしファンネルプロットが必要な場合 (`{funnel_plot_path_placeholder}` が指定されている場合)、全体のメタアナリシス結果 (`res`) を用いて `funnel()` 関数でファンネルプロットを作成し、`{funnel_plot_path_placeholder}` に保存してください。
             *   Egger's test (`regtest(res)`) の結果を `res$egger_test` のように `res` オブジェクトに含めてください。
 
-        7.  **メタ回帰のバブルプロット作成 (メタ回帰分析の場合のみ)**:
+        8.  **メタ回帰のバブルプロット作成 (メタ回帰分析の場合のみ)**:
             *   もし `{analysis_preferences.get("moderator_columns", [])}` が空でない場合:
                 *   指定された各モデレーター変数（例: `mod_var`）について、`metafor::regplot(res.mods, mod=mod_var, ...)` (または `res` がメタ回帰モデルの結果を保持している場合は `regplot(res, mod=mod_var, ...)` ) を使用して個別のバブルプロットを作成してください。
                 *   各バブルプロットのファイル名は、`paste0("bubble_plot_", gsub("[^[:alnum:]_]", "_", tolower(mod_var)), ".png")` のように、モデレーター変数名をファイル名に適した英語の識別子（小文字化し、英数字とアンダースコア以外をアンダースコアに置換）にして生成してください。
                 *   生成した各バブルプロットを、対応するファイルパスに保存してください。
 
-        8.  **結果の保存**:
+        9.  **結果の保存**:
             *   主要な結果オブジェクト（`res`、存在すれば `res.mods` や `res.subgroup.mods`、`subgroup_results_list`、`egger_test_res` など）を `{rdata_path_placeholder}` に `save()` 関数で保存してください。
             *   **JSONサマリーの出力 (最重要)**:
-                *   メタアナリシスの主要な結果（全体の統合効果量、信頼区間、p値、I^2、τ^2、Q統計量、Qのp値、研究数k。もしサブグループ解析があれば、各サブグループの同様の統計量、サブグループ間差の検定結果QMとp値など。メタ回帰があれば、各モデレーターの係数、p値、残差異質性など。Egger's testの結果）を **`summary_list` という名前の構造化されたRのリスト** にまとめてください。
+                *   メタアナリシスの主要な結果（全体の統合効果量、信頼区間、p値、I^2、τ^2、Q統計量、Qのp値、研究数k。もしサブグループ解析があれば、各サブグループの同様の統計量、サブグループ間差の検定結果QMとp値など。メタ回帰があれば、各モデレーターの係数、p値、残差異質性など。Egger's testの結果。**二値アウトカムの場合は必ずゼロセル情報（zero_cells_summary）**）を **`summary_list` という名前の構造化されたRのリスト** にまとめてください。
                 *   **生成された全てのプロットファイルの情報を、`generated_plots_list` という名前の別のRリスト** にまとめてください。各要素は `list(label = "プロットの英語識別子", path = "実際のファイルパス")` という形式の名前付きリストであるべきです。
                     *   例: `generated_plots_list <- list()`
                     *   `generated_plots_list[[length(generated_plots_list) + 1]] <- list(label = "forest_plot", path = "{forest_plot_path_placeholder}")`
                     *   ファンネルプロットや各バブルプロットも同様に、実際に生成されたファイルパスと共にこのリストに追加してください。ラベルは `"funnel_plot"`, `"bubble_plot_publication_year"` のようにしてください。
                 *   `summary_list` に、この `generated_plots_list` を `generated_plots` というキーで含めてください。
+                *   **CRITICAL REQUIREMENT**: 二値アウトカムデータの場合、`summary_list` に必ず `zero_cells_summary` を含めてください。これは必須です：
+                    ```r
+                    # MANDATORY: Add zero cells summary to final JSON output
+                    summary_list$zero_cells_summary <- zero_cells_summary
+                    ```
+                *   **注意**: `zero_cells_summary` が含まれていない場合、Slack表示で重要な情報が欠落します。必ず含めてください。
                 *   この **`summary_list` のみを** `jsonlite::toJSON()` を使ってJSON文字列に変換し、**必ず `{json_summary_path_placeholder}` (これは "summary.json" というファイル名を指します) というパスに書き出してください。** `auto_unbox = TRUE`, `pretty = TRUE`, `null = "null"` オプションを使用してください。
-                *   **JSON出力の期待構造例 (generated_plots を含む)**:
+                *   **JSON出力の期待構造例 (zero_cells_summary を必ず含む)**:
                     ```json
                     {{
                       "overall_analysis": {{ ... }},
+                      "zero_cells_summary": {{ // 二値アウトカムの場合は必須
+                        "total_studies": 8,
+                        "studies_with_zero_cells": 4,
+                        "double_zero_studies": 1,
+                        "intervention_zero_studies": 2,
+                        "control_zero_studies": 3,
+                        "main_analysis_method": "Mantel-Haenszel",
+                        "adjustments": {{
+                          "method": "none",
+                          "description": "Mantel-Haenszel method without continuity correction"
+                        }}
+                      }},
                       "subgroup_analyses": [ ... ], // サブグループ解析がある場合のみ
                       "subgroup_moderation_test": {{ ... }}, // サブグループ解析がある場合のみ
                       "meta_regression_results": {{ // メタ回帰がある場合のみ
@@ -959,7 +1035,7 @@ def generate_r_script_with_gemini(data_summary, analysis_preferences, template_i
                     }}
                     ```
 
-        9.  **エラーハンドリング**:
+        10. **エラーハンドリング**:
             *   基本的なエラーハンドリングはRスクリプト内では最小限とし、Python側で実行時エラーを捕捉することを想定してください。
 
         生成されるRスクリプトは、上記の指示に厳密に従い、冗長なコメントや不要な処理を含まない、クリーンで効率的なものであるべきです。
