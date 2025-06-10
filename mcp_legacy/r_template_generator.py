@@ -605,7 +605,7 @@ if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) &
             if not bi_col: 
                 if n1i_col and ai_col:
                     calculated_bi_col_name = f"{ai_col}_n_minus_event"
-                    pre_escalc_code.append(f"dat${calculated_bi_col_name} <- dat${n1i_col} - dat${ai_col}")
+                    pre_escalc_code.append(f"dat${calculated_bi_col_name} <- dat$`{n1i_col}` - dat$`{ai_col}`")
                     actual_bi_col = calculated_bi_col_name
                 else:
                     logger.error(f"列 'bi' がなく、'n1i' または 'ai' もないため計算できません。")
@@ -614,7 +614,7 @@ if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) &
             if not di_col: 
                 if n2i_col and ci_col:
                     calculated_di_col_name = f"{ci_col}_n_minus_event"
-                    pre_escalc_code.append(f"dat${calculated_di_col_name} <- dat${n2i_col} - dat${ci_col}")
+                    pre_escalc_code.append(f"dat${calculated_di_col_name} <- dat$`{n2i_col}` - dat$`{ci_col}`")
                     actual_di_col = calculated_di_col_name
                 else:
                     logger.error(f"列 'di' がなく、'n2i' または 'ci' もないため計算できません。")
@@ -896,10 +896,10 @@ res_by_subgroup_{subgroup_col} <- lapply(dat_split_{subgroup_col}, function(x) r
         if data_cols.get("study_label_author") and data_cols.get("study_label_year"):
             if data_cols['study_label_author'] in data_summary.get("columns", []) and \
                data_cols['study_label_year'] in data_summary.get("columns", []):
-                slab_expression = f"paste(dat${data_cols['study_label_author']}, dat${data_cols['study_label_year']}, sep=\", \")"
+                slab_expression = f"paste(dat$`{data_cols['study_label_author']}`, dat$`{data_cols['study_label_year']}`, sep=\", \")"
         elif data_cols.get("study_label"):
             if data_cols['study_label'] in data_summary.get("columns", []):
-                slab_expression = f"dat${data_cols['study_label']}"
+                slab_expression = f"dat$`{data_cols['study_label']}`"
         if slab_expression:
             script_parts.append(f"dat$slab <- {slab_expression}")
 

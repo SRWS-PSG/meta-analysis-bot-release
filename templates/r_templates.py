@@ -142,8 +142,8 @@ if (zero_cells_summary$studies_with_zero_cells > 0) {{
 """,
             "or_ci_conversion": """
 # OR/RRと信頼区間からlnOR/lnRRとSEへの変換
-dat$yi <- log(dat${or_col})
-dat$vi <- ((log(dat${ci_upper_col}) - log(dat${ci_lower_col})) / (2 * 1.96))^2
+dat$yi <- log(dat$`{or_col}`)
+dat$vi <- ((log(dat$`{ci_upper_col}`) - log(dat$`{ci_lower_col}`)) / (2 * 1.96))^2
 # 変換後の確認
 print("OR/RR to log scale conversion completed:")
 print(head(dat[, c("{or_col}", "{ci_lower_col}", "{ci_upper_col}", "yi", "vi")]))
