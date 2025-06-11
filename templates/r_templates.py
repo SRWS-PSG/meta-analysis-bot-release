@@ -166,19 +166,19 @@ dat <- escalc(measure="{measure}", ri=`{ri}`, ni=`{ni}`, data=dat{slab_param_str
 """,
             "rma_basic": """
 # 基本的なメタアナリシス実行
-res <- rma(`{yi_col}`, `{vi_col}`, data=dat, method="{method}")
+res <- rma(yi, vi, data=dat, method="{method}")
 """,
             "rma_with_mods": """
 # モデレーターを用いたメタ回帰実行
-res <- rma(`{yi_col}`, `{vi_col}`, mods = ~ {mods_formula}, data=dat, method="{method}")
+res <- rma(yi, vi, mods = ~ {mods_formula}, data=dat, method="{method}")
 """,
             "subgroup_single": """
 # Subgroup analysis for '{subgroup_col}'
-res_subgroup_test_{subgroup_col} <- rma(`{yi_col}`, `{vi_col}`, mods = ~ factor(`{subgroup_col}`), data=dat, method="{method}")
+res_subgroup_test_{subgroup_col} <- rma(yi, vi, mods = ~ factor(`{subgroup_col}`), data=dat, method="{method}")
 
 # 各サブグループ '{subgroup_col}' ごとの解析 (splitとlapplyを使用し、個別のrmaオブジェクトのリストを作成)
 dat_split_{subgroup_col} <- split(dat, dat[['{subgroup_col}']])
-res_by_subgroup_{subgroup_col} <- lapply(dat_split_{subgroup_col}, function(x) rma(`{yi_col}`, `{vi_col}`, data=x, method="{method}"))
+res_by_subgroup_{subgroup_col} <- lapply(dat_split_{subgroup_col}, function(x) rma(yi, vi, data=x, method="{method}"))
 """,
             "forest_plot": """
 # フォレストプロット作成
@@ -1058,7 +1058,7 @@ valid_data_for_subgroup_test <- dat[is.finite(dat$yi) & is.finite(dat$vi) & dat$
 
 if (nrow(valid_data_for_subgroup_test) >= 2 && "{subgroup_col}" %in% names(valid_data_for_subgroup_test)) {{
     tryCatch({{
-        res_subgroup_test_{subgroup_col} <- rma(`{yi_col}`, `{vi_col}`, mods = ~ factor(`{subgroup_col}`), data=valid_data_for_subgroup_test, method="{method}")
+        res_subgroup_test_{subgroup_col} <- rma(yi, vi, mods = ~ factor(`{subgroup_col}`), data=valid_data_for_subgroup_test, method="{method}")
         print("Subgroup test for '{subgroup_col}' completed")
     }}, error = function(e) {{
         print(sprintf("Subgroup test for '{subgroup_col}' failed: %s", e$message))
@@ -1083,7 +1083,7 @@ if ("{subgroup_col}" %in% names(dat)) {{
             
             if (nrow(valid_sg_data) >= 2) {{
                 tryCatch({{
-                    rma_result_sg <- rma(`{yi_col}`, `{vi_col}`, data=valid_sg_data, method="{method}")
+                    rma_result_sg <- rma(yi, vi, data=valid_sg_data, method="{method}")
                     # 結果にレベル名を追加して返す (後でアクセスしやすくするため)
                     rma_result_sg$subgroup_level <- level_name 
                     return(rma_result_sg)
