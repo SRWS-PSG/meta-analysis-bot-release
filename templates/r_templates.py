@@ -950,13 +950,20 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
             if not all(data_cols.get(col) for col in required_cols):
                 logger.error(f"連続アウトカム ({measure}) の効果量計算に必要な列が不足しています: {required_cols}")
                 return "# Error: Missing columns for continuous outcome effect size calculation"
-            return self._safe_format(
+            
+            # escalc実行 + 主解析の組み合わせ
+            escalc_code = self._safe_format(
                 self.templates["escalc_continuous"],
                 measure=measure, n1i=data_cols["n1i"], n2i=data_cols["n2i"],
                 m1i=data_cols["m1i"], m2i=data_cols["m2i"],
                 sd1i=data_cols["sd1i"], sd2i=data_cols["sd2i"],
                 slab_param_string=slab_param_string
             )
+            main_analysis_code = self._safe_format(
+                self.templates["main_analysis"],
+                method=analysis_params.get("model", "REML")
+            )
+            return escalc_code + "\n\n" + main_analysis_code
         elif measure in ["PLO", "IR", "PR", "PAS", "PFT", "PRAW", "IRLN", "IRS", "IRFT"]: 
             if measure in ["IR", "IRLN", "IRS", "IRFT"]:
                 required_cols = ["proportion_events", "proportion_time"]
