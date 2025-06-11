@@ -902,7 +902,7 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
             if not bi_col: 
                 if n1i_col and ai_col:
                     calculated_bi_col_name = f"{ai_col}_n_minus_event"
-                    pre_escalc_code.append(f"dat$`{calculated_bi_col_name}` <- dat$`{n1i_col}` - dat$`{ai_col}`")
+                    pre_escalc_code.append(f"dat[['{calculated_bi_col_name}']] <- dat$`{n1i_col}` - dat$`{ai_col}`")
                     actual_bi_col = calculated_bi_col_name
                 else:
                     logger.error(f"列 'bi' がなく、'n1i' または 'ai' もないため計算できません。")
@@ -911,7 +911,7 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
             if not di_col: 
                 if n2i_col and ci_col:
                     calculated_di_col_name = f"{ci_col}_n_minus_event"
-                    pre_escalc_code.append(f"dat$`{calculated_di_col_name}` <- dat$`{n2i_col}` - dat$`{ci_col}`")
+                    pre_escalc_code.append(f"dat[['{calculated_di_col_name}']] <- dat$`{n2i_col}` - dat$`{ci_col}`")
                     actual_di_col = calculated_di_col_name
                 else:
                     logger.error(f"列 'di' がなく、'n2i' または 'ci' もないため計算できません。")
