@@ -429,6 +429,12 @@ def register_mention_handlers(app: App):
             if event.get("bot_id"):
                 return
             
+            # メンションが含まれている場合はapp_mentionハンドラーに任せる
+            text = event.get("text", "")
+            if text and f"<@{client.auth_test()['user_id']}>" in text:
+                logger.info("Message contains mention, skipping in message handler (will be handled by app_mention)")
+                return
+            
             # スレッド内のメッセージかチェック
             is_thread_message = "thread_ts" in event and event.get("ts") != event.get("thread_ts")
             
@@ -441,7 +447,6 @@ def register_mention_handlers(app: App):
             # DM、スレッド内メッセージ、または"thread_ts"が存在する場合（スレッド参加者）に処理
             has_thread_ts = "thread_ts" in event
             if channel_type == "im" or is_thread_message or has_thread_ts:
-                text = event.get("text", "")
                 thread_ts = event.get("thread_ts", event.get("ts"))  # 必要に応じてイベントTSをフォールバック
                 channel_id = event["channel"]
                 user_id = event["user"]
