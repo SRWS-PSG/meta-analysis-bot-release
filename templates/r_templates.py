@@ -76,20 +76,20 @@ library(jsonlite)
 """,
             "escalc_binary": """
 # 二値アウトカムの効果量計算 (例: オッズ比)
-dat <- escalc(measure="{measure}", ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat{slab_param_string})
+dat <- escalc(measure="{measure}", ai=`{ai}`, bi=`{bi}`, ci=`{ci}`, di=`{di}`, data=dat{slab_param_string})
 """,
             "escalc_binary_no_correction": """
 # 二値アウトカムの効果量計算（連続性補正なし）
-dat <- escalc(measure="{measure}", ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, add=0, to="none"{slab_param_string})
+dat <- escalc(measure="{measure}", ai=`{ai}`, bi=`{bi}`, ci=`{ci}`, di=`{di}`, data=dat, add=0, to="none"{slab_param_string})
 """,
             "rma_mh": """
 # Mantel-Haenszel法による解析（補正なし）
-res <- rma.mh(ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, measure="{measure}", 
+res <- rma.mh(ai=`{ai}`, bi=`{bi}`, ci=`{ci}`, di=`{di}`, data=dat, measure="{measure}", 
               add=0, to="none", drop00=TRUE, correct=TRUE)
 """,
             "rma_mh_with_correction": """
 # Mantel-Haenszel法による解析（個別効果量のみ補正、集計は補正なし）
-res <- rma.mh(ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, measure="{measure}", 
+res <- rma.mh(ai=`{ai}`, bi=`{bi}`, ci=`{ci}`, di=`{di}`, data=dat, measure="{measure}", 
               add=c(0.5, 0), to=c("only0", "none"), drop00=TRUE, correct=TRUE)
 """,
             "main_analysis_selection": """
@@ -99,7 +99,7 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
     main_analysis_method <- "MH"
     
     # 主解析：Mantel-Haenszel法（補正なし）
-    res <- rma.mh(ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, measure="{measure}",
+    res <- rma.mh(ai=`{ai}`, bi=`{bi}`, ci=`{ci}`, di=`{di}`, data=dat, measure="{measure}",
                   add=0, to="none", drop00=TRUE, correct=TRUE)
     res_for_plot <- res  # プロット用にも同じ結果を使用
     
@@ -109,7 +109,7 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
     main_analysis_method <- "IV"
     
     # 主解析：逆分散法（従来通り）
-    res <- rma(yi, vi, data=dat, method="{method}")
+    res <- rma(`yi`, `vi`, data=dat, method="{method}")
     res_for_plot <- res  # プロット用にも同じ結果を使用
     
     print("主解析完了: 逆分散法")
@@ -150,15 +150,15 @@ print(head(dat[, c("{or_col}", "{ci_lower_col}", "{ci_upper_col}", "yi", "vi")])
 """,
             "escalc_continuous": """
 # 連続アウトカムの効果量計算 (例: 標準化平均差)
-dat <- escalc(measure="{measure}", n1i={n1i}, n2i={n2i}, m1i={m1i}, m2i={m2i}, sd1i={sd1i}, sd2i={sd2i}, data=dat{slab_param_string})
+dat <- escalc(measure="{measure}", n1i=`{n1i}`, n2i=`{n2i}`, m1i=`{m1i}`, m2i=`{m2i}`, sd1i=`{sd1i}`, sd2i=`{sd2i}`, data=dat{slab_param_string})
 """,
             "escalc_proportion": """
 # 割合の効果量計算
-dat <- escalc(measure="{measure}", xi={events}, ni={total}, data=dat{slab_param_string})
+dat <- escalc(measure="{measure}", xi=`{events}`, ni=`{total}`, data=dat{slab_param_string})
 """,
             "escalc_correlation": """
 # 相関の効果量計算
-dat <- escalc(measure="{measure}", ri={ri}, ni={ni}, data=dat{slab_param_string})
+dat <- escalc(measure="{measure}", ri=`{ri}`, ni=`{ni}`, data=dat{slab_param_string})
 """,
              "escalc_precalculated": """
 # 事前計算された効果量を使用 (yi, vi)
@@ -166,19 +166,19 @@ dat <- escalc(measure="{measure}", ri={ri}, ni={ni}, data=dat{slab_param_string}
 """,
             "rma_basic": """
 # 基本的なメタアナリシス実行
-res <- rma({yi_col}, {vi_col}, data=dat, method="{method}")
+res <- rma(`{yi_col}`, `{vi_col}`, data=dat, method="{method}")
 """,
             "rma_with_mods": """
 # モデレーターを用いたメタ回帰実行
-res <- rma({yi_col}, {vi_col}, mods = ~ {mods_formula}, data=dat, method="{method}")
+res <- rma(`{yi_col}`, `{vi_col}`, mods = ~ {mods_formula}, data=dat, method="{method}")
 """,
             "subgroup_single": """
 # Subgroup analysis for '{subgroup_col}'
-res_subgroup_test_{subgroup_col} <- rma({yi_col}, {vi_col}, mods = ~ factor({subgroup_col}), data=dat, method="{method}")
+res_subgroup_test_{subgroup_col} <- rma(`{yi_col}`, `{vi_col}`, mods = ~ factor(`{subgroup_col}`), data=dat, method="{method}")
 
 # 各サブグループ '{subgroup_col}' ごとの解析 (splitとlapplyを使用し、個別のrmaオブジェクトのリストを作成)
 dat_split_{subgroup_col} <- split(dat, dat[['{subgroup_col}']])
-res_by_subgroup_{subgroup_col} <- lapply(dat_split_{subgroup_col}, function(x) rma({yi_col}, {vi_col}, data=x, method="{method}"))
+res_by_subgroup_{subgroup_col} <- lapply(dat_split_{subgroup_col}, function(x) rma(`{yi_col}`, `{vi_col}`, data=x, method="{method}"))
 """,
             "forest_plot": """
 # フォレストプロット作成
@@ -725,7 +725,7 @@ if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) &
     
     if (nrow(dat_sensitivity) > 0) {{
         res_sensitivity <- tryCatch({{
-            rma(yi, vi, data=dat_sensitivity, method="{method}")
+            rma(`yi`, `vi`, data=dat_sensitivity, method="{method}")
         }}, error = function(e) {{
             print(sprintf("Error in sensitivity analysis rma for {sensitivity_variable}={sensitivity_value}: %s", e$message))
             return(NULL)
@@ -781,7 +781,7 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
     
     # 感度解析1: 逆分散法（デフォルト0.5補正）
     tryCatch({{
-        res_iv_corrected <- rma(yi, vi, data=dat, method="{method}")
+        res_iv_corrected <- rma(`yi`, `vi`, data=dat, method="{method}")
         sensitivity_results$sensitivity_iv_corrected <- list(
             method = "Inverse Variance (0.5 correction) - SENSITIVITY",
             estimate = as.numeric(res_iv_corrected$b)[1],
@@ -800,7 +800,7 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
     
     # 感度解析2: Mantel-Haenszel法（個別効果量のみ補正）
     tryCatch({{
-        res_mh_corr <- rma.mh(ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, 
+        res_mh_corr <- rma.mh(ai=`{ai}`, bi=`{bi}`, ci=`{ci}`, di=`{di}`, data=dat, 
                              measure="{measure}", add=c(0.5, 0), to=c("only0", "none"), drop00=TRUE)
         sensitivity_results$sensitivity_mh_with_correction <- list(
             method = "Mantel-Haenszel (forest plot correction) - SENSITIVITY",
@@ -1058,7 +1058,7 @@ valid_data_for_subgroup_test <- dat[is.finite(dat$yi) & is.finite(dat$vi) & dat$
 
 if (nrow(valid_data_for_subgroup_test) >= 2 && "{subgroup_col}" %in% names(valid_data_for_subgroup_test)) {{
     tryCatch({{
-        res_subgroup_test_{subgroup_col} <- rma({yi_col}, {vi_col}, mods = ~ factor({subgroup_col}), data=valid_data_for_subgroup_test, method="{method}")
+        res_subgroup_test_{subgroup_col} <- rma(`{yi_col}`, `{vi_col}`, mods = ~ factor(`{subgroup_col}`), data=valid_data_for_subgroup_test, method="{method}")
         print("Subgroup test for '{subgroup_col}' completed")
     }}, error = function(e) {{
         print(sprintf("Subgroup test for '{subgroup_col}' failed: %s", e$message))
@@ -1083,7 +1083,7 @@ if ("{subgroup_col}" %in% names(dat)) {{
             
             if (nrow(valid_sg_data) >= 2) {{
                 tryCatch({{
-                    rma_result_sg <- rma({yi_col}, {vi_col}, data=valid_sg_data, method="{method}")
+                    rma_result_sg <- rma(`{yi_col}`, `{vi_col}`, data=valid_sg_data, method="{method}")
                     # 結果にレベル名を追加して返す (後でアクセスしやすくするため)
                     rma_result_sg$subgroup_level <- level_name 
                     return(rma_result_sg)
@@ -1409,7 +1409,7 @@ if (exists("main_analysis_method") && main_analysis_method == "MH") {{
     valid_data_for_regression <- dat[is.finite(dat$yi) & is.finite(dat$vi) & dat$vi > 0, ]
     
     if (nrow(valid_data_for_regression) >= 2) {{
-        res_moderator <- rma(yi, vi, mods = ~ {mods_formula}, data=valid_data_for_regression, method="REML")
+        res_moderator <- rma(`yi`, `vi`, mods = ~ {mods_formula}, data=valid_data_for_regression, method="REML")
         print(paste("モデレーター解析完了: 有効データ", nrow(valid_data_for_regression), "件で実行"))
     }} else {{
         print("モデレーター解析: 有効データが不足のため実行できません")
@@ -1420,7 +1420,7 @@ if (exists("main_analysis_method") && main_analysis_method == "MH") {{
     valid_data_for_regression <- dat[is.finite(dat$yi) & is.finite(dat$vi) & dat$vi > 0, ]
     
     if (nrow(valid_data_for_regression) >= 2) {{
-        res_moderator <- rma(yi, vi, mods = ~ {mods_formula}, data=valid_data_for_regression, method="{method}")
+        res_moderator <- rma(`yi`, `vi`, mods = ~ {mods_formula}, data=valid_data_for_regression, method="{method}")
     }} else {{
         print("モデレーター解析: 有効データが不足のため実行できません")
         res_moderator <- NULL
