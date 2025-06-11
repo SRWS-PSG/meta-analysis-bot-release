@@ -3,10 +3,34 @@ import os
 import aiohttp
 import logging
 import tempfile
+import pandas as pd
+import io
+import re
 from pathlib import Path
 from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+def clean_column_names(df):
+    """
+    データフレームの列名をクリーンアップする
+    - 前後の半角・全角スペースを削除
+    - 途中の半角スペースをアンダースコアに置換
+    """
+    def clean_name(name):
+        # 全角スペースを半角スペースに統一
+        name = name.replace('　', ' ')
+        # 前後のスペースを削除
+        name = name.strip()
+        # 連続するスペースを1つに
+        name = re.sub(r'\s+', ' ', name)
+        # 残った半角スペースをアンダースコアに置換
+        name = name.replace(' ', '_')
+        return name
+    
+    # 列名をクリーンアップ
+    df.columns = [clean_name(str(col)) for col in df.columns]
+    return df
 
 async def download_slack_file_content_async(file_url: str, bot_token: str) -> bytes:
     """
@@ -29,6 +53,7 @@ async def save_content_to_temp_file(
     """
     バイトコンテンツを一時ファイルに保存し、そのパスとPathオブジェクトを返す。
     ファイル名は job_id と元のファイル名から生成する。
+    CSVファイルの場合は列名をクリーンアップする。
     """
     temp_dir_base = Path(tempfile.gettempdir()) / "meta_analysis_bot_files"
     temp_dir_job = temp_dir_base / job_id
@@ -43,6 +68,36 @@ async def save_content_to_temp_file(
     safe_original_filename_base = "".join(c if c.isalnum() or c in ['.', '_'] else '_' for c in Path(original_filename).stem)
     temp_file_name = f"{safe_original_filename_base}_{job_id}{ext}"
     temp_file_path = temp_dir_job / temp_file_name
+    
+    # CSVファイルの場合は列名をクリーンアップ
+    if ext.lower() == ".csv":
+        try:
+            # バイトデータをデコード（UTF-8を試し、失敗したらShift-JIS）
+            try:
+                csv_str = content.decode('utf-8')
+            except UnicodeDecodeError:
+                logger.warning("UTF-8 decoding failed, trying Shift-JIS")
+                csv_str = content.decode('shift_jis')
+            
+            # pandasでCSVを読み込み
+            df = pd.read_csv(io.StringIO(csv_str))
+            logger.info(f"Original column names: {list(df.columns)}")
+            
+            # 列名をクリーンアップ
+            df = clean_column_names(df)
+            logger.info(f"Cleaned column names: {list(df.columns)}")
+            
+            # クリーンアップしたCSVを文字列に変換
+            csv_buffer = io.StringIO()
+            df.to_csv(csv_buffer, index=False)
+            clean_csv_str = csv_buffer.getvalue()
+            
+            # UTF-8でバイトに変換
+            content = clean_csv_str.encode('utf-8')
+            
+        except Exception as e:
+            logger.error(f"Error cleaning CSV column names: {e}")
+            # エラーが発生した場合は元のコンテンツをそのまま使用
     
     with open(temp_file_path, 'wb') as f:
         f.write(content)

@@ -8,7 +8,7 @@ from slack_bolt import App
 from core.metadata_manager import MetadataManager
 from core.gemini_client import GeminiClient
 from utils.slack_utils import create_unsuitable_csv_message, create_analysis_start_message
-from utils.file_utils import download_slack_file_content_async # download_slack_file_content_async をインポート
+from utils.file_utils import download_slack_file_content_async, clean_column_names # clean_column_namesもインポート
 from utils.conversation_state import get_or_create_state, save_state
 
 logger = logging.getLogger(__name__)
@@ -21,6 +21,10 @@ async def _convert_excel_to_csv(file_bytes, logger):
         
         # pandas で Excel ファイルを読み込み
         df = pd.read_excel(file_buffer, engine='openpyxl')
+        
+        # 列名をクリーンアップ
+        df = clean_column_names(df)
+        logger.info(f"Cleaned column names: {list(df.columns)}")
         
         # CSV 形式の文字列に変換
         csv_buffer = io.StringIO()
