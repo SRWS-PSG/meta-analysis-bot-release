@@ -950,8 +950,10 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
             actual_bi_col = bi_col
             if not bi_col: 
                 if n1i_col and ai_col:
-                    calculated_bi_col_name = f"{ai_col}_n_minus_event"
-                    pre_escalc_code.append(f"dat${calculated_bi_col_name} <- dat$`{n1i_col}` - dat$`{ai_col}`")
+                    # カラム名からスペースや特殊文字を除去して安全な名前を作成
+                    safe_ai_col_name = "".join(c if c.isalnum() or c == "_" else "_" for c in ai_col)
+                    calculated_bi_col_name = f"{safe_ai_col_name}_n_minus_event"
+                    pre_escalc_code.append(f"dat$`{calculated_bi_col_name}` <- dat$`{n1i_col}` - dat$`{ai_col}`")
                     actual_bi_col = calculated_bi_col_name
                 else:
                     logger.error(f"列 'bi' がなく、'n1i' または 'ai' もないため計算できません。")
@@ -959,8 +961,10 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
             actual_di_col = di_col
             if not di_col: 
                 if n2i_col and ci_col:
-                    calculated_di_col_name = f"{ci_col}_n_minus_event"
-                    pre_escalc_code.append(f"dat${calculated_di_col_name} <- dat$`{n2i_col}` - dat$`{ci_col}`")
+                    # カラム名からスペースや特殊文字を除去して安全な名前を作成
+                    safe_ci_col_name = "".join(c if c.isalnum() or c == "_" else "_" for c in ci_col)
+                    calculated_di_col_name = f"{safe_ci_col_name}_n_minus_event"
+                    pre_escalc_code.append(f"dat$`{calculated_di_col_name}` <- dat$`{n2i_col}` - dat$`{ci_col}`")
                     actual_di_col = calculated_di_col_name
                 else:
                     logger.error(f"列 'di' がなく、'n2i' または 'ci' もないため計算できません。")
