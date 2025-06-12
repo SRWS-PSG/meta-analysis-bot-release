@@ -271,13 +271,23 @@ def create_analysis_result_message(analysis_result_from_r: Dict[str, Any]) -> st
                     
                     meta_regression_text += f"\n• {mod_name}: 係数={mod_estimate}, p={mod_pval}"
     
+    # サブグループ除外情報を追加
+    exclusion_text = ""
+    subgroup_exclusions = summary.get('subgroup_exclusions', {})
+    if subgroup_exclusions:
+        exclusion_text = "\n\n**【サブグループ除外情報】**"
+        for sg_col, exclusion_info in subgroup_exclusions.items():
+            excluded_groups = exclusion_info.get('excluded_subgroups', [])
+            if excluded_groups:
+                exclusion_text += f"\n• {sg_col}: {', '.join(excluded_groups)}を除外（研究数不足）"
+    
     message = f"""📊 **メタ解析が完了しました！**
 
 **【解析結果サマリー】**
 • 統合効果量: {pooled_effect}
 • 95%信頼区間: {ci_lower} - {ci_upper}
 • 異質性: I²={i2_value}%
-• 研究数: {num_studies}件{zero_cell_text}{subgroup_text}{meta_regression_text}
+• 研究数: {num_studies}件{zero_cell_text}{subgroup_text}{meta_regression_text}{exclusion_text}
 
 ファイルが添付されています：
 • フォレストプロット

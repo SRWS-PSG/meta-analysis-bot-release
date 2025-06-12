@@ -347,6 +347,49 @@ if (exists("res_by_subgroup_{subgroup_col_name}") && !is.null(res_by_subgroup_{s
     # 各サブグループの研究数を計算
     studies_per_sg <- table(dat[['{subgroup_col_name}']])[sg_level_names]
     
+    # 1研究のみの小さいサブグループを除外
+    excluded_subgroups <- character(0)
+    valid_sg_names <- character(0)
+    
+    for (sg_name in sg_level_names) {{
+        n_studies <- studies_per_sg[sg_name]
+        if (n_studies <= 1) {{
+            excluded_subgroups <- c(excluded_subgroups, sg_name)
+            print(paste("Subgroup '", sg_name, "' excluded from forest plot: insufficient data (n=", n_studies, ")", sep=""))
+        }} else {{
+            valid_sg_names <- c(valid_sg_names, sg_name)
+        }}
+    }}
+    
+    # 有効なサブグループのみでフィルタリング
+    if (length(valid_sg_names) == 0) {{
+        print("All subgroups have insufficient data (n<=1). Skipping subgroup forest plot.")
+        plot(1, type="n", main="Subgroup Forest Plot: Insufficient Data", xlab="", ylab="")
+        text(1, 1, "All subgroups have insufficient data (n<=1)\\nfor forest plot visualization", col="red", cex=1.2)
+        dev.off()
+        next
+    }}
+    
+    # 除外後のパラメータ更新
+    sg_level_names <- valid_sg_names
+    n_sg_levels <- length(sg_level_names)
+    studies_per_sg <- studies_per_sg[sg_level_names]
+    
+    # 除外されたサブグループ情報をサマリーに記録
+    if (length(excluded_subgroups) > 0) {{
+        excluded_info <- list(
+            excluded_subgroups = excluded_subgroups,
+            reason = "insufficient_data_n_le_1",
+            included_subgroups = valid_sg_names
+        )
+        
+        # グローバル変数に保存（後でサマリーJSONに含める）
+        if (!exists("subgroup_exclusions")) {{
+            subgroup_exclusions <<- list()
+        }}
+        subgroup_exclusions[['{subgroup_col_name}']] <<- excluded_info
+    }}
+    
     # 行位置を計算 (下から上へ)
     # 各サブグループ間に2行のギャップ（1行はサブグループサマリー、1行は空白）
     total_studies <- nrow(dat)
@@ -692,6 +735,11 @@ tryCatch({
 })
 
 {generated_plots_r_code}
+
+# サブグループ除外情報をサマリーに追加
+if (exists("subgroup_exclusions")) {{
+    summary_list$subgroup_exclusions <- subgroup_exclusions
+}}
 
 json_output_file_path <- "{json_summary_path}"
 tryCatch({
@@ -1070,7 +1118,7 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
             )
 
     def _generate_subgroup_code(self, analysis_params: Dict[str, Any]) -> str:
-        subgroup_columns = analysis_params.get("subgroup_columns", [])
+        subgroup_columns = analysis_params.get("subgroups", analysis_params.get("subgroup_columns", []))
         method = analysis_params.get("model", "REML") # "method" から "model" に変更
         data_cols = analysis_params.get("data_columns", {})
         
@@ -1175,7 +1223,7 @@ if ("{subgroup_col}" %in% names(dat)) {{
         )
         
         # 2. サブグループごとのフォレストプロット
-        subgroup_columns = analysis_params.get("subgroup_columns", [])
+        subgroup_columns = analysis_params.get("subgroups", analysis_params.get("subgroup_columns", []))
         if subgroup_columns and "subgroup_forest_plot_template" in self.templates:
             subgroup_plot_prefix = output_paths.get("forest_plot_subgroup_prefix", "forest_plot_subgroup")
             for sg_col in subgroup_columns:
@@ -1235,7 +1283,7 @@ if ("{subgroup_col}" %in% names(dat)) {{
         additional_objects_to_save = ["res_for_plot"] # res_for_plot は常に保存
         subgroup_json_str_parts = []
         
-        subgroup_columns = analysis_params.get("subgroup_columns", [])
+        subgroup_columns = analysis_params.get("subgroups", analysis_params.get("subgroup_columns", []))
         if subgroup_columns:
             for subgroup_col in subgroup_columns:
                 # サブグループ列が実際にデータに存在するか確認
@@ -1472,7 +1520,7 @@ if (exists("main_analysis_method") && main_analysis_method == "MH") {{
             if valid_subgroup_cols:
                 # analysis_params をコピーして、有効なサブグループ列のみを設定
                 subgroup_analysis_params = analysis_params.copy()
-                subgroup_analysis_params["subgroup_columns"] = valid_subgroup_cols
+                subgroup_analysis_params["subgroups"] = valid_subgroup_cols
                 subgroup_code = self._generate_subgroup_code(subgroup_analysis_params)
                 script_parts.append(subgroup_code)
             else:

@@ -28,6 +28,15 @@
 ### `check_channels.py`
 - **目的**: ボットのチャンネル参加状況と権限を確認
 - **使用方法**: `python3 check_channels.py`
+
+### `../test/test_subgroup_exclusion_fix.py`
+- **目的**: サブグループ除外機能のテスト（2025-06-12追加）
+- **使用方法**: `python test/test_subgroup_exclusion_fix.py`
+- **機能**: 
+  - 1研究のみのサブグループが正しく除外されるかテスト
+  - 除外情報がJSONサマリーに保存されるかテスト
+  - 除外情報がSlackメッセージに表示されるかテスト
+- **背景**: forest_plot_subgroup_region (s2xpp-wx)エラー修正のため追加
 - **機能**: アクセス可能チャンネル一覧、権限エラーの診断
 
 ## 単体テストファイル
