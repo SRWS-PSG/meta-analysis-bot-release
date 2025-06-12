@@ -167,6 +167,7 @@ dat <- escalc(measure="{measure}", ri=`{ri}`, ni=`{ni}`, data=dat{slab_param_str
             "rma_basic": """
 # 基本的なメタアナリシス実行
 res <- rma(yi, vi, data=dat, method="{method}")
+res_for_plot <- res  # プロット用にも同じ結果を使用
 """,
             "rma_with_mods": """
 # モデレーターを用いたメタ回帰実行
@@ -960,7 +961,7 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
                 slab_param_string=slab_param_string
             )
             main_analysis_code = self._safe_format(
-                self.templates["main_analysis"],
+                self.templates["rma_basic"],
                 method=analysis_params.get("model", "REML")
             )
             return escalc_code + "\n\n" + main_analysis_code
@@ -970,31 +971,46 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
                 if not all(data_cols.get(col) for col in required_cols):
                     logger.error(f"発生率 ({measure}) の効果量計算に必要な列が不足しています: {required_cols}")
                     return "# Error: Missing columns for incidence rate effect size calculation"
-                return self._safe_format(
+                escalc_code = self._safe_format(
                     self.templates["escalc_proportion"],
                     measure=measure, events=data_cols['proportion_events'],
                     total=data_cols['proportion_time'], slab_param_string=slab_param_string
                 )
+                main_analysis_code = self._safe_format(
+                    self.templates["rma_basic"],
+                    method=analysis_params.get("model", "REML")
+                )
+                return escalc_code + "\n\n" + main_analysis_code
             required_cols = ["proportion_events", "proportion_total"]
             if not all(data_cols.get(col) for col in required_cols):
                 logger.error(f"割合 ({measure}) の効果量計算に必要な列が不足しています: {required_cols}")
                 return "# Error: Missing columns for proportion effect size calculation"
             escalc_measure = "PLO" if measure == "proportion" else measure
-            return self._safe_format(
+            escalc_code = self._safe_format(
                 self.templates["escalc_proportion"],
                 measure=escalc_measure, events=data_cols["proportion_events"],
                 total=data_cols["proportion_total"], slab_param_string=slab_param_string
             )
+            main_analysis_code = self._safe_format(
+                self.templates["rma_basic"],
+                method=analysis_params.get("model", "REML")
+            )
+            return escalc_code + "\n\n" + main_analysis_code
         elif measure == "COR": # 相関係数
             required_cols = ["ri", "ni"]
             if not all(data_cols.get(col) for col in required_cols):
                 logger.error(f"相関 ({measure}) の効果量計算に必要な列が不足しています: {required_cols}")
                 return "# Error: Missing columns for correlation effect size calculation"
-            return self._safe_format(
+            escalc_code = self._safe_format(
                 self.templates["escalc_correlation"],
                 measure=measure, ri=data_cols["ri"], ni=data_cols["ni"],
                 slab_param_string=slab_param_string
             )
+            main_analysis_code = self._safe_format(
+                self.templates["rma_basic"],
+                method=analysis_params.get("model", "REML")
+            )
+            return escalc_code + "\n\n" + main_analysis_code
         elif measure == "HR": # ハザード比（ログ変換データの自動検出対応）
             # HRの場合、ログ変換済みかどうかを自動検出
             yi_col = data_cols.get("yi")
@@ -1002,7 +1018,11 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
             if yi_col and vi_col:
                 # ログ変換済みの場合は事前計算として扱う
                 logger.info("HR: ログ変換済みデータとして検出、事前計算効果量として処理")
-                return self.templates["escalc_precalculated"]
+                main_analysis_code = self._safe_format(
+                    self.templates["rma_basic"],
+                    method=analysis_params.get("model", "REML")
+                )
+                return self.templates["escalc_precalculated"] + "\n\n" + main_analysis_code
             else:
                 # 生のHRデータの場合（現在未実装、将来的に対応予定）
                 logger.warning("HR: 生のハザード比データは現在未対応です。ログ変換済みのyiとviを使用してください。")
@@ -1011,7 +1031,12 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
             if not (data_cols.get("yi") and data_cols.get("vi")):
                 logger.error("事前計算された効果量を使用するには 'yi' と 'vi' 列が必要です。")
                 return "# Error: Missing 'yi' or 'vi' columns for pre-calculated effect sizes"
-            return self.templates["escalc_precalculated"]
+            # 事前計算済みの場合はescalcは不要、直接rmaを実行
+            main_analysis_code = self._safe_format(
+                self.templates["rma_basic"],
+                method=analysis_params.get("model", "REML")
+            )
+            return self.templates["escalc_precalculated"] + "\n\n" + main_analysis_code
         else:
             logger.warning(f"未対応の効果量タイプ: {measure}")
             return f"# Warning: Unsupported effect size type: {measure}"
