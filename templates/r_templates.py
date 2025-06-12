@@ -741,6 +741,13 @@ if (exists("subgroup_exclusions")) {{
     summary_list$subgroup_exclusions <- subgroup_exclusions
 }}
 
+# main_analysis_methodをトップレベルに移動（ゼロセル対応から）
+if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells > 0) {{
+    summary_list$main_analysis_method <- "Mantel-Haenszel (no correction)"
+}} else {{
+    summary_list$main_analysis_method <- "Inverse Variance (standard)"
+}}
+
 json_output_file_path <- "{json_summary_path}"
 tryCatch({
     json_data <- jsonlite::toJSON(summary_list, auto_unbox = TRUE, pretty = TRUE, null = "null", force=TRUE)
