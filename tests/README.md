@@ -48,6 +48,27 @@
 - **目的**: 解析実行プロセスのテスト
 - **機能**: 非同期処理、エラーハンドリング、結果処理
 
+## デバッグ用ファイル（/test/ディレクトリ）
+
+### `debug_json_flow.py`
+- **目的**: RスクリプトのJSON出力がPythonでどのように処理されるかを追跡
+- **使用方法**: `python3 test/debug_json_flow.py`
+- **機能**: R出力→analysis_handler.py→slack_utils.pyのデータフローをシミュレート
+
+### `test_missing_overall_analysis.py`
+- **目的**: Rスクリプトでエラーが発生しoverall_analysisが作成されない場合の挙動を確認
+- **使用方法**: `python3 test/test_missing_overall_analysis.py`
+- **機能**: N/A値が表示される条件を特定
+
+### `test_r_template_fixes.py`
+- **目的**: 連続アウトカム・比率・相関等の解析でrma()が実行されることを確認
+- **使用方法**: `python3 test/test_r_template_fixes.py`
+- **機能**: 各解析タイプでres対象が正しく作成されるかチェック
+
+### `fix_summary.md`
+- **目的**: 連続アウトカム等でN/A値が表示される問題の修正内容を記録
+- **内容**: 問題の原因、修正内容、影響範囲の詳細説明
+
 ### `test_state_management.py`
 - **目的**: 会話状態管理のテスト
 - **機能**: Redis/メモリ状態の保存・復元、タイムアウト
