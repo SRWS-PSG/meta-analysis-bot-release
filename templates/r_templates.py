@@ -1446,7 +1446,34 @@ if (any(is.na(dat))) {
 } else {
     cat("欠損値なし\\n")
 }
+
+# 解析に必要な数値列の数値変換とNA値処理
+numeric_cols_to_check <- c()
 """)
+        
+        # 数値変換が必要な列をリストに追加
+        data_cols = analysis_params.get("data_columns", {})
+        numeric_conversion_code = []
+        
+        # 二値アウトカムの場合の数値列
+        if analysis_params.get("measure") in ["OR", "RR", "RD", "PETO"]:
+            for col_key in ["ai", "ci", "n1i", "n2i"]:
+                col_name = data_cols.get(col_key)
+                if col_name:
+                    numeric_conversion_code.append(f"""
+if ("{col_name}" %in% names(dat)) {{
+    cat("数値変換: {col_name}\\n")
+    dat$`{col_name}` <- as.numeric(as.character(dat$`{col_name}`))
+    invalid_rows <- which(is.na(dat$`{col_name}`))
+    if (length(invalid_rows) > 0) {{
+        cat("警告: {col_name}列でNA値または非数値データが検出されました（行: ", paste(invalid_rows, collapse=", "), "）\\n")
+    }}
+}}""")
+        
+        if numeric_conversion_code:
+            script_parts.append("\n".join(numeric_conversion_code))
+        
+        script_parts.append("""
         
         # SE列を分散に変換する処理
         data_cols = analysis_params.get("data_columns", {})
