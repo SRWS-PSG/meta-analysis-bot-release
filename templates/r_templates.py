@@ -1473,8 +1473,6 @@ if ("{col_name}" %in% names(dat)) {{
         if numeric_conversion_code:
             script_parts.append("\n".join(numeric_conversion_code))
         
-        script_parts.append("""
-        
         # SE列を分散に変換する処理
         data_cols = analysis_params.get("data_columns", {})
         se_col_needs_squaring = data_cols.get("se_col_needs_squaring")
