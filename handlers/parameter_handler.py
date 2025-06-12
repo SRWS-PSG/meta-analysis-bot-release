@@ -16,6 +16,13 @@ from utils.conversation_state import get_or_create_state, save_state
 # Simple state management using thread_ts as key
 _parameter_states = {}
 
+def clean_column_name(name):
+    """カラム名をクリーンアップ（スペースをアンダースコアに置換）"""
+    if not name:
+        return name
+    # スペースをアンダースコアに置換
+    return name.replace(' ', '_')
+
 # 自然言語パラメータ収集用のメッセージハンドラー（register_parameter_handlers外に移動）
 async def handle_natural_language_parameters(message, say, client, logger):
     """自然言語でのパラメータ入力を処理（Gemini駆動の継続的対話）"""
@@ -39,13 +46,14 @@ async def handle_natural_language_parameters(message, say, client, logger):
         
         logger.info(f"Processing natural language parameter input: {user_text}")
         
-        # CSVの列名リストを取得
+        # CSVの列名リストを取得（クリーンアップ済みの名前を使用）
         csv_columns = []
         if state.csv_analysis and "detected_columns" in state.csv_analysis:
             detected_cols = state.csv_analysis["detected_columns"]
             for candidates in detected_cols.values():
                 if isinstance(candidates, list):
-                    csv_columns.extend(candidates)
+                    # カラム名をクリーンアップして追加
+                    csv_columns.extend([clean_column_name(col) for col in candidates])
         
         # 会話履歴の確認とログ
         logger.info(f"Conversation history before adding user input: {len(state.conversation_history)} messages")
@@ -95,8 +103,8 @@ async def handle_natural_language_parameters(message, say, client, logger):
                     "measure": state.collected_params.get("effect_size", "OR"),
                     "model": state.collected_params.get("method") or "REML",  # R template uses "model" not "method"
                     "model_type": state.collected_params.get("model_type", "random"),
-                    "subgroup_columns": state.collected_params.get("subgroup_columns", []),
-                    "moderator_columns": state.collected_params.get("moderator_columns", [])
+                    "subgroup_columns": [clean_column_name(col) for col in state.collected_params.get("subgroup_columns", [])],
+                    "moderator_columns": [clean_column_name(col) for col in state.collected_params.get("moderator_columns", [])]
                 }
                 
                 # 初期検出された列マッピングを追加
@@ -106,42 +114,43 @@ async def handle_natural_language_parameters(message, say, client, logger):
                     
                     # 二値アウトカム用の列マッピング
                     if detected_cols.get("binary_intervention_events"):
-                        data_columns["ai"] = detected_cols["binary_intervention_events"][0]
+                        data_columns["ai"] = clean_column_name(detected_cols["binary_intervention_events"][0])
                     if detected_cols.get("binary_intervention_total"):
                         # bi = total - events の計算用
-                        data_columns["n1i"] = detected_cols["binary_intervention_total"][0]
+                        data_columns["n1i"] = clean_column_name(detected_cols["binary_intervention_total"][0])
                     if detected_cols.get("binary_control_events"):
-                        data_columns["ci"] = detected_cols["binary_control_events"][0]
+                        data_columns["ci"] = clean_column_name(detected_cols["binary_control_events"][0])
                     if detected_cols.get("binary_control_total"):
                         # di = total - events の計算用
-                        data_columns["n2i"] = detected_cols["binary_control_total"][0]
+                        data_columns["n2i"] = clean_column_name(detected_cols["binary_control_total"][0])
                     
                     # 連続アウトカム用の列マッピング
                     if detected_cols.get("continuous_intervention_mean"):
-                        data_columns["m1i"] = detected_cols["continuous_intervention_mean"][0]
+                        data_columns["m1i"] = clean_column_name(detected_cols["continuous_intervention_mean"][0])
                     if detected_cols.get("continuous_intervention_sd"):
-                        data_columns["sd1i"] = detected_cols["continuous_intervention_sd"][0]
+                        data_columns["sd1i"] = clean_column_name(detected_cols["continuous_intervention_sd"][0])
                     if detected_cols.get("continuous_intervention_n"):
-                        data_columns["n1i"] = detected_cols["continuous_intervention_n"][0]
+                        data_columns["n1i"] = clean_column_name(detected_cols["continuous_intervention_n"][0])
                     if detected_cols.get("continuous_control_mean"):
-                        data_columns["m2i"] = detected_cols["continuous_control_mean"][0]
+                        data_columns["m2i"] = clean_column_name(detected_cols["continuous_control_mean"][0])
                     if detected_cols.get("continuous_control_sd"):
-                        data_columns["sd2i"] = detected_cols["continuous_control_sd"][0]
+                        data_columns["sd2i"] = clean_column_name(detected_cols["continuous_control_sd"][0])
                     if detected_cols.get("continuous_control_n"):
-                        data_columns["n2i"] = detected_cols["continuous_control_n"][0]
+                        data_columns["n2i"] = clean_column_name(detected_cols["continuous_control_n"][0])
                     
                     # 事前計算済み効果量用の列マッピング
                     if detected_cols.get("effect_size_candidates"):
-                        data_columns["yi"] = detected_cols["effect_size_candidates"][0]
+                        data_columns["yi"] = clean_column_name(detected_cols["effect_size_candidates"][0])
                     if detected_cols.get("variance_candidates"):
-                        data_columns["vi"] = detected_cols["variance_candidates"][0]
+                        data_columns["vi"] = clean_column_name(detected_cols["variance_candidates"][0])
                     
                     # HR解析や他の事前計算済み効果量の場合の特別処理
                     effect_size = state.collected_params.get("effect_size")
                     if effect_size in ["HR", "OR", "RR"] and state.collected_params.get("effect_size_columns"):
                         # ログ変換済みデータの列マッピング
-                        effect_col = state.collected_params["effect_size_columns"][0]
-                        variance_col = state.collected_params.get("variance_columns", [None])[0]
+                        effect_col = clean_column_name(state.collected_params["effect_size_columns"][0])
+                        variance_col_raw = state.collected_params.get("variance_columns", [None])[0]
+                        variance_col = clean_column_name(variance_col_raw) if variance_col_raw else None
                         
                         # SE列の場合は2乗して分散に変換する処理が必要
                         if variance_col and ("se_" in variance_col.lower() or "stderr" in variance_col.lower()):
@@ -158,19 +167,19 @@ async def handle_natural_language_parameters(message, say, client, logger):
                     # 一般的な事前計算済み効果量（yi/vi形式）
                     elif effect_size == "PRE" or (effect_size in ["SMD", "MD"] and state.collected_params.get("effect_size_columns")):
                         if state.collected_params.get("effect_size_columns"):
-                            data_columns["yi"] = state.collected_params["effect_size_columns"][0]
+                            data_columns["yi"] = clean_column_name(state.collected_params["effect_size_columns"][0])
                         if state.collected_params.get("variance_columns"):
-                            data_columns["vi"] = state.collected_params["variance_columns"][0]
+                            data_columns["vi"] = clean_column_name(state.collected_params["variance_columns"][0])
                     
                     # 単一群比率用の列マッピング
                     if detected_cols.get("proportion_events"):
-                        data_columns["proportion_events"] = detected_cols["proportion_events"][0]
+                        data_columns["proportion_events"] = clean_column_name(detected_cols["proportion_events"][0])
                     if detected_cols.get("proportion_total"):
-                        data_columns["proportion_total"] = detected_cols["proportion_total"][0]
+                        data_columns["proportion_total"] = clean_column_name(detected_cols["proportion_total"][0])
                     
                     # 研究ID列
                     if detected_cols.get("study_id_candidates"):
-                        data_columns["study_label"] = detected_cols["study_id_candidates"][0]
+                        data_columns["study_label"] = clean_column_name(detected_cols["study_id_candidates"][0])
                     
                     # 列マッピングが見つかった場合のみ追加
                     if data_columns:
