@@ -86,7 +86,8 @@ def check_channel_messages(wait_seconds=30):
                     'timestamp': timestamp,
                     'user': user_id,
                     'text': text[:100] + '...' if len(text) > 100 else text,
-                    'files': len(msg.get('files', []))
+                    'files': len(msg.get('files', [])),
+                    'ts': msg.get('ts')
                 })
         
         print("\n📤 ボットへのメンション:")
@@ -94,6 +95,7 @@ def check_channel_messages(wait_seconds=30):
             print(f"  {mention['timestamp']} - User {mention['user']}")
             print(f"    Text: {mention['text']}")
             print(f"    Files: {mention['files']}")
+            print(f"    Thread TS: {mention['ts']}")
             print()
         
         print("\n🤖 ボットの応答:")
