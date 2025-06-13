@@ -408,11 +408,25 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
             included_subgroups = valid_sg_names
         )
         
-        # グローバル変数に保存（後でサマリーJSONに含める）
+        # summary_listに直接追加（より確実な方法）
+        if (!exists("summary_list")) {{
+            summary_list <- list()
+        }}
+        if (is.null(summary_list$subgroup_exclusions)) {{
+            summary_list$subgroup_exclusions <- list()
+        }}
+        summary_list$subgroup_exclusions[['{subgroup_col_name}']] <- excluded_info
+        
+        # バックアップとしてグローバル変数にも保存
         if (!exists("subgroup_exclusions")) {{
             subgroup_exclusions <<- list()
         }}
         subgroup_exclusions[['{subgroup_col_name}']] <<- excluded_info
+        
+        # デバッグ用ログ出力
+        cat("DEBUG: Excluded subgroups for {subgroup_col_name}:", paste(excluded_subgroups, collapse=", "), "\n")
+        cat("DEBUG: subgroup_exclusions variable exists:", exists("subgroup_exclusions"), "\n")
+        cat("DEBUG: summary_list$subgroup_exclusions exists:", !is.null(summary_list$subgroup_exclusions), "\n")
     }}
     
     # 行位置を計算 (下から上へ)
@@ -764,6 +778,10 @@ tryCatch({
 # サブグループ除外情報をサマリーに追加
 if (exists("subgroup_exclusions")) {{
     summary_list$subgroup_exclusions <- subgroup_exclusions
+    cat("DEBUG: Adding subgroup_exclusions to summary_list\n")
+    cat("DEBUG: subgroup_exclusions content:", paste(names(subgroup_exclusions), collapse=", "), "\n")
+}} else {{
+    cat("DEBUG: subgroup_exclusions variable does not exist\n")
 }}
 
 # main_analysis_methodをトップレベルに移動（ゼロセル対応から）
