@@ -351,8 +351,8 @@ dev.off()
 """,
             "subgroup_forest_plot_template": """
 # サブグループ '{subgroup_col_name}' のフォレストプロット
-if (exists("res_by_subgroup_{subgroup_col_name}") && !is.null(res_by_subgroup_{subgroup_col_name}) && 
-    exists("res_subgroup_test_{subgroup_col_name}") && !is.null(res_subgroup_test_{subgroup_col_name}) &&
+if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_var_name}) && 
+    exists("res_subgroup_test_{safe_var_name}") && !is.null(res_subgroup_test_{safe_var_name}) &&
     exists("res_for_plot") && !is.null(res_for_plot)) {{ # res_for_plot の存在も確認
     
     # --- プロットサイズパラメータ ---
@@ -363,7 +363,7 @@ if (exists("res_by_subgroup_{subgroup_col_name}") && !is.null(res_by_subgroup_{s
     extra_rows_sg_val <- {extra_rows_subgroup_placeholder}
 
     # --- サブグループごとの行位置計算 ---
-    sg_level_names <- names(res_by_subgroup_{subgroup_col_name})
+    sg_level_names <- names(res_by_subgroup_{safe_var_name})
     n_sg_levels <- length(sg_level_names)
     
     # データをサブグループでソート
@@ -631,7 +631,7 @@ if (exists("res_by_subgroup_{subgroup_col_name}") && !is.null(res_by_subgroup_{s
         addpoly({res_for_plot_model_name}, row=overall_row, mlab=overall_mlab, cex=0.75, font=2)
 
         # サブグループ間の差の検定結果を追加
-        test_res_sg <- res_subgroup_test_{subgroup_col_name}
+        test_res_sg <- res_subgroup_test_{safe_var_name}
         text(-16, ylim_bottom + 0.5, pos=4, cex=0.75,
              sprintf("Test for Subgroup Differences (Q_M = %.2f, df = %d, p = %.3f)",
                     test_res_sg$QM, test_res_sg$p - 1, test_res_sg$QMp))
@@ -1169,32 +1169,35 @@ if (exists("zero_cells_summary") && !is.null(zero_cells_summary$studies_with_zer
         
         subgroup_codes = []
         for subgroup_col in subgroup_columns:
-            # サブグループテスト用のモデル (res_subgroup_test_{subgroup_col} に結果を格納)
+            # R変数名として安全な名前を生成（英数字とアンダースコアのみ）
+            safe_var_name = "".join(c if c.isalnum() or c == "_" else "_" for c in subgroup_col)
+            
+            # サブグループテスト用のモデル (res_subgroup_test_{safe_var_name} に結果を格納)
             subgroup_test_model_code = f"""
 # Subgroup moderation test for '{subgroup_col}'
 valid_data_for_subgroup_test <- dat[is.finite(dat$yi) & is.finite(dat$vi) & dat$vi > 0, ]
 
 if (nrow(valid_data_for_subgroup_test) >= 2 && "{subgroup_col}" %in% names(valid_data_for_subgroup_test)) {{
     tryCatch({{
-        res_subgroup_test_{subgroup_col} <- rma(yi, vi, mods = ~ factor(`{subgroup_col}`), data=valid_data_for_subgroup_test, method="{method}")
+        res_subgroup_test_{safe_var_name} <- rma(yi, vi, mods = ~ factor(`{subgroup_col}`), data=valid_data_for_subgroup_test, method="{method}")
         print("Subgroup test for '{subgroup_col}' completed")
     }}, error = function(e) {{
         print(sprintf("Subgroup test for '{subgroup_col}' failed: %s", e$message))
-        res_subgroup_test_{subgroup_col} <- NULL
+        res_subgroup_test_{safe_var_name} <- NULL
     }})
 }} else {{
     print("Subgroup test for '{subgroup_col}': 有効データが不足またはカラムが存在しません")
-    res_subgroup_test_{subgroup_col} <- NULL
+    res_subgroup_test_{safe_var_name} <- NULL
 }}"""
             
-            # 各サブグループごとの解析結果を格納するリストを作成 (res_by_subgroup_{subgroup_col} に結果を格納)
+            # 各サブグループごとの解析結果を格納するリストを作成 (res_by_subgroup_{safe_var_name} に結果を格納)
             # splitとlapplyを使って、各サブグループレベルでrmaを実行し、結果をリストにまとめる
             subgroup_by_level_code = f"""
 # Subgroup analysis for '{subgroup_col}' by levels
 if ("{subgroup_col}" %in% names(dat)) {{
-    dat_split_{subgroup_col} <- split(dat, dat[['{subgroup_col}']])
-    res_by_subgroup_{subgroup_col} <- lapply(names(dat_split_{subgroup_col}), function(level_name) {{
-        current_data_sg <- dat_split_{subgroup_col}[[level_name]]
+    dat_split_{safe_var_name} <- split(dat, dat[['{subgroup_col}']])
+    res_by_subgroup_{safe_var_name} <- lapply(names(dat_split_{safe_var_name}), function(level_name) {{
+        current_data_sg <- dat_split_{safe_var_name}[[level_name]]
         if (nrow(current_data_sg) > 0) {{
             # 無限大値をチェックして除外
             valid_sg_data <- current_data_sg[is.finite(current_data_sg$yi) & is.finite(current_data_sg$vi) & current_data_sg$vi > 0, ]
@@ -1218,14 +1221,14 @@ if ("{subgroup_col}" %in% names(dat)) {{
         }}
     }})
     # NULL要素をリストから除去
-    res_by_subgroup_{subgroup_col} <- res_by_subgroup_{subgroup_col}[!sapply(res_by_subgroup_{subgroup_col}, is.null)]
+    res_by_subgroup_{safe_var_name} <- res_by_subgroup_{safe_var_name}[!sapply(res_by_subgroup_{safe_var_name}, is.null)]
     # リストの要素に名前を付ける (サブグループのレベル名)
-    if (length(res_by_subgroup_{subgroup_col}) > 0) {{
-        names(res_by_subgroup_{subgroup_col}) <- sapply(res_by_subgroup_{subgroup_col}, function(x) x$subgroup_level)
+    if (length(res_by_subgroup_{safe_var_name}) > 0) {{
+        names(res_by_subgroup_{safe_var_name}) <- sapply(res_by_subgroup_{safe_var_name}, function(x) x$subgroup_level)
     }}
 }} else {{
-    res_subgroup_test_{subgroup_col} <- NULL
-    res_by_subgroup_{subgroup_col} <- NULL
+    res_subgroup_test_{safe_var_name} <- NULL
+    res_by_subgroup_{safe_var_name} <- NULL
     print("Subgroup column '{subgroup_col}' not found in data for subgroup analysis.")
 }}
 """
@@ -1269,12 +1272,13 @@ if ("{subgroup_col}" %in% names(dat)) {{
                 if sg_col not in data_summary.get("columns", []):
                     logger.warning(f"サブグループ列 '{sg_col}' がデータに存在しないため、サブグループプロットをスキップします。")
                     continue
-                safe_sg_col_name = "".join(c if c.isalnum() else "_" for c in sg_col)
-                sg_forest_plot_path = f"{subgroup_plot_prefix}_{safe_sg_col_name}.png".replace('\\', '/')
+                safe_var_name = "".join(c if c.isalnum() or c == "_" else "_" for c in sg_col)
+                sg_forest_plot_path = f"{subgroup_plot_prefix}_{safe_var_name}.png".replace('\\', '/')
                 plot_parts.append(
                     self._safe_format(
                         self.templates["subgroup_forest_plot_template"],
                         subgroup_col_name=sg_col,
+                        safe_var_name=safe_var_name,  # 安全な変数名を追加で渡す
                         subgroup_forest_plot_path=sg_forest_plot_path,
                         measure_for_plot=analysis_params.get("measure", "RR"),
                         ai_col=ai_col, bi_col=bi_col, ci_col=ci_col, di_col=di_col,
@@ -1327,23 +1331,25 @@ if ("{subgroup_col}" %in% names(dat)) {{
                 # サブグループ列が実際にデータに存在するか確認
                 if subgroup_col not in data_summary.get("columns", []):
                     continue # スキップ
-                additional_objects_to_save.append(f"res_subgroup_test_{subgroup_col}")
-                additional_objects_to_save.append(f"res_by_subgroup_{subgroup_col}")
+                # R変数名として安全な名前を生成（英数字とアンダースコアのみ）
+                safe_var_name = "".join(c if c.isalnum() or c == "_" else "_" for c in subgroup_col)
+                additional_objects_to_save.append(f"res_subgroup_test_{safe_var_name}")
+                additional_objects_to_save.append(f"res_by_subgroup_{safe_var_name}")
                 subgroup_json_str_parts.append(f"""
-    if (exists("res_subgroup_test_{subgroup_col}") && !is.null(res_subgroup_test_{subgroup_col})) {{
-        summary_list$subgroup_moderation_test_{subgroup_col} <- list(
-            subgroup_column = "{subgroup_col}", QM = res_subgroup_test_{subgroup_col}$QM,
-            QMp = res_subgroup_test_{subgroup_col}$QMp, df = res_subgroup_test_{subgroup_col}$p -1, # df is p-1 for QM
-            summary_text = paste(capture.output(print(res_subgroup_test_{subgroup_col})), collapse = "\\n")
+    if (exists("res_subgroup_test_{safe_var_name}") && !is.null(res_subgroup_test_{safe_var_name})) {{
+        summary_list$subgroup_moderation_test_{safe_var_name} <- list(
+            subgroup_column = "{subgroup_col}", QM = res_subgroup_test_{safe_var_name}$QM,
+            QMp = res_subgroup_test_{safe_var_name}$QMp, df = res_subgroup_test_{safe_var_name}$p -1, # df is p-1 for QM
+            summary_text = paste(capture.output(print(res_subgroup_test_{safe_var_name})), collapse = "\\n")
         )
     }}
-    if (exists("res_by_subgroup_{subgroup_col}") && !is.null(res_by_subgroup_{subgroup_col}) && length(res_by_subgroup_{subgroup_col}) > 0) {{
-        subgroup_results_list_{subgroup_col} <- list()
-        for (subgroup_name_idx in seq_along(res_by_subgroup_{subgroup_col})) {{
-            current_res_sg <- res_by_subgroup_{subgroup_col}[[subgroup_name_idx]]
-            subgroup_level_name <- names(res_by_subgroup_{subgroup_col})[subgroup_name_idx]
+    if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_var_name}) && length(res_by_subgroup_{safe_var_name}) > 0) {{
+        subgroup_results_list_{safe_var_name} <- list()
+        for (subgroup_name_idx in seq_along(res_by_subgroup_{safe_var_name})) {{
+            current_res_sg <- res_by_subgroup_{safe_var_name}[[subgroup_name_idx]]
+            subgroup_level_name <- names(res_by_subgroup_{safe_var_name})[subgroup_name_idx]
             if (!is.null(current_res_sg)) {{ # NULLチェックを追加
-                subgroup_results_list_{subgroup_col}[[subgroup_level_name]] <- list(
+                subgroup_results_list_{safe_var_name}[[subgroup_level_name]] <- list(
                     k = current_res_sg$k, estimate = as.numeric(current_res_sg$b)[1], 
                     se = as.numeric(current_res_sg$se)[1], zval = as.numeric(current_res_sg$zval)[1],
                     pval = as.numeric(current_res_sg$pval)[1], ci_lb = as.numeric(current_res_sg$ci.lb)[1],
@@ -1352,7 +1358,7 @@ if ("{subgroup_col}" %in% names(dat)) {{
                 )
             }}
         }}
-        summary_list$subgroup_analyses_{subgroup_col} <- subgroup_results_list_{subgroup_col}
+        summary_list$subgroup_analyses_{safe_var_name} <- subgroup_results_list_{safe_var_name}
     }}
 """)
         regression_json_str = ""
@@ -1410,9 +1416,9 @@ if ("{subgroup_col}" %in% names(dat)) {{
             subgroup_plot_prefix = output_paths.get("forest_plot_subgroup_prefix", "forest_plot_subgroup")
             for sg_col in subgroup_columns:
                 if sg_col not in data_summary.get("columns", []): continue
-                safe_sg_col_name = "".join(c if c.isalnum() else "_" for c in sg_col)
-                sg_forest_plot_path = f"{subgroup_plot_prefix}_{safe_sg_col_name}.png".replace('\\\\', '/')
-                generated_plots_r_list.append(f'list(label = "forest_plot_subgroup_{safe_sg_col_name}", path = "{sg_forest_plot_path}")')
+                safe_var_name = "".join(c if c.isalnum() or c == "_" else "_" for c in sg_col)
+                sg_forest_plot_path = f"{subgroup_plot_prefix}_{safe_var_name}.png".replace('\\\\', '/')
+                generated_plots_r_list.append(f'list(label = "forest_plot_subgroup_{safe_var_name}", path = "{sg_forest_plot_path}")')
         
         if output_paths.get("funnel_plot_path"):
             funnel_plot_path_cleaned = output_paths["funnel_plot_path"].replace("\\\\", "/")

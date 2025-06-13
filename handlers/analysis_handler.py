@@ -94,17 +94,35 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
         
         # CSVの列情報を取得（Geminiの分析結果から）
         column_descriptions = csv_analysis.get("column_descriptions", {})
-        csv_columns = list(column_descriptions.keys()) if column_descriptions else []
+        csv_columns_original = list(column_descriptions.keys()) if column_descriptions else []
         
         # data_previewからも列名を取得（フォールバック）
         data_preview = csv_analysis.get("data_preview", [])
-        if not csv_columns and data_preview:
-            csv_columns = list(data_preview[0].keys()) if data_preview else []
+        if not csv_columns_original and data_preview:
+            csv_columns_original = list(data_preview[0].keys()) if data_preview else []
+        
+        # 列名をクリーンアップ（file_utils.pyと同じ処理）
+        def clean_column_name(name):
+            import re
+            if not name:
+                return name
+            # 全角スペースを半角スペースに統一
+            name = name.replace('　', ' ')
+            # 前後のスペースを削除
+            name = name.strip()
+            # 連続するスペースを1つに
+            name = re.sub(r'\s+', ' ', name)
+            # 残った半角スペースをアンダースコアに置換
+            name = name.replace(' ', '_')
+            return name
+        
+        # クリーンアップされた列名を使用（Rスクリプトが実際に読み込むCSVと一致させる）
+        csv_columns = [clean_column_name(col) for col in csv_columns_original]
         
         # デバッグログ追加
-        logger.info(f"Debug - CSV column extraction: column_descriptions keys: {list(column_descriptions.keys()) if column_descriptions else 'None'}")
+        logger.info(f"Debug - CSV column extraction: original column names: {csv_columns_original}")
+        logger.info(f"Debug - CSV column extraction: cleaned column names: {csv_columns}")
         logger.info(f"Debug - CSV column extraction: data_preview sample: {data_preview[0] if data_preview else 'None'}")
-        logger.info(f"Debug - CSV column extraction: final csv_columns: {csv_columns}")
         
         data_summary = {
             "csv_file_path": str(temp_csv_path),

@@ -186,17 +186,24 @@ def create_analysis_result_message(analysis_result_from_r: Dict[str, Any]) -> st
     subgroup_text = ""
     for key, value in summary.items():
         if key.startswith('subgroup_moderation_test_'):
-            subgroup_var = key.replace('subgroup_moderation_test_', '')
             if isinstance(value, dict):
+                # R側で保存した実際のカラム名を使用
+                subgroup_var = value.get('subgroup_column', key.replace('subgroup_moderation_test_', ''))
                 qm_p = value.get('QMp', 'N/A')
                 if isinstance(qm_p, (int, float)):
                     qm_p = f"{qm_p:.3f}"
                 subgroup_text += f"\n• {subgroup_var}別サブグループ解析: p={qm_p}"
         
         elif key.startswith('subgroup_analyses_'):
-            subgroup_var = key.replace('subgroup_analyses_', '')
+            safe_var_name = key.replace('subgroup_analyses_', '')
             if isinstance(value, dict):
-                subgroup_text += f"\n\n**【{subgroup_var}別サブグループ結果】**"
+                # subgroup_moderation_testから実際のカラム名を取得
+                actual_col_name = safe_var_name  # デフォルト
+                moderation_key = f'subgroup_moderation_test_{safe_var_name}'
+                if moderation_key in summary and isinstance(summary[moderation_key], dict):
+                    actual_col_name = summary[moderation_key].get('subgroup_column', safe_var_name)
+                
+                subgroup_text += f"\n\n**【{actual_col_name}別サブグループ結果】**"
                 for level_name, level_result in value.items():
                     if isinstance(level_result, dict):
                         sg_estimate = level_result.get('estimate', 'N/A')
