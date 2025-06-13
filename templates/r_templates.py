@@ -94,7 +94,8 @@ res <- rma.mh(ai=`{ai}`, bi=`{bi}`, ci=`{ci}`, di=`{di}`, data=dat, measure="{me
 """,
             "main_analysis_selection": """
 # 主解析手法の選択（ゼロセルがある場合はMH法、ない場合は逆分散法）
-if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells > 0) {{
+if (exists("zero_cells_summary") && !is.null(zero_cells_summary$studies_with_zero_cells) && 
+    !is.na(zero_cells_summary$studies_with_zero_cells) && zero_cells_summary$studies_with_zero_cells > 0) {{
     print("ゼロセルが検出されました。主解析にMantel-Haenszel法を使用します。")
     main_analysis_method <- "MH"
     
@@ -116,17 +117,38 @@ if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells >
 }}
 """,
             "zero_cell_analysis": """
-# ゼロセル分析
+# ゼロセル分析（NA値を適切に処理）
 zero_cells_summary <- list()
 zero_cells_summary$total_studies <- nrow(dat)
-zero_cells_summary$studies_with_zero_cells <- sum((dat$`{ai}` == 0) | (dat$`{bi}` == 0) | (dat$`{ci}` == 0) | (dat$`{di}` == 0))
-zero_cells_summary$double_zero_studies <- sum((dat$`{ai}` == 0 & dat$`{ci}` == 0))
-zero_cells_summary$zero_in_treatment <- sum(dat$`{ai}` == 0)
-zero_cells_summary$zero_in_control <- sum(dat$`{ci}` == 0)
 
-print("ゼロセル分析:")
+# NA値を除いてゼロセルを計算
+valid_rows <- !is.na(dat$`{ai}`) & !is.na(dat$`{bi}`) & !is.na(dat$`{ci}`) & !is.na(dat$`{di}`)
+zero_cells_summary$valid_studies <- sum(valid_rows, na.rm=TRUE)
+
+if (zero_cells_summary$valid_studies > 0) {{
+    valid_dat <- dat[valid_rows, ]
+    zero_cells_summary$studies_with_zero_cells <- sum((valid_dat$`{ai}` == 0) | (valid_dat$`{bi}` == 0) | (valid_dat$`{ci}` == 0) | (valid_dat$`{di}` == 0), na.rm=TRUE)
+    zero_cells_summary$double_zero_studies <- sum((valid_dat$`{ai}` == 0 & valid_dat$`{ci}` == 0), na.rm=TRUE)
+    zero_cells_summary$zero_in_treatment <- sum(valid_dat$`{ai}` == 0, na.rm=TRUE)
+    zero_cells_summary$zero_in_control <- sum(valid_dat$`{ci}` == 0, na.rm=TRUE)
+}} else {{
+    zero_cells_summary$studies_with_zero_cells <- 0
+    zero_cells_summary$double_zero_studies <- 0
+    zero_cells_summary$zero_in_treatment <- 0
+    zero_cells_summary$zero_in_control <- 0
+}}
+
+print("📊 ゼロセル分析:")
 if (exists("zero_cells_summary")) {{
   print(paste("総研究数:", zero_cells_summary$total_studies))
+  print(paste("有効研究数（NA値除外後）:", zero_cells_summary$valid_studies))
+  
+  # NA値により除外された研究があれば警告
+  excluded_count <- zero_cells_summary$total_studies - zero_cells_summary$valid_studies
+  if (excluded_count > 0) {{
+    print(paste("⚠️ ", excluded_count, "件の研究がNA値のため解析から除外されました"))
+  }}
+  
   print(paste("ゼロセルを含む研究数:", zero_cells_summary$studies_with_zero_cells))
   print(paste("両群ゼロ研究数:", zero_cells_summary$double_zero_studies))
   print(paste("介入群ゼロ研究数:", zero_cells_summary$zero_in_treatment))
@@ -134,7 +156,8 @@ if (exists("zero_cells_summary")) {{
 }}
 
 # ゼロセルがある場合の推奨手法の判定
-if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells > 0) {{
+if (exists("zero_cells_summary") && !is.null(zero_cells_summary$studies_with_zero_cells) && 
+    !is.na(zero_cells_summary$studies_with_zero_cells) && zero_cells_summary$studies_with_zero_cells > 0) {{
     print("ゼロセルが検出されました。Mantel-Haenszel法を推奨します。")
     recommended_method <- "MH"
 }} else {{
@@ -744,7 +767,8 @@ if (exists("subgroup_exclusions")) {{
 }}
 
 # main_analysis_methodをトップレベルに移動（ゼロセル対応から）
-if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells > 0) {{
+if (exists("zero_cells_summary") && !is.null(zero_cells_summary$studies_with_zero_cells) && 
+    !is.na(zero_cells_summary$studies_with_zero_cells) && zero_cells_summary$studies_with_zero_cells > 0) {{
     summary_list$main_analysis_method <- "Mantel-Haenszel (no correction)"
 }} else {{
     summary_list$main_analysis_method <- "Inverse Variance (standard)"
@@ -823,7 +847,8 @@ if (exists("dat") && !is.null(dat) && "{sensitivity_variable}" %in% names(dat) &
 """,
             "zero_cell_sensitivity": """
 # ゼロセル対応の感度解析（主解析以外の手法で比較）
-if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells > 0) {{
+if (exists("zero_cells_summary") && !is.null(zero_cells_summary$studies_with_zero_cells) && 
+    !is.na(zero_cells_summary$studies_with_zero_cells) && zero_cells_summary$studies_with_zero_cells > 0) {{
     sensitivity_results <- list()
     
     # 主解析の結果を記録
@@ -1465,10 +1490,18 @@ numeric_cols_to_check <- c()
                     numeric_conversion_code.append(f"""
 if ("{col_name}" %in% names(dat)) {{
     cat("数値変換: {col_name}\\n")
+    original_values <- dat$`{col_name}`
     dat$`{col_name}` <- as.numeric(as.character(dat$`{col_name}`))
     invalid_rows <- which(is.na(dat$`{col_name}`))
     if (length(invalid_rows) > 0) {{
-        cat("警告: {col_name}列でNA値または非数値データが検出されました（行: ", paste(invalid_rows, collapse=", "), "）\\n")
+        cat("⚠️ データ品質警告: {col_name}列でNA値または非数値データが検出されました\\n")
+        cat("   対象行: ", paste(invalid_rows, collapse=", "), "\\n")
+        if ("{data_cols.get('study_label', 'study_id')}" %in% names(dat)) {{
+            invalid_studies <- dat[invalid_rows, "{data_cols.get('study_label', 'study_id')}"]
+            cat("   該当研究: ", paste(invalid_studies, collapse=", "), "\\n")
+        }}
+        cat("   元の値: ", paste(original_values[invalid_rows], collapse=", "), "\\n")
+        cat("   これらの研究は解析から除外されます\\n")
     }}
 }}""")
         

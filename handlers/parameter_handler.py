@@ -17,11 +17,20 @@ from utils.conversation_state import get_or_create_state, save_state
 _parameter_states = {}
 
 def clean_column_name(name):
-    """カラム名をクリーンアップ（スペースをアンダースコアに置換）"""
+    """カラム名をクリーンアップ（file_utils.pyと同じロジックを使用）"""
     if not name:
         return name
-    # スペースをアンダースコアに置換
-    return name.replace(' ', '_')
+    
+    import re
+    # 全角スペースを半角スペースに統一
+    name = name.replace('　', ' ')
+    # 前後のスペースを削除
+    name = name.strip()
+    # 連続するスペースを1つに
+    name = re.sub(r'\s+', ' ', name)
+    # 残った半角スペースをアンダースコアに置換
+    name = name.replace(' ', '_')
+    return name
 
 # 自然言語パラメータ収集用のメッセージハンドラー（register_parameter_handlers外に移動）
 async def handle_natural_language_parameters(message, say, client, logger):
