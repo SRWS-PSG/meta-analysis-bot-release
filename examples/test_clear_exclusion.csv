@@ -1,0 +1,10 @@
+study_id,publication_year,region,age,mean_age,intervention_dose,follow_up_months,risk_of_bias,events_treatment,total_treatment,events_control,total_control
+S01,2012,USA,Adult,18,High,43,Some concerns,6,377,17,107
+S02,2012,Canada,Adult,74,Low,20,Some concerns,2,66,6,65
+S03,2018,USA,Pediatric,24,High,54,Some concerns,1,351,20,192
+S04,2016,Canada,Pediatric,10,Low,40,Low,24,102,6,97
+S05,2024,USA,Adult,13,High,48,Low,70,243,18,90
+S06,2017,Canada,Pediatric,51,High,29,Some concerns,29,198,6,90
+S07,2024,USA,Adult,25,Low,30,Some concerns,17,157,18,393
+S08,2006,Canada,Adult,45,Low,23,Low,56,377,83,335
+S09,2020,Japan,Pediatric,23,Low,14,Low,40,158,54,340
