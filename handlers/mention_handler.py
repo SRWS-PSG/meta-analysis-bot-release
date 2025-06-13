@@ -429,10 +429,14 @@ def register_mention_handlers(app: App):
             if event.get("bot_id"):
                 return
             
-            # メンションが含まれている場合はapp_mentionハンドラーに任せる
+            # メンションが含まれている場合、チャンネル直下ならapp_mentionハンドラーに任せる
+            # スレッド内の場合は対話処理を続行
             text = event.get("text", "")
-            if text and f"<@{client.auth_test()['user_id']}>" in text:
-                logger.info("Message contains mention, skipping in message handler (will be handled by app_mention)")
+            has_mention = text and f"<@{client.auth_test()['user_id']}>" in text
+            is_in_thread = "thread_ts" in event
+            
+            if has_mention and not is_in_thread:
+                logger.info("Message contains mention in channel root, skipping in message handler (will be handled by app_mention)")
                 return
             
             # スレッド内のメッセージかチェック
