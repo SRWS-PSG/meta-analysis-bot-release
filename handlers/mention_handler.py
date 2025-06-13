@@ -394,6 +394,60 @@ def register_mention_handlers(app: App):
                     )
                     logger.info(f"CSV text processing job submitted with ID: {job_id}")
                 else:
+                    # スレッド内でパラメータ収集中かチェック
+                    if thread_ts and thread_ts != event["ts"]:
+                        # スレッド内のメッセージの場合、パラメータ収集の対話を確認
+                        from utils.conversation_state import get_state, DialogState
+                        logger.info(f"Checking conversation state for app_mention in thread_ts={thread_ts}")
+                        state = get_state(thread_ts, channel_id)
+                        logger.info(f"Retrieved state for app_mention: {state.state if state else 'None'}")
+                        
+                        if state and state.state == DialogState.ANALYSIS_PREFERENCE:
+                            # パラメータ収集中の場合
+                            logger.info(f"Processing parameter collection in app_mention thread {thread_ts}: {clean_text}")
+                            
+                            # パラメータ収集を非同期で実行
+                            import asyncio
+                            from handlers.parameter_handler import handle_natural_language_parameters
+                            
+                            def run_parameter_processing():
+                                loop = asyncio.new_event_loop()
+                                asyncio.set_event_loop(loop)
+                                
+                                async def process_params():
+                                    # message オブジェクトを構築
+                                    message = {
+                                        'channel': channel_id,
+                                        'thread_ts': thread_ts,
+                                        'text': clean_text,
+                                        'user': user_id,
+                                        'ts': event.get('ts')
+                                    }
+                                    
+                                    # say 関数を定義
+                                    async def say(msg_text, thread_ts=None):
+                                        outer_thread_ts = message.get("thread_ts") or event.get("thread_ts", event["ts"])
+                                        current_thread_ts = thread_ts or outer_thread_ts
+                                        client.chat_postMessage(channel=channel_id, thread_ts=current_thread_ts, text=msg_text)
+                                    
+                                    await handle_natural_language_parameters(message, say, client, logger)
+                                
+                                try:
+                                    loop.run_until_complete(process_params())
+                                    logger.info("Parameter processing completed in app_mention")
+                                except Exception as e:
+                                    logger.error(f"Error in parameter processing: {e}", exc_info=True)
+                                finally:
+                                    loop.close()
+                            
+                            job_manager = get_job_manager()
+                            job_id = job_manager.submit_job(
+                                job_id=f"app_mention_param_processing_{channel_id}_{thread_ts}_{int(time.time())}",
+                                func=run_parameter_processing
+                            )
+                            logger.info(f"App mention parameter processing job submitted with ID: {job_id}")
+                            return
+                    
                     # その他のテキストが含まれている場合
                     response_text = (
                         f"メッセージを受信しました: 「{clean_text}」\n\n"
