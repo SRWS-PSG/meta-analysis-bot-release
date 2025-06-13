@@ -424,9 +424,9 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
         subgroup_exclusions[['{subgroup_col_name}']] <<- excluded_info
         
         # デバッグ用ログ出力
-        cat("DEBUG: Excluded subgroups for {subgroup_col_name}:", paste(excluded_subgroups, collapse=", "), "\n")
-        cat("DEBUG: subgroup_exclusions variable exists:", exists("subgroup_exclusions"), "\n")
-        cat("DEBUG: summary_list$subgroup_exclusions exists:", !is.null(summary_list$subgroup_exclusions), "\n")
+        print(paste("DEBUG: Excluded subgroups for {subgroup_col_name}:", paste(excluded_subgroups, collapse=", ")))
+        print(paste("DEBUG: subgroup_exclusions variable exists:", exists("subgroup_exclusions")))
+        print(paste("DEBUG: summary_list$subgroup_exclusions exists:", !is.null(summary_list$subgroup_exclusions)))
     }}
     
     # 行位置を計算 (下から上へ)
@@ -457,6 +457,9 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
     # 全ての研究の行位置を統合
     all_study_rows <- unlist(rows_list[sg_level_names])
     
+    # 除外後のデータでdat_orderedを再作成（重要な修正）
+    dat_ordered_filtered <- dat_ordered[dat_ordered[['{subgroup_col_name}']] %in% valid_sg_names, ]
+    
     # ylimを設定 (十分な空間を確保)
     ylim_bottom <- min(subtotal_rows) - 3
     ylim_top <- max(all_study_rows) + 3
@@ -486,17 +489,17 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
             n1i_col_main <- "{n1i_col}"
             n2i_col_main <- "{n2i_col}"
             
-            # Events/Total 形式で表示
+            # Events/Total 形式で表示（除外後のデータを使用）
             if (ai_col_main != "" && ci_col_main != "" && n1i_col_main != "" && n2i_col_main != "" &&
                 all(c(ai_col_main, ci_col_main, n1i_col_main, n2i_col_main) %in% names(dat))) {{
-                treatment_display_main <- paste(dat_ordered[[ai_col_main]], "/", dat_ordered[[n1i_col_main]], sep="")
-                control_display_main <- paste(dat_ordered[[ci_col_main]], "/", dat_ordered[[n2i_col_main]], sep="")
+                treatment_display_main <- paste(dat_ordered_filtered[[ai_col_main]], "/", dat_ordered_filtered[[n1i_col_main]], sep="")
+                control_display_main <- paste(dat_ordered_filtered[[ci_col_main]], "/", dat_ordered_filtered[[n2i_col_main]], sep="")
                 ilab_data_main <- cbind(treatment_display_main, control_display_main)
                 ilab_xpos_main <- c(-8.5, -5.5)
                 ilab_lab_main <- c("Events/Total", "Events/Total")
             }} else if (ai_col_main != "" && ci_col_main != "" && all(c(ai_col_main, ci_col_main) %in% names(dat))) {{
-                # フォールバック: イベント数のみ
-                ilab_data_main <- cbind(dat_ordered[[ai_col_main]], dat_ordered[[ci_col_main]])
+                # フォールバック: イベント数のみ（除外後のデータを使用）
+                ilab_data_main <- cbind(dat_ordered_filtered[[ai_col_main]], dat_ordered_filtered[[ci_col_main]])
                 ilab_xpos_main <- c(-8.5, -5.5)
                 ilab_lab_main <- c("Events", "Events")
             }}
@@ -506,7 +509,7 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
             n2i_col_main <- "{n2i_col}"
             
             if (n1i_col_main != "" && n2i_col_main != "" && all(c(n1i_col_main, n2i_col_main) %in% names(dat))) {{
-                ilab_data_main <- cbind(dat_ordered[[n1i_col_main]], dat_ordered[[n2i_col_main]])
+                ilab_data_main <- cbind(dat_ordered_filtered[[n1i_col_main]], dat_ordered_filtered[[n2i_col_main]])
                 ilab_xpos_main <- c(-8.5, -5.5)
                 ilab_lab_main <- c("N", "N")
             }}
@@ -515,7 +518,7 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
         # メインのforest plotを描画（サブグループ順序、行位置指定）
         forest_sg_args <- list(
             x = {res_for_plot_model_name}, # res_for_plot を使用
-            slab = dat_ordered$slab,
+            slab = dat_ordered_filtered$slab,  # 除外後のデータを使用
             rows = all_study_rows,
             ylim = c(ylim_bottom, ylim_top),
             atransf = if(apply_exp_transform) exp else I,
@@ -563,8 +566,8 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
                     if (ai_col_sg != "" && ci_col_sg != "" && n1i_col_sg != "" && n2i_col_sg != "" &&
                         all(c(ai_col_sg, ci_col_sg, n1i_col_sg, n2i_col_sg) %in% names(dat))) {{
                         
-                        # このサブグループのデータのみを抽出
-                        sg_data <- dat_ordered[dat_ordered[['{subgroup_col_name}']] == sg_name, ]
+                        # このサブグループのデータのみを抽出（除外後のデータから）
+                        sg_data <- dat_ordered_filtered[dat_ordered_filtered[['{subgroup_col_name}']] == sg_name, ]
                         
                         if (nrow(sg_data) > 0) {{
                             sg_total_ai <- sum(sg_data[[ai_col_sg]], na.rm = TRUE)
@@ -589,7 +592,7 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
                     n2i_col_sg <- "{n2i_col}"
                     
                     if (n1i_col_sg != "" && n2i_col_sg != "" && all(c(n1i_col_sg, n2i_col_sg) %in% names(dat))) {{
-                        sg_data <- dat_ordered[dat_ordered[['{subgroup_col_name}']] == sg_name, ]
+                        sg_data <- dat_ordered_filtered[dat_ordered_filtered[['{subgroup_col_name}']] == sg_name, ]
                         
                         if (nrow(sg_data) > 0) {{
                             sg_total_n1i <- sum(sg_data[[n1i_col_sg]], na.rm = TRUE)
@@ -778,10 +781,10 @@ tryCatch({
 # サブグループ除外情報をサマリーに追加
 if (exists("subgroup_exclusions")) {{
     summary_list$subgroup_exclusions <- subgroup_exclusions
-    cat("DEBUG: Adding subgroup_exclusions to summary_list\n")
-    cat("DEBUG: subgroup_exclusions content:", paste(names(subgroup_exclusions), collapse=", "), "\n")
+    print("DEBUG: Adding subgroup_exclusions to summary_list")
+    print(paste("DEBUG: subgroup_exclusions content:", paste(names(subgroup_exclusions), collapse=", ")))
 }} else {{
-    cat("DEBUG: subgroup_exclusions variable does not exist\n")
+    print("DEBUG: subgroup_exclusions variable does not exist")
 }}
 
 # main_analysis_methodをトップレベルに移動（ゼロセル対応から）
