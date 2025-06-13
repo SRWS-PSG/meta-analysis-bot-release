@@ -125,14 +125,16 @@ zero_cells_summary$zero_in_treatment <- sum(dat$`{ai}` == 0)
 zero_cells_summary$zero_in_control <- sum(dat$`{ci}` == 0)
 
 print("ゼロセル分析:")
-print(paste("総研究数:", zero_cells_summary$total_studies))
-print(paste("ゼロセルを含む研究数:", zero_cells_summary$studies_with_zero_cells))
-print(paste("両群ゼロ研究数:", zero_cells_summary$double_zero_studies))
-print(paste("介入群ゼロ研究数:", zero_cells_summary$zero_in_treatment))
-print(paste("対照群ゼロ研究数:", zero_cells_summary$zero_in_control))
+if (exists("zero_cells_summary")) {{
+  print(paste("総研究数:", zero_cells_summary$total_studies))
+  print(paste("ゼロセルを含む研究数:", zero_cells_summary$studies_with_zero_cells))
+  print(paste("両群ゼロ研究数:", zero_cells_summary$double_zero_studies))
+  print(paste("介入群ゼロ研究数:", zero_cells_summary$zero_in_treatment))
+  print(paste("対照群ゼロ研究数:", zero_cells_summary$zero_in_control))
+}}
 
 # ゼロセルがある場合の推奨手法の判定
-if (zero_cells_summary$studies_with_zero_cells > 0) {{
+if (exists("zero_cells_summary") && zero_cells_summary$studies_with_zero_cells > 0) {{
     print("ゼロセルが検出されました。Mantel-Haenszel法を推奨します。")
     recommended_method <- "MH"
 }} else {{
