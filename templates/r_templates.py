@@ -1297,6 +1297,57 @@ if ("{subgroup_col}" %in% names(dat)) {{
 """
             subgroup_codes.append(f"\n# --- Subgroup analysis for '{subgroup_col}' ---\n{subgroup_test_model_code}\n{subgroup_by_level_code}")
         return "\n".join(subgroup_codes)
+    
+    def _generate_subgroup_exclusion_detection(self, subgroup_columns: List[str]) -> str:
+        """Generate early subgroup exclusion detection code that runs before forest plots"""
+        exclusion_codes = []
+        
+        exclusion_codes.append("# === Subgroup Exclusion Detection (Early) ===")
+        exclusion_codes.append("# Initialize exclusion tracking in summary_list")
+        exclusion_codes.append("if (!exists('summary_list')) { summary_list <- list() }")
+        exclusion_codes.append("if (is.null(summary_list$subgroup_exclusions)) { summary_list$subgroup_exclusions <- list() }")
+        exclusion_codes.append("")
+        
+        for subgroup_col in subgroup_columns:
+            safe_var_name = "".join(c if c.isalnum() or c == "_" else "_" for c in subgroup_col)
+            
+            exclusion_code = f'''
+# Detect exclusions for subgroup '{subgroup_col}'
+if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_var_name})) {{
+    # Get all subgroups in original data
+    all_subgroups_in_data <- unique(dat[['{subgroup_col}']])
+    
+    # Get subgroups that have valid analysis results 
+    subgroups_in_res <- names(res_by_subgroup_{safe_var_name})
+    
+    # Find excluded subgroups using setdiff
+    excluded_subgroups <- setdiff(all_subgroups_in_data, subgroups_in_res)
+    
+    print(paste("DEBUG: Early exclusion detection for {subgroup_col}"))
+    print(paste("DEBUG: All subgroups in data:", paste(all_subgroups_in_data, collapse=", ")))
+    print(paste("DEBUG: Valid subgroups in results:", paste(subgroups_in_res, collapse=", ")))
+    print(paste("DEBUG: Excluded subgroups:", paste(excluded_subgroups, collapse=", ")))
+    
+    # Save exclusion information if any subgroups were excluded
+    if (length(excluded_subgroups) > 0) {{
+        excluded_info <- list(
+            excluded_subgroups = excluded_subgroups,
+            reason = "insufficient_data_n_le_1",
+            included_subgroups = subgroups_in_res
+        )
+        
+        # Save to summary_list (this runs before forest plots, so no scoping issues)
+        summary_list$subgroup_exclusions[['{subgroup_col}']] <- excluded_info
+        
+        print(paste("DEBUG: Saved exclusion info for {subgroup_col} to summary_list"))
+        print(paste("DEBUG: Excluded subgroups saved:", paste(excluded_subgroups, collapse=", ")))
+    }} else {{
+        print(paste("DEBUG: No exclusions detected for {subgroup_col}"))
+    }}
+}}'''
+            exclusion_codes.append(exclusion_code)
+        
+        return "\n".join(exclusion_codes)
         
     def _generate_plot_code(self, analysis_params: Dict[str, Any], output_paths: Dict[str, str], data_summary: Dict[str, Any]) -> str:
         plot_parts = []
@@ -1664,6 +1715,10 @@ if (exists("main_analysis_method") && main_analysis_method == "MH") {{
                 subgroup_analysis_params["subgroups"] = valid_subgroup_cols
                 subgroup_code = self._generate_subgroup_code(subgroup_analysis_params)
                 script_parts.append(subgroup_code)
+                
+                # サブグループ除外情報を早期に検出・保存（森林プロット生成前）
+                subgroup_exclusion_code = self._generate_subgroup_exclusion_detection(valid_subgroup_cols)
+                script_parts.append(subgroup_exclusion_code)
             else:
                 logger.warning("指定されたサブグループ列がデータに存在しないため、サブグループ解析をスキップします。")
 
