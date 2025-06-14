@@ -489,6 +489,15 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
     # 全ての研究の行位置を統合
     all_study_rows <- unlist(rows_list[sg_level_names])
     
+    # 行位置をフィルタ済みデータのサイズに調整
+    if (length(all_study_rows) != length(filtered_indices)) {{
+        print("WARNING: Adjusting row positions to match filtered data size")
+        # 実際のフィルタ済みデータのサイズに基づいて行位置を再計算
+        total_filtered_studies <- length(filtered_indices)
+        current_row_adj <- total_filtered_studies + (n_sg_levels * 2) + 2
+        all_study_rows <- seq(1, total_filtered_studies)
+    }}
+    
     # ylimを設定 (十分な空間を確保)
     ylim_bottom <- min(subtotal_rows) - 3
     ylim_top <- max(all_study_rows) + 3
@@ -550,8 +559,22 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
         print(paste("DEBUG: Filtered data rows:", nrow(dat_ordered_filtered)))
         
         # フィルタ済みデータのインデックスを取得（Study列で照合）
-        filtered_indices <- which({res_for_plot_model_name}$data$Study %in% dat_ordered_filtered$Study)
+        if ("Study" %in% names({res_for_plot_model_name}$data)) {{
+            filtered_indices <- which({res_for_plot_model_name}$data$Study %in% dat_ordered_filtered$Study)
+        }} else {{
+            # Study列がない場合は、dat_ordered_filteredと同じ順序でインデックスを取得
+            original_order <- match(rownames(dat_ordered_filtered), rownames(dat))
+            filtered_indices <- original_order[!is.na(original_order)]
+        }}
+        
         print(paste("DEBUG: Filtered indices length:", length(filtered_indices)))
+        print(paste("DEBUG: dat_ordered_filtered rows:", nrow(dat_ordered_filtered)))
+        
+        # インデックスの長さがdat_ordered_filteredと一致することを確認
+        if (length(filtered_indices) != nrow(dat_ordered_filtered)) {{
+            print("ERROR: Index length mismatch, using sequential indices")
+            filtered_indices <- seq_len(nrow(dat_ordered_filtered))
+        }}
         
         # res_for_plotのコピーを作成し、フィルタ済みデータのみを含むようにする
         res_for_plot_filtered <- {res_for_plot_model_name}
@@ -577,11 +600,27 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
         
         print(paste("DEBUG: res_for_plot_filtered k:", res_for_plot_filtered$k))
         print(paste("DEBUG: res_for_plot_filtered data rows:", nrow(res_for_plot_filtered$data)))
+        print(paste("DEBUG: dat_ordered_filtered rows:", nrow(dat_ordered_filtered)))
+        print(paste("DEBUG: slab length:", length(dat_ordered_filtered$slab)))
+        
+        # データサイズの整合性を確認して修正
+        if (length(filtered_indices) != nrow(dat_ordered_filtered)) {{
+            print("WARNING: Size mismatch between filtered res_for_plot and dat_ordered_filtered")
+            print(paste("DEBUG: filtered_indices length:", length(filtered_indices)))
+            print(paste("DEBUG: dat_ordered_filtered rows:", nrow(dat_ordered_filtered)))
+            
+            # res_for_plot_filteredに対応するslabを取得
+            filtered_slab <- {res_for_plot_model_name}$data$slab[filtered_indices]
+        }} else {{
+            filtered_slab <- dat_ordered_filtered$slab
+        }}
+        
+        print(paste("DEBUG: Using slab length:", length(filtered_slab)))
         
         # メインのforest plotを描画（フィルタ済みのres_for_plotを使用）
         forest_sg_args <- list(
             x = res_for_plot_filtered, # フィルタ済みのオブジェクトを使用
-            slab = dat_ordered_filtered$slab,  # 除外後のデータを使用
+            slab = filtered_slab,  # サイズが一致するslabを使用
             rows = all_study_rows,
             ylim = c(ylim_bottom, ylim_top),
             atransf = if(apply_exp_transform) exp else I,
