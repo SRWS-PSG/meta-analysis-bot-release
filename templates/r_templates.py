@@ -560,9 +560,43 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
             }}
         }}
         
-        # メインのforest plotを描画（サブグループ順序、行位置指定）
+        # res_for_plotをフィルタリング（除外されたサブグループのデータを削除）
+        print("DEBUG: Filtering res_for_plot for subgroup forest plot")
+        print(paste("DEBUG: Original res_for_plot data rows:", nrow({res_for_plot_model_name}$data)))
+        print(paste("DEBUG: Filtered data rows:", nrow(dat_ordered_filtered)))
+        
+        # フィルタ済みデータのインデックスを取得（Study列で照合）
+        filtered_indices <- which({res_for_plot_model_name}$data$Study %in% dat_ordered_filtered$Study)
+        print(paste("DEBUG: Filtered indices length:", length(filtered_indices)))
+        
+        # res_for_plotのコピーを作成し、フィルタ済みデータのみを含むようにする
+        res_for_plot_filtered <- {res_for_plot_model_name}
+        
+        # 効果量と分散をフィルタリング
+        res_for_plot_filtered$yi <- {res_for_plot_model_name}$yi[filtered_indices]
+        res_for_plot_filtered$vi <- {res_for_plot_model_name}$vi[filtered_indices]
+        res_for_plot_filtered$se <- {res_for_plot_model_name}$se[filtered_indices]
+        
+        # その他の要素もフィルタリング（存在する場合）
+        if (!is.null({res_for_plot_model_name}$ni)) {{
+            res_for_plot_filtered$ni <- {res_for_plot_model_name}$ni[filtered_indices]
+        }}
+        if (!is.null({res_for_plot_model_name}$weights)) {{
+            res_for_plot_filtered$weights <- {res_for_plot_model_name}$weights[filtered_indices]
+        }}
+        
+        # データ行数を更新
+        res_for_plot_filtered$k <- length(filtered_indices)
+        
+        # データフレームもフィルタリング
+        res_for_plot_filtered$data <- {res_for_plot_model_name}$data[filtered_indices, ]
+        
+        print(paste("DEBUG: res_for_plot_filtered k:", res_for_plot_filtered$k))
+        print(paste("DEBUG: res_for_plot_filtered data rows:", nrow(res_for_plot_filtered$data)))
+        
+        # メインのforest plotを描画（フィルタ済みのres_for_plotを使用）
         forest_sg_args <- list(
-            x = {res_for_plot_model_name}, # res_for_plot を使用
+            x = res_for_plot_filtered, # フィルタ済みのオブジェクトを使用
             slab = dat_ordered_filtered$slab,  # 除外後のデータを使用
             rows = all_study_rows,
             ylim = c(ylim_bottom, ylim_top),
