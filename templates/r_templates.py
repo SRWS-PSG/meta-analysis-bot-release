@@ -445,7 +445,10 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
     print(paste("DEBUG: Filtered data rows:", nrow(dat_ordered_filtered)))
     
     # 除外されたサブグループ情報をサマリーに記録
+    print(paste("DEBUG: About to check excluded_subgroups condition, length:", length(excluded_subgroups)))
+    print(paste("DEBUG: subgroup_exclusions exists before condition:", exists("subgroup_exclusions")))
     if (length(excluded_subgroups) > 0) {{
+        print("DEBUG: Entered excluded_subgroups > 0 condition block")
         excluded_info <- list(
             excluded_subgroups = excluded_subgroups,
             reason = "insufficient_data_n_le_1",
