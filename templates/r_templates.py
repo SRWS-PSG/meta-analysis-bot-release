@@ -351,9 +351,30 @@ dev.off()
 """,
             "subgroup_forest_plot_template": """
 # サブグループ '{subgroup_col_name}' のフォレストプロット
+
+# DEBUG: Check all required objects
+print(paste("DEBUG: Checking subgroup forest plot prerequisites for {subgroup_col_name}"))
+print(paste("DEBUG: res_by_subgroup_{safe_var_name} exists:", exists("res_by_subgroup_{safe_var_name}")))
+print(paste("DEBUG: res_subgroup_test_{safe_var_name} exists:", exists("res_subgroup_test_{safe_var_name}")))
+print(paste("DEBUG: res_for_plot exists:", exists("res_for_plot")))
+
+if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_var_name})) {{
+    print(paste("DEBUG: res_by_subgroup_{safe_var_name} length:", length(res_by_subgroup_{safe_var_name})))
+}} else {{
+    print("DEBUG: res_by_subgroup_{safe_var_name} is missing or null")
+}}
+
+if (exists("res_subgroup_test_{safe_var_name}") && !is.null(res_subgroup_test_{safe_var_name})) {{
+    print("DEBUG: res_subgroup_test_{safe_var_name} is available")
+}} else {{
+    print("DEBUG: res_subgroup_test_{safe_var_name} is missing or null")
+}}
+
 if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_var_name}) && 
     exists("res_subgroup_test_{safe_var_name}") && !is.null(res_subgroup_test_{safe_var_name}) &&
     exists("res_for_plot") && !is.null(res_for_plot)) {{ # res_for_plot の存在も確認
+    
+    print("DEBUG: All prerequisites met, starting subgroup forest plot generation")
     
     # --- プロットサイズパラメータ ---
     row_h_in_sg_val <- {row_h_in_placeholder}
@@ -659,6 +680,9 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
         print(sprintf("Subgroup forest plot generation failed for {subgroup_col_name}: %s", e$message))
     }})
     dev.off()
+}} else {{
+    print("DEBUG: Prerequisites not met for subgroup forest plot generation")
+    print("DEBUG: Skipping subgroup forest plot for {subgroup_col_name}")
 }}
 """,
             "funnel_plot": """
