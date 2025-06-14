@@ -433,6 +433,12 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
     n_sg_levels <- length(sg_level_names)
     studies_per_sg <- studies_per_sg[sg_level_names]
     
+    # 除外後のデータでdat_orderedを再作成（重要な修正）
+    dat_ordered_filtered <- dat_ordered[dat_ordered[['{subgroup_col_name}']] %in% valid_sg_names, ]
+    
+    print(paste("DEBUG: Original data rows:", nrow(dat_ordered)))
+    print(paste("DEBUG: Filtered data rows:", nrow(dat_ordered_filtered)))
+    
     # 除外されたサブグループ情報をサマリーに記録
     if (length(excluded_subgroups) > 0) {{
         excluded_info <- list(
@@ -462,17 +468,21 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
         print(paste("DEBUG: summary_list$subgroup_exclusions exists:", !is.null(summary_list$subgroup_exclusions)))
     }}
     
-    # 行位置を計算 (下から上へ)
+    # 行位置を計算 (下から上へ) - 除外後のデータに基づいて計算
     # 各サブグループ間に2行のギャップ（1行はサブグループサマリー、1行は空白）
-    total_studies <- nrow(dat)
-    current_row <- total_studies + (n_sg_levels * 2) + 2  # 開始位置
+    total_studies_filtered <- nrow(dat_ordered_filtered)
+    current_row <- total_studies_filtered + (n_sg_levels * 2) + 2  # 開始位置
     
     rows_list <- list()
     subtotal_rows <- c()
     
+    # 除外後のデータでのサブグループ別研究数を再計算
+    studies_per_sg_filtered <- table(dat_ordered_filtered[['{subgroup_col_name}']])[sg_level_names]
+    
     for (i in 1:n_sg_levels) {{
         sg_name <- sg_level_names[i]
-        n_studies_sg <- studies_per_sg[sg_name]
+        n_studies_sg <- studies_per_sg_filtered[sg_name]
+        print(paste("DEBUG: Subgroup", sg_name, "filtered studies:", n_studies_sg))
         
         # この サブグループの研究の行位置
         study_rows <- seq(current_row - n_studies_sg + 1, current_row)
@@ -489,9 +499,6 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
     
     # 全ての研究の行位置を統合
     all_study_rows <- unlist(rows_list[sg_level_names])
-    
-    # 除外後のデータでdat_orderedを再作成（重要な修正）
-    dat_ordered_filtered <- dat_ordered[dat_ordered[['{subgroup_col_name}']] %in% valid_sg_names, ]
     
     # ylimを設定 (十分な空間を確保)
     ylim_bottom <- min(subtotal_rows) - 3
