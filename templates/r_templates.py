@@ -464,18 +464,8 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
         }}
         summary_list$subgroup_exclusions[['{subgroup_col_name}']] <- excluded_info
         
-        # バックアップとしてグローバル変数にも保存  
-        print(paste("DEBUG: Before assignment - subgroup_exclusions exists:", exists("subgroup_exclusions")))
-        # Ensure subgroup_exclusions exists with simpler approach
-        if (!exists("subgroup_exclusions", envir = .GlobalEnv)) {{
-            assign("subgroup_exclusions", list(), envir = .GlobalEnv)
-            print("DEBUG: Created new subgroup_exclusions in global environment")
-        }} else {{
-            print("DEBUG: subgroup_exclusions already exists in global environment")
-        }}
-        print(paste("DEBUG: About to assign to subgroup_exclusions[['{subgroup_col_name}']]"))
-        subgroup_exclusions[['{subgroup_col_name}']] <<- excluded_info
-        print("DEBUG: Assignment completed successfully")
+        # Skip problematic global variable assignment - use summary_list only
+        print("DEBUG: Skipping subgroup_exclusions global assignment, using summary_list only")
         
         # デバッグ用ログ出力
         print(paste("DEBUG: Excluded subgroups for {subgroup_col_name}:", paste(excluded_subgroups, collapse=", ")))
@@ -836,14 +826,8 @@ tryCatch({
 
 {generated_plots_r_code}
 
-# サブグループ除外情報をサマリーに追加
-if (exists("subgroup_exclusions")) {{
-    summary_list$subgroup_exclusions <- subgroup_exclusions
-    print("DEBUG: Adding subgroup_exclusions to summary_list")
-    print(paste("DEBUG: subgroup_exclusions content:", paste(names(subgroup_exclusions), collapse=", ")))
-}} else {{
-    print("DEBUG: subgroup_exclusions variable does not exist")
-}}
+# Note: Subgroup exclusions are already saved in summary_list during forest plot generation
+print("DEBUG: Subgroup exclusions stored in summary_list during processing")
 
 # main_analysis_methodをトップレベルに移動（ゼロセル対応から）
 if (exists("zero_cells_summary") && !is.null(zero_cells_summary$studies_with_zero_cells) && 
@@ -1345,16 +1329,7 @@ if ("{subgroup_col}" %in% names(dat)) {{
         # 2. サブグループごとのフォレストプロット
         subgroup_columns = analysis_params.get("subgroups", analysis_params.get("subgroup_columns", []))
         if subgroup_columns and "subgroup_forest_plot_template" in self.templates:
-            # Initialize subgroup_exclusions globally before any subgroup processing
-            plot_parts.append("""
-# Initialize subgroup_exclusions list globally before all subgroup forest plots
-if (!exists("subgroup_exclusions")) {
-    subgroup_exclusions <<- list()
-    print("DEBUG: subgroup_exclusions initialized globally in plot generation")
-} else {
-    print("DEBUG: subgroup_exclusions already exists globally")
-}
-""")
+            # Note: Using summary_list for exclusion info instead of global variables
             subgroup_plot_prefix = output_paths.get("forest_plot_subgroup_prefix", "forest_plot_subgroup")
             for sg_col in subgroup_columns:
                 # サブグループ列が実際にデータに存在するか確認
