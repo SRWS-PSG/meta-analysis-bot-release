@@ -463,10 +463,9 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
         
         # バックアップとしてグローバル変数にも保存
         print(paste("DEBUG: Before assignment - subgroup_exclusions exists:", exists("subgroup_exclusions")))
-        if (!exists("subgroup_exclusions")) {{
-            subgroup_exclusions <<- list()
-            print("DEBUG: Re-created subgroup_exclusions list")
-        }}
+        # Force creation using assign to global environment
+        assign("subgroup_exclusions", if(exists("subgroup_exclusions")) get("subgroup_exclusions") else list(), envir = .GlobalEnv)
+        print("DEBUG: Ensured subgroup_exclusions exists in global environment")
         print(paste("DEBUG: About to assign to subgroup_exclusions[['{subgroup_col_name}']]"))
         subgroup_exclusions[['{subgroup_col_name}']] <<- excluded_info
         print("DEBUG: Assignment completed successfully")
