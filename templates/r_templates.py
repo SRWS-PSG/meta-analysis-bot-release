@@ -489,14 +489,7 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
     # 全ての研究の行位置を統合
     all_study_rows <- unlist(rows_list[sg_level_names])
     
-    # 行位置をフィルタ済みデータのサイズに調整
-    if (length(all_study_rows) != length(filtered_indices)) {{
-        print("WARNING: Adjusting row positions to match filtered data size")
-        # 実際のフィルタ済みデータのサイズに基づいて行位置を再計算
-        total_filtered_studies <- length(filtered_indices)
-        current_row_adj <- total_filtered_studies + (n_sg_levels * 2) + 2
-        all_study_rows <- seq(1, total_filtered_studies)
-    }}
+    # 行位置は後でres_for_plot_filteredに合わせて調整される
     
     # ylimを設定 (十分な空間を確保)
     ylim_bottom <- min(subtotal_rows) - 3
@@ -616,6 +609,18 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
         }}
         
         print(paste("DEBUG: Using slab length:", length(filtered_slab)))
+        
+        # 行位置をフィルタ済みデータのサイズに調整
+        if (length(all_study_rows) != length(filtered_indices)) {{
+            print("WARNING: Adjusting row positions to match filtered data size")
+            # 実際のフィルタ済みデータのサイズに基づいて行位置を再計算
+            total_filtered_studies <- length(filtered_indices)
+            all_study_rows <- seq(1, total_filtered_studies)
+            
+            # ylimも再調整
+            ylim_bottom <- min(subtotal_rows) - 3
+            ylim_top <- max(all_study_rows) + 3
+        }}
         
         # メインのforest plotを描画（フィルタ済みのres_for_plotを使用）
         forest_sg_args <- list(
