@@ -759,8 +759,13 @@ if ("{moderator_column_for_bubble}" %in% names(dat) && exists("res") && !is.null
 }}
 """,
             "save_results": """
-# 結果の保存
-summary_list <- list()
+# 結果の保存 (preserve existing summary_list with exclusion info)
+if (!exists("summary_list")) {
+    summary_list <- list()
+    print("DEBUG: Created new summary_list in save_results")
+} else {
+    print("DEBUG: Preserving existing summary_list with potential exclusion info")
+}
 
 # バージョン情報を最初に追加（エラーが発生しても保持されるように）
 summary_list$r_version <- R.version.string
