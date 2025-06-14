@@ -387,11 +387,18 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
     sg_level_names <- names(res_by_subgroup_{safe_var_name})
     n_sg_levels <- length(sg_level_names)
     
+    print(paste("DEBUG: sg_level_names in res_by_subgroup:", paste(sg_level_names, collapse=", ")))
+    
     # データをサブグループでソート
     dat_ordered <- dat[order(dat[['{subgroup_col_name}']]), ]
     
-    # 各サブグループの研究数を計算
-    studies_per_sg <- table(dat[['{subgroup_col_name}']])[sg_level_names]
+    # 全データのサブグループ別研究数
+    all_studies_per_sg <- table(dat[['{subgroup_col_name}']])
+    print(paste("DEBUG: All subgroups in data:", paste(names(all_studies_per_sg), collapse=", ")))
+    print(paste("DEBUG: Studies per subgroup:", paste(all_studies_per_sg, collapse=", ")))
+    
+    # res_by_subgroupに含まれるサブグループの研究数のみ取得
+    studies_per_sg <- all_studies_per_sg[sg_level_names]
     
     # 1研究のみの小さいサブグループを除外
     excluded_subgroups <- character(0)
@@ -399,13 +406,18 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
     
     for (sg_name in sg_level_names) {{
         n_studies <- studies_per_sg[sg_name]
+        print(paste("DEBUG: Checking subgroup", sg_name, "with", n_studies, "studies"))
         if (n_studies <= 1) {{
             excluded_subgroups <- c(excluded_subgroups, sg_name)
             print(paste("Subgroup '", sg_name, "' excluded from forest plot: insufficient data (n=", n_studies, ")", sep=""))
         }} else {{
             valid_sg_names <- c(valid_sg_names, sg_name)
+            print(paste("Subgroup '", sg_name, "' included: sufficient data (n=", n_studies, ")", sep=""))
         }}
     }}
+    
+    print(paste("DEBUG: excluded_subgroups:", paste(excluded_subgroups, collapse=", ")))
+    print(paste("DEBUG: valid_sg_names:", paste(valid_sg_names, collapse=", ")))
     
     # 有効なサブグループのみでフィルタリング
     if (length(valid_sg_names) == 0) {{
