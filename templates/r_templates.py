@@ -408,15 +408,8 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
     excluded_subgroups <- setdiff(all_subgroups_in_data, subgroups_in_res)
     valid_sg_names <- subgroups_in_res
     
-    # Initialize subgroup_exclusions list before any conditional processing
-    print("DEBUG: About to initialize subgroup_exclusions")
-    if (!exists("subgroup_exclusions")) {
-        subgroup_exclusions <<- list()
-        print("DEBUG: subgroup_exclusions initialized as new empty list")
-    } else {
-        print("DEBUG: subgroup_exclusions already exists")
-    }
-    print(paste("DEBUG: subgroup_exclusions exists after init:", exists("subgroup_exclusions")))
+    # Note: subgroup_exclusions is initialized globally in plot generation
+    print(paste("DEBUG: subgroup_exclusions exists at start of exclusion processing:", exists("subgroup_exclusions")))
     
     print(paste("DEBUG: All subgroups in original data:", paste(all_subgroups_in_data, collapse=", ")))
     print(paste("DEBUG: Subgroups in res_by_subgroup:", paste(subgroups_in_res, collapse=", ")))
@@ -1346,6 +1339,16 @@ if ("{subgroup_col}" %in% names(dat)) {{
         # 2. サブグループごとのフォレストプロット
         subgroup_columns = analysis_params.get("subgroups", analysis_params.get("subgroup_columns", []))
         if subgroup_columns and "subgroup_forest_plot_template" in self.templates:
+            # Initialize subgroup_exclusions globally before any subgroup processing
+            plot_parts.append("""
+# Initialize subgroup_exclusions list globally before all subgroup forest plots
+if (!exists("subgroup_exclusions")) {
+    subgroup_exclusions <<- list()
+    print("DEBUG: subgroup_exclusions initialized globally in plot generation")
+} else {
+    print("DEBUG: subgroup_exclusions already exists globally")
+}
+""")
             subgroup_plot_prefix = output_paths.get("forest_plot_subgroup_prefix", "forest_plot_subgroup")
             for sg_col in subgroup_columns:
                 # サブグループ列が実際にデータに存在するか確認
