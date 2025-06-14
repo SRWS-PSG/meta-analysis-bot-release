@@ -400,24 +400,26 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
     # res_by_subgroupに含まれるサブグループの研究数のみ取得
     studies_per_sg <- all_studies_per_sg[sg_level_names]
     
-    # 1研究のみの小さいサブグループを除外
-    excluded_subgroups <- character(0)
-    valid_sg_names <- character(0)
+    # 元データのすべてのサブグループと res_by_subgroup に含まれるサブグループを比較
+    # res_by_subgroup に含まれていないサブグループが除外されたサブグループ
+    all_subgroups_in_data <- unique(dat[['{subgroup_col_name}']])
+    subgroups_in_res <- sg_level_names
     
-    for (sg_name in sg_level_names) {{
-        n_studies <- studies_per_sg[sg_name]
-        print(paste("DEBUG: Checking subgroup", sg_name, "with", n_studies, "studies"))
-        if (n_studies <= 1) {{
-            excluded_subgroups <- c(excluded_subgroups, sg_name)
-            print(paste("Subgroup '", sg_name, "' excluded from forest plot: insufficient data (n=", n_studies, ")", sep=""))
-        }} else {{
-            valid_sg_names <- c(valid_sg_names, sg_name)
-            print(paste("Subgroup '", sg_name, "' included: sufficient data (n=", n_studies, ")", sep=""))
+    excluded_subgroups <- setdiff(all_subgroups_in_data, subgroups_in_res)
+    valid_sg_names <- subgroups_in_res
+    
+    print(paste("DEBUG: All subgroups in original data:", paste(all_subgroups_in_data, collapse=", ")))
+    print(paste("DEBUG: Subgroups in res_by_subgroup:", paste(subgroups_in_res, collapse=", ")))
+    print(paste("DEBUG: Excluded subgroups (calculated):", paste(excluded_subgroups, collapse=", ")))
+    print(paste("DEBUG: Valid subgroups:", paste(valid_sg_names, collapse=", ")))
+    
+    # 除外理由を確認（1研究のみかどうか）
+    if (length(excluded_subgroups) > 0) {{
+        for (excluded_sg in excluded_subgroups) {{
+            n_studies_excluded <- all_studies_per_sg[excluded_sg]
+            print(paste("Subgroup '", excluded_sg, "' was excluded (n=", n_studies_excluded, " studies)", sep=""))
         }}
     }}
-    
-    print(paste("DEBUG: excluded_subgroups:", paste(excluded_subgroups, collapse=", ")))
-    print(paste("DEBUG: valid_sg_names:", paste(valid_sg_names, collapse=", ")))
     
     # 有効なサブグループのみでフィルタリング
     if (length(valid_sg_names) == 0) {{
