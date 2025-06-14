@@ -76,20 +76,20 @@ library(jsonlite)
 """,
             "escalc_binary": """
 # 二値アウトカムの効果量計算 (例: オッズ比)
-dat <- escalc(measure="{measure}", ai=`{ai}`, bi=`{bi}`, ci=`{ci}`, di=`{di}`, data=dat{slab_param_string})
+dat <- escalc(measure="{measure}", ai=dat${ai}, bi=dat${bi}, ci=dat${ci}, di=dat${di}, data=dat{slab_param_string})
 """,
             "escalc_binary_no_correction": """
 # 二値アウトカムの効果量計算（連続性補正なし）
-dat <- escalc(measure="{measure}", ai=`{ai}`, bi=`{bi}`, ci=`{ci}`, di=`{di}`, data=dat, add=0, to="none"{slab_param_string})
+dat <- escalc(measure="{measure}", ai=dat${ai}, bi=dat${bi}, ci=dat${ci}, di=dat${di}, data=dat, add=0, to="none"{slab_param_string})
 """,
             "rma_mh": """
 # Mantel-Haenszel法による解析（補正なし）
-res <- rma.mh(ai=`{ai}`, bi=`{bi}`, ci=`{ci}`, di=`{di}`, data=dat, measure="{measure}", 
+res <- rma.mh(ai=dat${ai}, bi=dat${bi}, ci=dat${ci}, di=dat${di}, data=dat, measure="{measure}", 
               add=0, to="none", drop00=TRUE, correct=TRUE)
 """,
             "rma_mh_with_correction": """
 # Mantel-Haenszel法による解析（個別効果量のみ補正、集計は補正なし）
-res <- rma.mh(ai=`{ai}`, bi=`{bi}`, ci=`{ci}`, di=`{di}`, data=dat, measure="{measure}", 
+res <- rma.mh(ai=dat${ai}, bi=dat${bi}, ci=dat${ci}, di=dat${di}, data=dat, measure="{measure}", 
               add=c(0.5, 0), to=c("only0", "none"), drop00=TRUE, correct=TRUE)
 """,
             "main_analysis_selection": """
@@ -100,7 +100,7 @@ if (exists("zero_cells_summary") && !is.null(zero_cells_summary$studies_with_zer
     main_analysis_method <- "MH"
     
     # 主解析：Mantel-Haenszel法（補正なし）
-    res <- rma.mh(ai=`{ai}`, bi=`{bi}`, ci=`{ci}`, di=`{di}`, data=dat, measure="{measure}",
+    res <- rma.mh(ai=dat${ai}, bi=dat${bi}, ci=dat${ci}, di=dat${di}, data=dat, measure="{measure}",
                   add=0, to="none", drop00=TRUE, correct=TRUE)
     res_for_plot <- res  # プロット用にも同じ結果を使用
     
@@ -110,7 +110,7 @@ if (exists("zero_cells_summary") && !is.null(zero_cells_summary$studies_with_zer
     main_analysis_method <- "IV"
     
     # 主解析：逆分散法（従来通り）
-    res <- rma(`yi`, `vi`, data=dat, method="{method}")
+    res <- rma(dat$yi, dat$vi, data=dat, method="{method}")
     res_for_plot <- res  # プロット用にも同じ結果を使用
     
     print("主解析完了: 逆分散法")
@@ -122,15 +122,15 @@ zero_cells_summary <- list()
 zero_cells_summary$total_studies <- nrow(dat)
 
 # NA値を除いてゼロセルを計算
-valid_rows <- !is.na(dat$`{ai}`) & !is.na(dat$`{bi}`) & !is.na(dat$`{ci}`) & !is.na(dat$`{di}`)
+valid_rows <- !is.na(dat${ai}) & !is.na(dat${bi}) & !is.na(dat${ci}) & !is.na(dat${di})
 zero_cells_summary$valid_studies <- sum(valid_rows, na.rm=TRUE)
 
 if (zero_cells_summary$valid_studies > 0) {{
     valid_dat <- dat[valid_rows, ]
-    zero_cells_summary$studies_with_zero_cells <- sum((valid_dat$`{ai}` == 0) | (valid_dat$`{bi}` == 0) | (valid_dat$`{ci}` == 0) | (valid_dat$`{di}` == 0), na.rm=TRUE)
-    zero_cells_summary$double_zero_studies <- sum((valid_dat$`{ai}` == 0 & valid_dat$`{ci}` == 0), na.rm=TRUE)
-    zero_cells_summary$zero_in_treatment <- sum(valid_dat$`{ai}` == 0, na.rm=TRUE)
-    zero_cells_summary$zero_in_control <- sum(valid_dat$`{ci}` == 0, na.rm=TRUE)
+    zero_cells_summary$studies_with_zero_cells <- sum((valid_dat${ai} == 0) | (valid_dat${bi} == 0) | (valid_dat${ci} == 0) | (valid_dat${di} == 0), na.rm=TRUE)
+    zero_cells_summary$double_zero_studies <- sum((valid_dat${ai} == 0 & valid_dat${ci} == 0), na.rm=TRUE)
+    zero_cells_summary$zero_in_treatment <- sum(valid_dat${ai} == 0, na.rm=TRUE)
+    zero_cells_summary$zero_in_control <- sum(valid_dat${ci} == 0, na.rm=TRUE)
 }} else {{
     zero_cells_summary$studies_with_zero_cells <- 0
     zero_cells_summary$double_zero_studies <- 0
@@ -1008,7 +1008,7 @@ if (exists("zero_cells_summary") && !is.null(zero_cells_summary$studies_with_zer
                     # カラム名からスペースや特殊文字を除去して安全な名前を作成
                     safe_ai_col_name = "".join(c if c.isalnum() or c == "_" else "_" for c in ai_col)
                     calculated_bi_col_name = f"{safe_ai_col_name}_n_minus_event"
-                    pre_escalc_code.append(f"dat$`{calculated_bi_col_name}` <- dat$`{n1i_col}` - dat$`{ai_col}`")
+                    pre_escalc_code.append(f"dat${calculated_bi_col_name} <- dat${n1i_col} - dat${ai_col}")
                     actual_bi_col = calculated_bi_col_name
                 else:
                     logger.error(f"列 'bi' がなく、'n1i' または 'ai' もないため計算できません。")
@@ -1019,7 +1019,7 @@ if (exists("zero_cells_summary") && !is.null(zero_cells_summary$studies_with_zer
                     # カラム名からスペースや特殊文字を除去して安全な名前を作成
                     safe_ci_col_name = "".join(c if c.isalnum() or c == "_" else "_" for c in ci_col)
                     calculated_di_col_name = f"{safe_ci_col_name}_n_minus_event"
-                    pre_escalc_code.append(f"dat$`{calculated_di_col_name}` <- dat$`{n2i_col}` - dat$`{ci_col}`")
+                    pre_escalc_code.append(f"dat${calculated_di_col_name} <- dat${n2i_col} - dat${ci_col}")
                     actual_di_col = calculated_di_col_name
                 else:
                     logger.error(f"列 'di' がなく、'n2i' または 'ci' もないため計算できません。")
@@ -1200,7 +1200,7 @@ valid_data_for_subgroup_test <- dat[is.finite(dat$yi) & is.finite(dat$vi) & dat$
 
 if (nrow(valid_data_for_subgroup_test) >= 2 && "{subgroup_col}" %in% names(valid_data_for_subgroup_test)) {{
     tryCatch({{
-        res_subgroup_test_{safe_var_name} <- rma(yi, vi, mods = ~ factor(`{subgroup_col}`), data=valid_data_for_subgroup_test, method="{method}")
+        res_subgroup_test_{safe_var_name} <- rma(yi, vi, mods = ~ factor({subgroup_col}), data=valid_data_for_subgroup_test, method="{method}")
         print("Subgroup test for '{subgroup_col}' completed")
     }}, error = function(e) {{
         print(sprintf("Subgroup test for '{subgroup_col}' failed: %s", e$message))
@@ -1517,9 +1517,9 @@ numeric_cols_to_check <- c()
                     numeric_conversion_code.append(f"""
 if ("{col_name}" %in% names(dat)) {{
     cat("数値変換: {col_name}\\n")
-    original_values <- dat$`{col_name}`
-    dat$`{col_name}` <- as.numeric(as.character(dat$`{col_name}`))
-    invalid_rows <- which(is.na(dat$`{col_name}`))
+    original_values <- dat${col_name}
+    dat${col_name} <- as.numeric(as.character(dat${col_name}))
+    invalid_rows <- which(is.na(dat${col_name}))
     if (length(invalid_rows) > 0) {{
         cat("⚠️ データ品質警告: {col_name}列でNA値または非数値データが検出されました\\n")
         cat("   対象行: ", paste(invalid_rows, collapse=", "), "\\n")
@@ -1541,7 +1541,7 @@ if ("{col_name}" %in% names(dat)) {{
         if se_col_needs_squaring:
             squared_col_name = f"{se_col_needs_squaring}_squared"
             script_parts.append(f"# SE列を分散に変換")
-            script_parts.append(f"dat${squared_col_name} <- dat$`{se_col_needs_squaring}`^2")
+            script_parts.append(f"dat${squared_col_name} <- dat${se_col_needs_squaring}^2")
         
         # 研究ラベル(slab)の準備
         data_cols = analysis_params.get("data_columns", {})
@@ -1553,9 +1553,9 @@ if ("{col_name}" %in% names(dat)) {{
         if study_label_author_col and study_label_year_col and \
            study_label_author_col in data_summary.get("columns", []) and \
            study_label_year_col in data_summary.get("columns", []):
-            slab_expression = f"paste(dat$`{study_label_author_col}`, dat$`{study_label_year_col}`, sep=\", \")"
+            slab_expression = f"paste(dat${study_label_author_col}, dat${study_label_year_col}, sep=\", \")"
         elif study_label_col and study_label_col in data_summary.get("columns", []):
-            slab_expression = f"dat$`{study_label_col}`"
+            slab_expression = f"dat${study_label_col}"
         
         if slab_expression:
             script_parts.append(f"dat$slab <- {slab_expression}")
