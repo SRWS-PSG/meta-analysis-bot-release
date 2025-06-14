@@ -409,9 +409,14 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
     valid_sg_names <- subgroups_in_res
     
     # Initialize subgroup_exclusions list before any conditional processing
+    print("DEBUG: About to initialize subgroup_exclusions")
     if (!exists("subgroup_exclusions")) {
         subgroup_exclusions <<- list()
+        print("DEBUG: subgroup_exclusions initialized as new empty list")
+    } else {
+        print("DEBUG: subgroup_exclusions already exists")
     }
+    print(paste("DEBUG: subgroup_exclusions exists after init:", exists("subgroup_exclusions")))
     
     print(paste("DEBUG: All subgroups in original data:", paste(all_subgroups_in_data, collapse=", ")))
     print(paste("DEBUG: Subgroups in res_by_subgroup:", paste(subgroups_in_res, collapse=", ")))
@@ -464,10 +469,14 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
         summary_list$subgroup_exclusions[['{subgroup_col_name}']] <- excluded_info
         
         # バックアップとしてグローバル変数にも保存
+        print(paste("DEBUG: Before assignment - subgroup_exclusions exists:", exists("subgroup_exclusions")))
         if (!exists("subgroup_exclusions")) {{
             subgroup_exclusions <<- list()
+            print("DEBUG: Re-created subgroup_exclusions list")
         }}
+        print(paste("DEBUG: About to assign to subgroup_exclusions[['{subgroup_col_name}']]"))
         subgroup_exclusions[['{subgroup_col_name}']] <<- excluded_info
+        print("DEBUG: Assignment completed successfully")
         
         # デバッグ用ログ出力
         print(paste("DEBUG: Excluded subgroups for {subgroup_col_name}:", paste(excluded_subgroups, collapse=", ")))
