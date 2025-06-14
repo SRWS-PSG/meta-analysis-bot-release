@@ -408,6 +408,11 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
     excluded_subgroups <- setdiff(all_subgroups_in_data, subgroups_in_res)
     valid_sg_names <- subgroups_in_res
     
+    # Initialize subgroup_exclusions list before any conditional processing
+    if (!exists("subgroup_exclusions")) {
+        subgroup_exclusions <<- list()
+    }
+    
     print(paste("DEBUG: All subgroups in original data:", paste(all_subgroups_in_data, collapse=", ")))
     print(paste("DEBUG: Subgroups in res_by_subgroup:", paste(subgroups_in_res, collapse=", ")))
     print(paste("DEBUG: Excluded subgroups (calculated):", paste(excluded_subgroups, collapse=", ")))
