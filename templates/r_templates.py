@@ -590,6 +590,11 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
             res_for_plot_filtered$weights <- {res_for_plot_model_name}$weights[filtered_indices]
         }}
         
+        # slabもフィルタリング（重要：整合性を保つ）
+        if (!is.null({res_for_plot_model_name}$slab)) {{
+            res_for_plot_filtered$slab <- {res_for_plot_model_name}$slab[filtered_indices]
+        }}
+        
         # データ行数を更新
         res_for_plot_filtered$k <- length(filtered_indices)
         
@@ -599,13 +604,11 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
         print(paste("DEBUG: res_for_plot_filtered k:", res_for_plot_filtered$k))
         print(paste("DEBUG: res_for_plot_filtered data rows:", nrow(res_for_plot_filtered$data)))
         print(paste("DEBUG: dat_ordered_filtered rows:", nrow(dat_ordered_filtered)))
-        print(paste("DEBUG: slab length:", length(dat_ordered_filtered$slab)))
+        print(paste("DEBUG: slab length in filtered data:", length(res_for_plot_filtered$slab)))
         
-        # 修正: slabの手動操作を削除し、列名参照に依存
-        # metaforが自動的にデータとslabの整合性を保つため、手動操作は不要
-        print("DEBUG: Using column name reference for slab - no manual vector handling needed")
-        
-        print("DEBUG: Slab will be handled automatically by metafor column reference")
+        # 修正: subset引数は使用せず、フィルタ済みデータを直接使用
+        # forest()関数はsubsetパラメータをサポートしていないため
+        print("DEBUG: Using pre-filtered data for forest plot - no subset parameter needed")
         
         # 行位置をフィルタ済みデータのサイズに調整
         if (length(all_study_rows) != length(filtered_indices)) {{
@@ -619,11 +622,10 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
             ylim_top <- max(all_study_rows) + 3
         }}
         
-        # メインのforest plotを描画（修正版：slabは列名参照）
-        # 注意: res_for_plot_filteredは使わず、元のres_for_plotでサブセット指定
+        # メインのforest plotを描画（修正版：フィルタ済みデータを使用）
+        # forest()関数はsubsetパラメータをサポートしていないため、フィルタ済みデータを使用
         forest_sg_args <- list(
-            x = {res_for_plot_model_name}, # 元の解析結果を使用
-            subset = filtered_indices,     # サブセット指定でフィルタ
+            x = res_for_plot_filtered, # フィルタ済みデータを使用
             rows = all_study_rows,
             ylim = c(ylim_bottom, ylim_top),
             atransf = if(apply_exp_transform) exp else I,
