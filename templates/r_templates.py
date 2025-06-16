@@ -349,192 +349,428 @@ tryCatch({{
 }})
 dev.off()
 """,
-                        "subgroup_forest_plot_template": """
-# サブグループ '{subgroup_col_name}' のフォレストプロット (修正版)
+            "subgroup_forest_plot_template": """
+# サブグループ '{subgroup_col_name}' のフォレストプロット（簡略化版）
 
 print("=== SUBGROUP FOREST PLOT START: {subgroup_col_name} ===")
+print(paste("DEBUG: Starting subgroup forest plot for {subgroup_col_name}"))
 
-# 前提条件をシンプルに確認
-has_subgroup_results <- exists("res_by_subgroup_{safe_var_name}") && 
-                       length(res_by_subgroup_{safe_var_name}) > 0 &&
-                       !is.null(res_by_subgroup_{safe_var_name})
-
-has_plot_model <- exists("{res_for_plot_model_name}") && 
-                 !is.null({res_for_plot_model_name})
-
-if (!has_subgroup_results) {{
-    print("WARNING: No subgroup results found for {subgroup_col_name}")
-    next
-}}
-
-if (!has_plot_model) {{
-    print("WARNING: Plot model {res_for_plot_model_name} not found")
-    next  
-}}
-
-print("DEBUG: Prerequisites met, starting plot generation")
-
-# 有効なサブグループを取得
-valid_subgroups <- names(res_by_subgroup_{safe_var_name})
-valid_subgroups <- valid_subgroups[!sapply(res_by_subgroup_{safe_var_name}, is.null)]
-
-if (length(valid_subgroups) == 0) {{
-    print("WARNING: No valid subgroups found")
-    next
-}}
-
-print(paste("DEBUG: Valid subgroups:", paste(valid_subgroups, collapse=", ")))
-
-# 除外されたサブグループ情報を記録
-all_subgroups_in_data <- unique(dat[['{subgroup_col_name}']])
-excluded_subgroups <- setdiff(all_subgroups_in_data, valid_subgroups)
-
-if (length(excluded_subgroups) > 0) {{
-    excluded_info <- list(
-        excluded_subgroups = excluded_subgroups,
-        reason = "insufficient_data_n_le_1",
-        included_subgroups = valid_subgroups
-    )
+# より単純な前提条件チェック
+if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_var_name}) > 0) {{
     
-    # summary_listに直接追加
-    if (!exists("summary_list")) {{
-        summary_list <- list()
-    }}
-    if (is.null(summary_list$subgroup_exclusions)) {{
-        summary_list$subgroup_exclusions <- list()
-    }}
-    summary_list$subgroup_exclusions[['{subgroup_col_name}']] <- excluded_info
+    print("DEBUG: All prerequisites met, starting subgroup forest plot generation")
     
-    print(paste("DEBUG: Excluded subgroups:", paste(excluded_subgroups, collapse=", ")))
-}}
+    # --- プロットサイズパラメータ ---
+    row_h_in_sg_val <- {row_h_in_placeholder}
+    base_h_in_sg_val <- {base_h_in_placeholder}
+    plot_width_in_sg_val <- {plot_width_in_placeholder}
+    plot_dpi_sg_val <- {plot_dpi_placeholder}
+    extra_rows_sg_val <- {extra_rows_subgroup_placeholder}
 
-# データを有効なサブグループのみにフィルタ
-dat_sg_filtered <- dat[dat[['{subgroup_col_name}']] %in% valid_subgroups, ]
-dat_sg_filtered <- dat_sg_filtered[order(dat_sg_filtered[['{subgroup_col_name}']]), ]
-
-if (nrow(dat_sg_filtered) == 0) {{
-    print("WARNING: No data remaining after subgroup filtering")
-    next
-}}
-
-print(paste("DEBUG: Filtered data rows:", nrow(dat_sg_filtered), "from original:", nrow(dat)))
-
-# res_for_plotをフィルタリング
-tryCatch({{
-    # Study列で照合を試みる
-    if ("Study" %in% names({res_for_plot_model_name}$data) && "Study" %in% names(dat_sg_filtered)) {{
-        filter_indices <- which({res_for_plot_model_name}$data$Study %in% dat_sg_filtered$Study)
-    }} else {{
-        # Study列がない場合は行名で照合
-        original_rownames <- rownames(dat)
-        filtered_rownames <- rownames(dat_sg_filtered)
-        filter_indices <- which(original_rownames %in% filtered_rownames)
+    # --- サブグループごとの行位置計算 ---
+    sg_level_names <- names(res_by_subgroup_{safe_var_name})
+    n_sg_levels <- length(sg_level_names)
+    
+    print(paste("DEBUG: sg_level_names in res_by_subgroup:", paste(sg_level_names, collapse=", ")))
+    
+    # データをサブグループでソート
+    dat_ordered <- dat[order(dat[['{subgroup_col_name}']]), ]
+    
+    # 全データのサブグループ別研究数
+    all_studies_per_sg <- table(dat[['{subgroup_col_name}']])
+    print(paste("DEBUG: All subgroups in data:", paste(names(all_studies_per_sg), collapse=", ")))
+    print(paste("DEBUG: Studies per subgroup:", paste(all_studies_per_sg, collapse=", ")))
+    
+    # res_by_subgroupに含まれるサブグループの研究数のみ取得
+    studies_per_sg <- all_studies_per_sg[sg_level_names]
+    
+    # 元データのすべてのサブグループと res_by_subgroup に含まれるサブグループを比較
+    # res_by_subgroup に含まれていないサブグループが除外されたサブグループ
+    all_subgroups_in_data <- unique(dat[['{subgroup_col_name}']])
+    subgroups_in_res <- sg_level_names
+    
+    excluded_subgroups <- setdiff(all_subgroups_in_data, subgroups_in_res)
+    valid_sg_names <- subgroups_in_res
+    
+    # Note: subgroup_exclusions is initialized globally in plot generation
+    print(paste("DEBUG: subgroup_exclusions exists at start of exclusion processing:", exists("subgroup_exclusions")))
+    
+    print(paste("DEBUG: All subgroups in original data:", paste(all_subgroups_in_data, collapse=", ")))
+    print(paste("DEBUG: Subgroups in res_by_subgroup:", paste(subgroups_in_res, collapse=", ")))
+    print(paste("DEBUG: Excluded subgroups (calculated):", paste(excluded_subgroups, collapse=", ")))
+    print(paste("DEBUG: Valid subgroups:", paste(valid_sg_names, collapse=", ")))
+    
+    # 除外理由を確認（1研究のみかどうか）
+    if (length(excluded_subgroups) > 0) {{
+        for (excluded_sg in excluded_subgroups) {{
+            n_studies_excluded <- all_studies_per_sg[excluded_sg]
+            print(paste("Subgroup '", excluded_sg, "' was excluded (n=", n_studies_excluded, " studies)", sep=""))
+        }}
     }}
     
-    # インデックスが空でないことを確認
-    if (length(filter_indices) == 0) {{
-        print("ERROR: No matching indices found for filtering")
+    # 有効なサブグループのみでフィルタリング
+    if (length(valid_sg_names) == 0) {{
+        print("All subgroups have insufficient data (n<=1). Skipping subgroup forest plot.")
+        plot(1, type="n", main="Subgroup Forest Plot: Insufficient Data", xlab="", ylab="")
+        text(1, 1, "All subgroups have insufficient data (n<=1)\\nfor forest plot visualization", col="red", cex=1.2)
+        dev.off()
         next
     }}
     
-    print(paste("DEBUG: Filter indices found:", length(filter_indices)))
+    # 除外後のパラメータ更新
+    sg_level_names <- valid_sg_names
+    n_sg_levels <- length(sg_level_names)
+    studies_per_sg <- studies_per_sg[sg_level_names]
     
-    # res_for_plotを安全にフィルタ
-    res_plot_sg <- {res_for_plot_model_name}
-    res_plot_sg$yi <- {res_for_plot_model_name}$yi[filter_indices]
-    res_plot_sg$vi <- {res_for_plot_model_name}$vi[filter_indices]
-    res_plot_sg$se <- {res_for_plot_model_name}$se[filter_indices]
-    res_plot_sg$k <- length(filter_indices)
-    res_plot_sg$data <- {res_for_plot_model_name}$data[filter_indices, ]
+    # 除外後のデータでdat_orderedを再作成（重要な修正）
+    dat_ordered_filtered <- dat_ordered[dat_ordered[['{subgroup_col_name}']] %in% valid_sg_names, ]
     
-    # データサイズの整合性確認
-    if (nrow(res_plot_sg$data) != nrow(dat_sg_filtered)) {{
-        print(paste("WARNING: Size mismatch - res_plot_sg:", nrow(res_plot_sg$data), 
-                   "dat_sg_filtered:", nrow(dat_sg_filtered)))
-        # より安全なslabの取得
-        if ("slab" %in% names(res_plot_sg$data)) {{
-            plot_slab <- res_plot_sg$data$slab
-        }} else if ("slab" %in% names(dat_sg_filtered)) {{
-            plot_slab <- dat_sg_filtered$slab
-        }} else {{
-            plot_slab <- paste("Study", seq_len(nrow(res_plot_sg$data)))
+    print(paste("DEBUG: Original data rows:", nrow(dat_ordered)))
+    print(paste("DEBUG: Filtered data rows:", nrow(dat_ordered_filtered)))
+    
+    # 除外されたサブグループ情報をサマリーに記録
+    print(paste("DEBUG: About to check excluded_subgroups condition, length:", length(excluded_subgroups)))
+    print(paste("DEBUG: subgroup_exclusions exists before condition:", exists("subgroup_exclusions")))
+    if (length(excluded_subgroups) > 0) {{
+        print("DEBUG: Entered excluded_subgroups > 0 condition block")
+        excluded_info <- list(
+            excluded_subgroups = excluded_subgroups,
+            reason = "insufficient_data_n_le_1",
+            included_subgroups = valid_sg_names
+        )
+        
+        # summary_listに直接追加（より確実な方法）
+        if (!exists("summary_list")) {{
+            summary_list <- list()
         }}
-    }} else {{
-        plot_slab <- dat_sg_filtered$slab
+        if (is.null(summary_list$subgroup_exclusions)) {{
+            summary_list$subgroup_exclusions <- list()
+        }}
+        summary_list$subgroup_exclusions[['{subgroup_col_name}']] <- excluded_info
+        
+        # Skip problematic global variable assignment - use summary_list only
+        print("DEBUG: Skipping subgroup_exclusions global assignment, using summary_list only")
+        
+        # デバッグ用ログ出力
+        print(paste("DEBUG: Excluded subgroups for {subgroup_col_name}:", paste(excluded_subgroups, collapse=", ")))
+        print(paste("DEBUG: subgroup_exclusions variable exists:", exists("subgroup_exclusions")))
+        print(paste("DEBUG: summary_list$subgroup_exclusions exists:", !is.null(summary_list$subgroup_exclusions)))
     }}
     
-    print(paste("DEBUG: Using slab length:", length(plot_slab)))
+    # 行位置を計算 (下から上へ) - 除外後のデータに基づいて計算
+    # 各サブグループ間に2行のギャップ（1行はサブグループサマリー、1行は空白）
+    total_studies_filtered <- nrow(dat_ordered_filtered)
+    current_row <- total_studies_filtered + (n_sg_levels * 2) + 2  # 開始位置
     
-    # シンプルな行位置計算
-    n_studies <- length(plot_slab)
-    n_subgroups <- length(valid_subgroups)
-    
-    # 各サブグループの研究数
-    sg_counts <- table(dat_sg_filtered[['{subgroup_col_name}']]) 
-    
-    # 行位置を上から下へ計算（より予測可能）
-    current_row <- n_studies + (n_subgroups * 2) + 2
-    all_rows <- c()
+    rows_list <- list()
     subtotal_rows <- c()
     
-    for (sg_name in valid_subgroups) {{
-        sg_count <- sg_counts[sg_name]
+    # 除外後のデータでのサブグループ別研究数を再計算
+    studies_per_sg_filtered <- table(dat_ordered_filtered[['{subgroup_col_name}']])[sg_level_names]
+    
+    for (i in 1:n_sg_levels) {{
+        sg_name <- sg_level_names[i]
+        n_studies_sg <- studies_per_sg_filtered[sg_name]
+        print(paste("DEBUG: Subgroup", sg_name, "filtered studies:", n_studies_sg))
         
-        # この サブグループの研究行
-        study_rows <- seq(current_row - sg_count + 1, current_row)
-        all_rows <- c(all_rows, study_rows)
+        # この サブグループの研究の行位置
+        study_rows <- seq(current_row - n_studies_sg + 1, current_row)
+        rows_list[[sg_name]] <- study_rows
         
-        # サブグループサマリー行
-        subtotal_row <- current_row - sg_count - 1
+        # サブグループサマリーの行位置
+        subtotal_row <- current_row - n_studies_sg - 1
         subtotal_rows <- c(subtotal_rows, subtotal_row)
         names(subtotal_rows)[length(subtotal_rows)] <- sg_name
         
-        current_row <- current_row - sg_count - 2
+        # 次のサブグループのための位置更新 (2行のギャップ)
+        current_row <- current_row - n_studies_sg - 2
     }}
     
-    # プロット設定
-    ylim_range <- c(min(subtotal_rows) - 2, max(all_rows) + 2)
+    # 全ての研究の行位置を統合
+    all_study_rows <- unlist(rows_list[sg_level_names])
     
-    # PNG出力開始
-    png('{subgroup_forest_plot_path}', width=10, height=8, units="in", res=300)
+    # 行位置は後でres_for_plot_filteredに合わせて調整される
     
-    # フォレストプロット描画
-    forest(res_plot_sg,
-           slab = plot_slab,
-           rows = all_rows,
-           ylim = ylim_range,
-           atransf = if("{measure_for_plot}" %in% c("OR", "RR", "HR")) exp else I,
-           main = "Subgroup Analysis by {subgroup_col_name}",
-           xlab = if("{measure_for_plot}" %in% c("OR", "RR", "HR")) "{measure_for_plot} (log scale)" else "Effect Size",
-           cex = 0.8)
+    # ylimを設定 (十分な空間を確保)
+    ylim_bottom <- min(subtotal_rows) - 3
+    ylim_top <- max(all_study_rows) + 3
     
-    # サブグループサマリーを追加
-    for (sg_name in valid_subgroups) {{
-        if (!is.null(res_by_subgroup_{safe_var_name}[[sg_name]])) {{
-            sg_result <- res_by_subgroup_{safe_var_name}[[sg_name]]
-            n_studies_sg <- sg_counts[sg_name]
-            
-            addpoly(sg_result, 
-                   row = subtotal_rows[sg_name],
-                   mlab = paste(sg_name, " (k=", n_studies_sg, ")", sep=""),
-                   cex = 0.8)
-        }}
-    }}
-    
-    print("DEBUG: Subgroup forest plot completed successfully")
-    dev.off()
-    
-}}, error = function(e) {{
-    print(paste("ERROR in subgroup forest plot:", e$message))
-    # エラー時もPNGファイルを作成（空でも）
-    png('{subgroup_forest_plot_path}', width=10, height=8, units="in", res=300)
-    plot(1, type="n", main="Subgroup Forest Plot - Error", xlab="", ylab="")
-    text(1, 1, paste("Error generating plot:", e$message), col="red", cex=0.8)
-    dev.off()
-}})
+    # --- 高さ計算 ---
+    total_plot_rows <- ylim_top - ylim_bottom + extra_rows_sg_val
+    plot_height_in_sg <- max(base_h_in_sg_val, total_plot_rows * row_h_in_sg_val)
 
-print("=== SUBGROUP FOREST PLOT END ===")
-""",""",
+    png('{subgroup_forest_plot_path}', 
+        width=plot_width_in_sg_val, 
+        height=plot_height_in_sg, 
+        units="in", res=plot_dpi_sg_val, pointsize=9)
+    
+    tryCatch({{
+        current_measure <- "{measure_for_plot}"
+        apply_exp_transform <- current_measure %in% c("OR", "RR", "HR", "IRR", "PLO", "IR")
+        
+        # ilab データの準備
+        ilab_data_main <- NULL
+        ilab_xpos_main <- NULL
+        ilab_lab_main <- NULL
+        if (current_measure %in% c("OR", "RR", "RD", "PETO")) {{
+            ai_col_main <- "{ai_col}"
+            bi_col_main <- "{bi_col}"
+            ci_col_main <- "{ci_col}"
+            di_col_main <- "{di_col}"
+            n1i_col_main <- "{n1i_col}"
+            n2i_col_main <- "{n2i_col}"
+            
+            # Events/Total 形式で表示（除外後のデータを使用）
+            if (ai_col_main != "" && ci_col_main != "" && n1i_col_main != "" && n2i_col_main != "" &&
+                all(c(ai_col_main, ci_col_main, n1i_col_main, n2i_col_main) %in% names(dat))) {{
+                treatment_display_main <- paste(dat_ordered_filtered[[ai_col_main]], "/", dat_ordered_filtered[[n1i_col_main]], sep="")
+                control_display_main <- paste(dat_ordered_filtered[[ci_col_main]], "/", dat_ordered_filtered[[n2i_col_main]], sep="")
+                ilab_data_main <- cbind(treatment_display_main, control_display_main)
+                ilab_xpos_main <- c(-8.5, -5.5)
+                ilab_lab_main <- c("Events/Total", "Events/Total")
+            }} else if (ai_col_main != "" && ci_col_main != "" && all(c(ai_col_main, ci_col_main) %in% names(dat))) {{
+                # フォールバック: イベント数のみ（除外後のデータを使用）
+                ilab_data_main <- cbind(dat_ordered_filtered[[ai_col_main]], dat_ordered_filtered[[ci_col_main]])
+                ilab_xpos_main <- c(-8.5, -5.5)
+                ilab_lab_main <- c("Events", "Events")
+            }}
+        }} else if (current_measure %in% c("SMD", "MD", "ROM")) {{
+            # 連続アウトカムの場合: n1i, n2i を表示
+            n1i_col_main <- "{n1i_col}"
+            n2i_col_main <- "{n2i_col}"
+            
+            if (n1i_col_main != "" && n2i_col_main != "" && all(c(n1i_col_main, n2i_col_main) %in% names(dat))) {{
+                ilab_data_main <- cbind(dat_ordered_filtered[[n1i_col_main]], dat_ordered_filtered[[n2i_col_main]])
+                ilab_xpos_main <- c(-8.5, -5.5)
+                ilab_lab_main <- c("N", "N")
+            }}
+        }}
+        
+        # res_for_plotをフィルタリング（除外されたサブグループのデータを削除）
+        print("DEBUG: Filtering res_for_plot for subgroup forest plot")
+        print(paste("DEBUG: Original res_for_plot data rows:", nrow({res_for_plot_model_name}$data)))
+        print(paste("DEBUG: Filtered data rows:", nrow(dat_ordered_filtered)))
+        
+        # フィルタ済みデータのインデックスを取得（Study列で照合）
+        if ("Study" %in% names({res_for_plot_model_name}$data)) {{
+            filtered_indices <- which({res_for_plot_model_name}$data$Study %in% dat_ordered_filtered$Study)
+        }} else {{
+            # Study列がない場合は、dat_ordered_filteredと同じ順序でインデックスを取得
+            original_order <- match(rownames(dat_ordered_filtered), rownames(dat))
+            filtered_indices <- original_order[!is.na(original_order)]
+        }}
+        
+        print(paste("DEBUG: Filtered indices length:", length(filtered_indices)))
+        print(paste("DEBUG: dat_ordered_filtered rows:", nrow(dat_ordered_filtered)))
+        
+        # インデックスの長さがdat_ordered_filteredと一致することを確認
+        if (length(filtered_indices) != nrow(dat_ordered_filtered)) {{
+            print("ERROR: Index length mismatch, using sequential indices")
+            filtered_indices <- seq_len(nrow(dat_ordered_filtered))
+        }}
+        
+        # res_for_plotのコピーを作成し、フィルタ済みデータのみを含むようにする
+        res_for_plot_filtered <- {res_for_plot_model_name}
+        
+        # 効果量と分散をフィルタリング
+        res_for_plot_filtered$yi <- {res_for_plot_model_name}$yi[filtered_indices]
+        res_for_plot_filtered$vi <- {res_for_plot_model_name}$vi[filtered_indices]
+        res_for_plot_filtered$se <- {res_for_plot_model_name}$se[filtered_indices]
+        
+        # その他の要素もフィルタリング（存在する場合）
+        if (!is.null({res_for_plot_model_name}$ni)) {{
+            res_for_plot_filtered$ni <- {res_for_plot_model_name}$ni[filtered_indices]
+        }}
+        if (!is.null({res_for_plot_model_name}$weights)) {{
+            res_for_plot_filtered$weights <- {res_for_plot_model_name}$weights[filtered_indices]
+        }}
+        
+        # データ行数を更新
+        res_for_plot_filtered$k <- length(filtered_indices)
+        
+        # データフレームもフィルタリング
+        res_for_plot_filtered$data <- {res_for_plot_model_name}$data[filtered_indices, ]
+        
+        print(paste("DEBUG: res_for_plot_filtered k:", res_for_plot_filtered$k))
+        print(paste("DEBUG: res_for_plot_filtered data rows:", nrow(res_for_plot_filtered$data)))
+        print(paste("DEBUG: dat_ordered_filtered rows:", nrow(dat_ordered_filtered)))
+        print(paste("DEBUG: slab length:", length(dat_ordered_filtered$slab)))
+        
+        # データサイズの整合性を確認して修正
+        if (length(filtered_indices) != nrow(dat_ordered_filtered)) {{
+            print("WARNING: Size mismatch between filtered res_for_plot and dat_ordered_filtered")
+            print(paste("DEBUG: filtered_indices length:", length(filtered_indices)))
+            print(paste("DEBUG: dat_ordered_filtered rows:", nrow(dat_ordered_filtered)))
+            
+            # res_for_plot_filteredに対応するslabを取得
+            filtered_slab <- {res_for_plot_model_name}$data$slab[filtered_indices]
+        }} else {{
+            filtered_slab <- dat_ordered_filtered$slab
+        }}
+        
+        print(paste("DEBUG: Using slab length:", length(filtered_slab)))
+        
+        # 行位置をフィルタ済みデータのサイズに調整
+        if (length(all_study_rows) != length(filtered_indices)) {{
+            print("WARNING: Adjusting row positions to match filtered data size")
+            # 実際のフィルタ済みデータのサイズに基づいて行位置を再計算
+            total_filtered_studies <- length(filtered_indices)
+            all_study_rows <- seq(1, total_filtered_studies)
+            
+            # ylimも再調整
+            ylim_bottom <- min(subtotal_rows) - 3
+            ylim_top <- max(all_study_rows) + 3
+        }}
+        
+        # メインのforest plotを描画（フィルタ済みのres_for_plotを使用）
+        forest_sg_args <- list(
+            x = res_for_plot_filtered, # フィルタ済みのオブジェクトを使用
+            slab = filtered_slab,  # サイズが一致するslabを使用
+            rows = all_study_rows,
+            ylim = c(ylim_bottom, ylim_top),
+            atransf = if(apply_exp_transform) exp else I,
+            at = if(apply_exp_transform) log(c(0.25, 1, 4)) else NULL,
+            xlim = c(-16, 6),
+            digits = 2,
+            header = "Author(s) and Year",
+            refline = if(apply_exp_transform) 0 else 0,
+            cex = 0.75,
+            mlab = ""
+        )
+        
+        if (!is.null(ilab_data_main)) {{
+            forest_sg_args$ilab <- ilab_data_main
+            forest_sg_args$ilab.xpos <- ilab_xpos_main
+            forest_sg_args$ilab.lab <- ilab_lab_main
+        }}
+        
+        do.call(forest, forest_sg_args)
+        
+        # Treatment/Control ヘッダーの追加
+        if (!is.null(ilab_data_main) && length(ilab_xpos_main) == 2) {{
+             text(c(-8.5,-5.5), ylim_top - 1, c("Treatment", "Control"), font=2, cex=0.75)
+        }}
+        
+        # サブグループラベルとサマリーポリゴンを追加
+        for (i in 1:n_sg_levels) {{
+            sg_name <- sg_level_names[i]
+            res_sg_obj <- res_by_subgroup_{subgroup_col_name}[[sg_name]]
+            subtotal_row <- subtotal_rows[sg_name]
+            
+            if (!is.null(res_sg_obj)) {{
+                # サブグループ名をラベルとして追加
+                text(-16, max(rows_list[[sg_name]]) + 0.5, 
+                     paste0(sg_name, " (k=", res_sg_obj$k, ")"), 
+                     pos=4, font=4, cex=0.75)
+                
+                # サブグループの合計行を追加（二値アウトカムの場合のみ）
+                if (current_measure %in% c("OR", "RR", "RD", "PETO") && !is.null(ilab_data_main)) {{
+                    ai_col_sg <- "{ai_col}"
+                    ci_col_sg <- "{ci_col}"
+                    n1i_col_sg <- "{n1i_col}"
+                    n2i_col_sg <- "{n2i_col}"
+                    
+                    if (ai_col_sg != "" && ci_col_sg != "" && n1i_col_sg != "" && n2i_col_sg != "" &&
+                        all(c(ai_col_sg, ci_col_sg, n1i_col_sg, n2i_col_sg) %in% names(dat))) {{
+                        
+                        # このサブグループのデータのみを抽出（除外後のデータから）
+                        sg_data <- dat_ordered_filtered[dat_ordered_filtered[['{subgroup_col_name}']] == sg_name, ]
+                        
+                        if (nrow(sg_data) > 0) {{
+                            sg_total_ai <- sum(sg_data[[ai_col_sg]], na.rm = TRUE)
+                            sg_total_n1i <- sum(sg_data[[n1i_col_sg]], na.rm = TRUE)
+                            sg_total_ci <- sum(sg_data[[ci_col_sg]], na.rm = TRUE)
+                            sg_total_n2i <- sum(sg_data[[n2i_col_sg]], na.rm = TRUE)
+                            
+                            # サブグループ合計行の位置（サブグループの最小行の0.3行上）
+                            sg_total_row_y <- min(rows_list[[sg_name]]) - 0.3
+                            
+                            # サブグループ合計行のラベルと数値を表示
+                            text(-16, sg_total_row_y, paste0(sg_name, " Total"), font = 2, pos = 4, cex = 0.7)
+                            text(c(-8.5, -5.5), sg_total_row_y, 
+                                 c(paste(sg_total_ai, "/", sg_total_n1i, sep=""),
+                                   paste(sg_total_ci, "/", sg_total_n2i, sep="")),
+                                 font = 2, cex = 0.7)
+                        }}
+                    }}
+                }} else if (current_measure %in% c("SMD", "MD", "ROM") && !is.null(ilab_data_main)) {{
+                    # 連続アウトカムの場合: サブグループ別のサンプルサイズ合計
+                    n1i_col_sg <- "{n1i_col}"
+                    n2i_col_sg <- "{n2i_col}"
+                    
+                    if (n1i_col_sg != "" && n2i_col_sg != "" && all(c(n1i_col_sg, n2i_col_sg) %in% names(dat))) {{
+                        sg_data <- dat_ordered_filtered[dat_ordered_filtered[['{subgroup_col_name}']] == sg_name, ]
+                        
+                        if (nrow(sg_data) > 0) {{
+                            sg_total_n1i <- sum(sg_data[[n1i_col_sg]], na.rm = TRUE)
+                            sg_total_n2i <- sum(sg_data[[n2i_col_sg]], na.rm = TRUE)
+                            
+                            sg_total_row_y <- min(rows_list[[sg_name]]) - 0.3
+                            
+                            text(-16, sg_total_row_y, paste0(sg_name, " Total"), font = 2, pos = 4, cex = 0.7)
+                            text(c(-8.5, -5.5), sg_total_row_y, 
+                                 c(sg_total_n1i, sg_total_n2i),
+                                 font = 2, cex = 0.7)
+                        }}
+                    }}
+                }}
+                
+                # サブグループサマリーポリゴンを追加
+                if (apply_exp_transform) {{
+                    mlab_text <- sprintf("Subtotal: %s=%.2f [%.2f, %.2f], p=%.3f, I²=%.1f%%",
+                                        current_measure,
+                                        exp(as.numeric(res_sg_obj$b)[1]),
+                                        exp(as.numeric(res_sg_obj$ci.lb)[1]),
+                                        exp(as.numeric(res_sg_obj$ci.ub)[1]),
+                                        as.numeric(res_sg_obj$pval)[1],
+                                        res_sg_obj$I2)
+                }} else {{
+                    mlab_text <- sprintf("Subtotal: Effect=%.2f [%.2f, %.2f], p=%.3f, I²=%.1f%%",
+                                        as.numeric(res_sg_obj$b)[1],
+                                        as.numeric(res_sg_obj$ci.lb)[1],
+                                        as.numeric(res_sg_obj$ci.ub)[1],
+                                        as.numeric(res_sg_obj$pval)[1],
+                                        res_sg_obj$I2)
+                }}
+                addpoly(res_sg_obj, row=subtotal_row, mlab=mlab_text, cex=0.70, font=2)
+            }}
+        }}
+
+        # 全体サマリーを最下部に追加
+        overall_row <- ylim_bottom + 2
+        if (apply_exp_transform) {{
+            overall_mlab <- sprintf("Overall: %s=%.2f [%.2f, %.2f], I²=%.1f%%",
+                                   current_measure,
+                                   exp(as.numeric({res_for_plot_model_name}$b)[1]),
+                                   exp(as.numeric({res_for_plot_model_name}$ci.lb)[1]),
+                                   exp(as.numeric({res_for_plot_model_name}$ci.ub)[1]),
+                                   {res_for_plot_model_name}$I2)
+        }} else {{
+            overall_mlab <- sprintf("Overall: Effect=%.2f [%.2f, %.2f], I²=%.1f%%",
+                                   as.numeric({res_for_plot_model_name}$b)[1],
+                                   as.numeric({res_for_plot_model_name}$ci.lb)[1],
+                                   as.numeric({res_for_plot_model_name}$ci.ub)[1],
+                                   {res_for_plot_model_name}$I2)
+        }}
+        addpoly({res_for_plot_model_name}, row=overall_row, mlab=overall_mlab, cex=0.75, font=2)
+
+        # サブグループ間の差の検定結果を追加
+        test_res_sg <- res_subgroup_test_{safe_var_name}
+        text(-16, ylim_bottom + 0.5, pos=4, cex=0.75,
+             sprintf("Test for Subgroup Differences (Q_M = %.2f, df = %d, p = %.3f)",
+                    test_res_sg$QM, test_res_sg$p - 1, test_res_sg$QMp))
+        
+    }}, error = function(e) {{
+        plot(1, type="n", main="Subgroup Forest Plot Error ({subgroup_col_name})", xlab="", ylab="")
+        text(1, 1, paste("Error generating subgroup forest plot for {subgroup_col_name}:\n", e$message), col="red")
+        print(sprintf("Subgroup forest plot generation failed for {subgroup_col_name}: %s", e$message))
+    }})
+    dev.off()
+}} else {{
+    print("DEBUG: Prerequisites not met for subgroup forest plot generation")
+    print("DEBUG: Skipping subgroup forest plot for {subgroup_col_name}")
+}}
+""",
             "funnel_plot": """
 # ファンネルプロット作成
 png('{funnel_plot_path}', width=2400, height=2400, res=300, pointsize=9)
