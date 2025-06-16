@@ -601,6 +601,20 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
         # データフレームもフィルタリング
         res_for_plot_filtered$data <- {res_for_plot_model_name}$data[filtered_indices, ]
         
+        # ilab_data_main も同様にフィルタリング（重要：サイズ整合性維持）
+        if (!is.null(ilab_data_main)) {{
+            ilab_data_main <- ilab_data_main[filtered_indices, , drop=FALSE]
+            print(paste("DEBUG: Filtered ilab_data_main to", nrow(ilab_data_main), "rows"))
+            
+            # サイズ検証
+            if (nrow(ilab_data_main) != res_for_plot_filtered$k) {{
+                print("WARNING: ilab size still mismatched after filtering, disabling ilab")
+                ilab_data_main <- NULL
+                ilab_xpos_main <- NULL  
+                ilab_lab_main <- NULL
+            }}
+        }}
+        
         print(paste("DEBUG: res_for_plot_filtered k:", res_for_plot_filtered$k))
         print(paste("DEBUG: res_for_plot_filtered data rows:", nrow(res_for_plot_filtered$data)))
         print(paste("DEBUG: dat_ordered_filtered rows:", nrow(dat_ordered_filtered)))
