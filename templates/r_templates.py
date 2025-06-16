@@ -762,16 +762,89 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
         # forest()関数はsubsetパラメータをサポートしていないため
         print("DEBUG: Using pre-filtered data for forest plot - no subset parameter needed")
         
-        # 行位置をフィルタ済みデータのサイズに調整
-        if (length(all_study_rows) != length(filtered_indices)) {{
-            print("WARNING: Adjusting row positions to match filtered data size")
-            # 実際のフィルタ済みデータのサイズに基づいて行位置を再計算
-            total_filtered_studies <- length(filtered_indices)
-            all_study_rows <- seq(1, total_filtered_studies)
+        # 修正: rows引数を完全にフィルタ済みデータに合わせて再計算
+        print(paste("DEBUG: Pre-adjustment - all_study_rows length:", length(all_study_rows)))
+        print(paste("DEBUG: Pre-adjustment - filtered_indices length:", length(filtered_indices)))
+        print(paste("DEBUG: Pre-adjustment - res_for_plot_filtered k:", res_for_plot_filtered$k))
+        
+        # 完全な rows 再計算: サブグループポジションをフィルタ済みデータサイズで再構築
+        if (length(all_study_rows) != res_for_plot_filtered$k) {{
+            print("NOTICE: Completely rebuilding row positions for filtered data")
             
-            # ylimも再調整
-            ylim_bottom <- min(subtotal_rows) - 3
-            ylim_top <- max(all_study_rows) + 3
+            # フィルタ済みデータサイズに基づく新しい行位置計算
+            total_filtered_studies <- res_for_plot_filtered$k
+            
+            # サブグループ構造を維持した行位置再計算
+            if (length(sg_level_names) > 0 && length(subtotal_rows) > 0) {{
+                print("DEBUG: Rebuilding with subgroup structure preserved")
+                
+                # 各サブグループの研究数を再計算（フィルタ済みデータ基準）
+                sg_studies_filtered <- table(res_for_plot_filtered$data[['{subgroup_col_name}']])
+                
+                # 行位置を下から上に再配置
+                current_row_rebuild <- total_filtered_studies + length(sg_level_names) * 2
+                all_study_rows_rebuild <- c()
+                subtotal_rows_rebuild <- c()
+                
+                for (sg_name_rebuild in names(sg_studies_filtered)) {{
+                    if (sg_name_rebuild %in% sg_level_names) {{
+                        n_studies_rebuild <- sg_studies_filtered[sg_name_rebuild]
+                        
+                        # このサブグループの研究行位置
+                        study_rows_rebuild <- seq(current_row_rebuild - n_studies_rebuild + 1, current_row_rebuild)
+                        all_study_rows_rebuild <- c(all_study_rows_rebuild, study_rows_rebuild)
+                        
+                        # サブグループサマリー行位置
+                        subtotal_row_rebuild <- current_row_rebuild - n_studies_rebuild - 1
+                        subtotal_rows_rebuild <- c(subtotal_rows_rebuild, subtotal_row_rebuild)
+                        names(subtotal_rows_rebuild)[length(subtotal_rows_rebuild)] <- sg_name_rebuild
+                        
+                        # 次のサブグループ用位置更新
+                        current_row_rebuild <- current_row_rebuild - n_studies_rebuild - 2
+                    }}
+                }}
+                
+                # 再構築された位置を使用
+                all_study_rows <- all_study_rows_rebuild
+                subtotal_rows <- subtotal_rows_rebuild
+                
+                print(paste("DEBUG: Rebuilt all_study_rows length:", length(all_study_rows)))
+                print(paste("DEBUG: Rebuilt subtotal_rows length:", length(subtotal_rows)))
+                
+            }} else {{
+                print("DEBUG: Simple sequential row positioning")
+                # サブグループなし または subtotal_rows が空の場合、単純な連続配置
+                all_study_rows <- seq(1, total_filtered_studies)
+            }}
+            
+            # ylim再計算
+            if (length(all_study_rows) > 0) {{
+                if (length(subtotal_rows) > 0) {{
+                    ylim_bottom <- min(subtotal_rows) - 3
+                }} else {{
+                    ylim_bottom <- min(all_study_rows) - 3
+                }}
+                ylim_top <- max(all_study_rows) + 5
+            }} else {{
+                # フォールバック
+                ylim_bottom <- 1
+                ylim_top <- total_filtered_studies + 5
+                all_study_rows <- seq(1, total_filtered_studies)
+            }}
+            
+            print(paste("DEBUG: Final all_study_rows length:", length(all_study_rows)))
+            print(paste("DEBUG: Final ylim: bottom =", ylim_bottom, ", top =", ylim_top))
+        }} else {{
+            print("DEBUG: Row positions already match filtered data, no adjustment needed")
+        }}
+        
+        # 最終検証: all_study_rows と res_for_plot_filtered のサイズ一致確認
+        if (length(all_study_rows) != res_for_plot_filtered$k) {{
+            print(paste("ERROR: Final row count mismatch:", length(all_study_rows), "vs", res_for_plot_filtered$k))
+            print("FALLBACK: Using automatic row positioning (rows = NULL)")
+            all_study_rows <- NULL  # NULL にして forest() の自動計算に任せる
+        }} else {{
+            print("SUCCESS: Row positions perfectly match filtered data size")
         }}
         
         # メインのforest plotを描画（修正版：フィルタ済みデータを使用）
@@ -808,7 +881,57 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
             print("DEBUG: ilab_data_main is NULL, forest plot will not include ilab columns")
         }}
         
-        do.call(forest, forest_sg_args)
+        # 修正: 詳細なエラーログ付きでforest()を実行
+        print("DEBUG: About to call forest() with following arguments:")
+        print(paste("  - x (data) size:", res_for_plot_filtered$k))
+        print(paste("  - rows argument:", if(is.null(forest_sg_args$rows)) "NULL (auto)" else paste("length =", length(forest_sg_args$rows))))
+        print(paste("  - ilab argument:", if(is.null(forest_sg_args$ilab)) "NULL" else paste("size =", nrow(forest_sg_args$ilab))))
+        print(paste("  - ylim:", paste(forest_sg_args$ylim, collapse=" to ")))
+        
+        tryCatch({{
+            do.call(forest, forest_sg_args)
+            print("SUCCESS: Forest plot generated successfully")
+        }}, error = function(e) {{
+            print("ERROR: Forest plot generation failed")
+            print(paste("Error message:", e$message))
+            
+            # 詳細なサイズ情報をログ出力
+            print("=== FOREST PLOT ERROR DIAGNOSIS ===")
+            print(paste("res_for_plot_filtered$k:", res_for_plot_filtered$k))
+            print(paste("length(res_for_plot_filtered$yi):", length(res_for_plot_filtered$yi)))
+            print(paste("length(res_for_plot_filtered$vi):", length(res_for_plot_filtered$vi)))
+            if (!is.null(res_for_plot_filtered$weights)) {{
+                print(paste("length(res_for_plot_filtered$weights):", length(res_for_plot_filtered$weights)))
+            }}
+            if (!is.null(res_for_plot_filtered$slab)) {{
+                print(paste("length(res_for_plot_filtered$slab):", length(res_for_plot_filtered$slab)))
+            }}
+            print(paste("nrow(res_for_plot_filtered$data):", nrow(res_for_plot_filtered$data)))
+            if (!is.null(forest_sg_args$rows)) {{
+                print(paste("length(forest_sg_args$rows):", length(forest_sg_args$rows)))
+                print(paste("forest_sg_args$rows values:", paste(head(forest_sg_args$rows, 5), collapse=", "), "..."))
+            }}
+            if (!is.null(forest_sg_args$ilab)) {{
+                print(paste("nrow(forest_sg_args$ilab):", nrow(forest_sg_args$ilab)))
+            }}
+            print("=== END DIAGNOSIS ===")
+            
+            # フォールバック: 簡易版プロットを試行
+            print("ATTEMPTING FALLBACK: Simple forest plot without complex arguments")
+            tryCatch({{
+                forest(res_for_plot_filtered, 
+                       ylim = forest_sg_args$ylim,
+                       xlim = forest_sg_args$xlim,
+                       header = "Subgroup Forest Plot (Fallback Mode)",
+                       cex = 0.75)
+                print("SUCCESS: Fallback forest plot generated")
+            }}, error = function(e2) {{
+                print(paste("FALLBACK ALSO FAILED:", e2$message))
+                # 最終フォールバック: エラープロット
+                plot(1, type="n", main="Forest Plot Error", xlab="", ylab="")
+                text(1, 1, paste("Forest plot generation failed:\n", e$message), col="red", cex=0.8)
+            }})
+        }})
         
         # Treatment/Control ヘッダーの追加
         if (!is.null(ilab_data_main) && length(ilab_xpos_main) == 2) {{
