@@ -473,32 +473,69 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
     # 除外後のデータでのサブグループ別研究数を再計算
     studies_per_sg_filtered <- table(dat_ordered_filtered[['{subgroup_col_name}']])[sg_level_names]
     
-    for (i in 1:n_sg_levels) {{
-        sg_name <- sg_level_names[i]
-        n_studies_sg <- studies_per_sg_filtered[sg_name]
-        print(paste("DEBUG: Subgroup", sg_name, "filtered studies:", n_studies_sg))
-        
-        # この サブグループの研究の行位置
-        study_rows <- seq(current_row - n_studies_sg + 1, current_row)
-        rows_list[[sg_name]] <- study_rows
-        
-        # サブグループサマリーの行位置
-        subtotal_row <- current_row - n_studies_sg - 1
-        subtotal_rows <- c(subtotal_rows, subtotal_row)
-        names(subtotal_rows)[length(subtotal_rows)] <- sg_name
-        
-        # 次のサブグループのための位置更新 (2行のギャップ)
-        current_row <- current_row - n_studies_sg - 2
+    # 修正: 安全なforループ（subscript out of bounds エラー防止）
+    if (length(sg_level_names) > 0 && n_sg_levels > 0) {{
+        for (i in seq_along(sg_level_names)) {{
+            sg_name <- sg_level_names[i]
+            
+            # 修正: サブグループが存在するかチェック
+            if (!(sg_name %in% names(studies_per_sg_filtered))) {{
+                print(paste("WARNING: Subgroup", sg_name, "not found in filtered data, skipping"))
+                next
+            }}
+            
+            n_studies_sg <- studies_per_sg_filtered[sg_name]
+            
+            # 修正: 研究数が0以下の場合のチェック
+            if (is.na(n_studies_sg) || n_studies_sg <= 0) {{
+                print(paste("WARNING: Subgroup", sg_name, "has no studies, skipping"))
+                next
+            }}
+            
+            print(paste("DEBUG: Subgroup", sg_name, "filtered studies:", n_studies_sg))
+            
+            # この サブグループの研究の行位置
+            study_rows <- seq(current_row - n_studies_sg + 1, current_row)
+            rows_list[[sg_name]] <- study_rows
+            
+            # サブグループサマリーの行位置
+            subtotal_row <- current_row - n_studies_sg - 1
+            subtotal_rows <- c(subtotal_rows, subtotal_row)
+            names(subtotal_rows)[length(subtotal_rows)] <- sg_name
+            
+            # 次のサブグループのための位置更新 (2行のギャップ)
+            current_row <- current_row - n_studies_sg - 2
+        }}
+    }} else {{
+        print("WARNING: No valid subgroups found for row position calculation")
     }}
     
-    # 全ての研究の行位置を統合
-    all_study_rows <- unlist(rows_list[sg_level_names])
+    # 修正: 全ての研究の行位置を統合（安全な処理）
+    if (length(rows_list) > 0 && length(sg_level_names) > 0) {{
+        all_study_rows <- unlist(rows_list[sg_level_names])
+        
+        # 修正: 空の場合のフォールバック
+        if (length(all_study_rows) == 0) {{
+            print("WARNING: No study rows calculated, using default positions")
+            all_study_rows <- seq_len(nrow(dat_ordered_filtered))
+        }}
+    }} else {{
+        print("WARNING: No valid rows_list, using sequential positions")
+        all_study_rows <- seq_len(nrow(dat_ordered_filtered))
+    }}
     
     # 行位置は後でres_for_plot_filteredに合わせて調整される
     
     # ylimを設定 (十分な空間を確保)
-    ylim_bottom <- min(subtotal_rows) - 3
-    ylim_top <- max(all_study_rows) + 3
+    # 修正: subtotal_rowsが空の場合の対処
+    if (length(subtotal_rows) > 0 && length(all_study_rows) > 0) {{
+        ylim_bottom <- min(subtotal_rows) - 3
+        ylim_top <- max(all_study_rows) + 3
+    }} else {{
+        print("WARNING: Cannot calculate ylim properly, using defaults")
+        ylim_bottom <- 1
+        ylim_top <- nrow(dat_ordered_filtered) + 5
+    }}
     
     # --- 高さ計算 ---
     total_plot_rows <- ylim_top - ylim_bottom + extra_rows_sg_val
@@ -568,10 +605,20 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
         print(paste("DEBUG: Filtered indices length:", length(filtered_indices)))
         print(paste("DEBUG: dat_ordered_filtered rows:", nrow(dat_ordered_filtered)))
         
+        # 修正: インデックス範囲の安全性チェック（subscript out of bounds エラー防止）
+        max_index <- length({res_for_plot_model_name}$yi)
+        invalid_indices <- filtered_indices[filtered_indices <= 0 | filtered_indices > max_index]
+        if (length(invalid_indices) > 0) {{
+            print(paste("WARNING: Invalid indices detected:", paste(invalid_indices, collapse=", ")))
+            print(paste("WARNING: Valid index range: 1 to", max_index))
+            filtered_indices <- filtered_indices[filtered_indices > 0 & filtered_indices <= max_index]
+        }}
+        
         # インデックスの長さがdat_ordered_filteredと一致することを確認
         if (length(filtered_indices) != nrow(dat_ordered_filtered)) {{
-            print("ERROR: Index length mismatch, using sequential indices")
-            filtered_indices <- seq_len(nrow(dat_ordered_filtered))
+            print("ERROR: Index length mismatch after validation, using sequential indices")
+            print(paste("DEBUG: Expected:", nrow(dat_ordered_filtered), "Got:", length(filtered_indices)))
+            filtered_indices <- seq_len(min(nrow(dat_ordered_filtered), max_index))
         }}
         
         # res_for_plotのコピーを作成し、フィルタ済みデータのみを含むようにする
@@ -666,12 +713,29 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
         }}
         
         # サブグループラベルとサマリーポリゴンを追加
-        for (i in 1:n_sg_levels) {{
-            sg_name <- sg_level_names[i]
-            res_sg_obj <- res_by_subgroup_{subgroup_col_name}[[sg_name]]
-            subtotal_row <- subtotal_rows[sg_name]
-            
-            if (!is.null(res_sg_obj)) {{
+        # 修正: 安全なforループ境界チェック（subscript out of bounds エラー防止）
+        if (length(sg_level_names) > 0 && n_sg_levels > 0) {{
+            for (i in seq_along(sg_level_names)) {{
+                sg_name <- sg_level_names[i]
+                
+                # 修正: 配列アクセス前の存在確認
+                if (!(sg_name %in% names(res_by_subgroup_{subgroup_col_name}))) {{
+                    print(paste("WARNING: Subgroup", sg_name, "not found in results, skipping"))
+                    next
+                }}
+                if (!(sg_name %in% names(subtotal_rows))) {{
+                    print(paste("WARNING: Subgroup", sg_name, "not found in subtotal_rows, skipping"))
+                    next
+                }}
+                if (!(sg_name %in% names(rows_list))) {{
+                    print(paste("WARNING: Subgroup", sg_name, "not found in rows_list, skipping"))
+                    next
+                }}
+                
+                res_sg_obj <- res_by_subgroup_{subgroup_col_name}[[sg_name]]
+                subtotal_row <- subtotal_rows[sg_name]
+                
+                if (!is.null(res_sg_obj) && length(rows_list[[sg_name]]) > 0) {{
                 # サブグループ名をラベルとして追加
                 text(-16, max(rows_list[[sg_name]]) + 0.5, 
                      paste0(sg_name, " (k=", res_sg_obj$k, ")"), 
@@ -748,6 +812,9 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
                 }}
                 addpoly(res_sg_obj, row=subtotal_row, mlab=mlab_text, cex=0.70, font=2)
             }}
+        }}
+        }} else {{
+            print("WARNING: No valid subgroups for polygon addition, skipping subgroup summaries")
         }}
 
         # 全体サマリーを最下部に追加
