@@ -648,14 +648,31 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
         # データフレームもフィルタリング
         res_for_plot_filtered$data <- {res_for_plot_model_name}$data[filtered_indices, ]
         
-        # ilab_data_main も同様にフィルタリング（重要：サイズ整合性維持）
+        # 修正: ilab_data_main サイズ整合性チェック（重要：論理的矛盾の修正）
         if (!is.null(ilab_data_main)) {{
-            ilab_data_main <- ilab_data_main[filtered_indices, , drop=FALSE]
-            print(paste("DEBUG: Filtered ilab_data_main to", nrow(ilab_data_main), "rows"))
+            print(paste("DEBUG: Original ilab_data_main rows:", nrow(ilab_data_main)))
+            print(paste("DEBUG: res_for_plot_filtered k:", res_for_plot_filtered$k))
             
-            # サイズ検証
-            if (nrow(ilab_data_main) != res_for_plot_filtered$k) {{
-                print("WARNING: ilab size still mismatched after filtering, disabling ilab")
+            # ilab_data_main は dat_ordered_filtered から作成されているため、
+            # res_for_plot_filtered と直接サイズを比較する
+            if (nrow(ilab_data_main) == res_for_plot_filtered$k) {{
+                print("DEBUG: ilab_data_main size matches res_for_plot_filtered, keeping as-is")
+                # サイズが一致している場合はそのまま使用
+            }} else if (nrow(ilab_data_main) > res_for_plot_filtered$k) {{
+                # ilab_data_main の方が大きい場合、最初のk行のみ使用
+                print(paste("DEBUG: Truncating ilab_data_main from", nrow(ilab_data_main), "to", res_for_plot_filtered$k, "rows"))
+                ilab_data_main <- ilab_data_main[1:res_for_plot_filtered$k, , drop=FALSE]
+            }} else {{
+                # ilab_data_main の方が小さい場合、無効化
+                print(paste("WARNING: ilab_data_main size (", nrow(ilab_data_main), ") < res_for_plot_filtered k (", res_for_plot_filtered$k, "), disabling ilab"))
+                ilab_data_main <- NULL
+                ilab_xpos_main <- NULL  
+                ilab_lab_main <- NULL
+            }}
+            
+            # 最終サイズ検証
+            if (!is.null(ilab_data_main) && nrow(ilab_data_main) != res_for_plot_filtered$k) {{
+                print("ERROR: Final ilab size mismatch, disabling ilab completely")
                 ilab_data_main <- NULL
                 ilab_xpos_main <- NULL  
                 ilab_lab_main <- NULL
@@ -699,10 +716,22 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
             mlab = ""
         )
         
+        # 修正: forest()呼び出し前の最終ilab安全性チェック
         if (!is.null(ilab_data_main)) {{
-            forest_sg_args$ilab <- ilab_data_main
-            forest_sg_args$ilab.xpos <- ilab_xpos_main
-            forest_sg_args$ilab.lab <- ilab_lab_main
+            # 最終的なサイズ整合性確認
+            if (nrow(ilab_data_main) == res_for_plot_filtered$k) {{
+                print("DEBUG: Final ilab validation passed, adding to forest plot")
+                forest_sg_args$ilab <- ilab_data_main
+                forest_sg_args$ilab.xpos <- ilab_xpos_main
+                forest_sg_args$ilab.lab <- ilab_lab_main
+            }} else {{
+                print(paste("ERROR: Last-minute ilab size mismatch detected in forest call"))
+                print(paste("  ilab rows:", nrow(ilab_data_main), "vs res_for_plot k:", res_for_plot_filtered$k))
+                print("  Skipping ilab to prevent forest plot error")
+                # ilab を無効化して forest plot を保護
+            }}
+        }} else {{
+            print("DEBUG: ilab_data_main is NULL, forest plot will not include ilab columns")
         }}
         
         do.call(forest, forest_sg_args)
