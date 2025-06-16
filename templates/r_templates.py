@@ -593,13 +593,24 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
         print(paste("DEBUG: Original res_for_plot data rows:", nrow({res_for_plot_model_name}$data)))
         print(paste("DEBUG: Filtered data rows:", nrow(dat_ordered_filtered)))
         
+        # 修正: n=1のサブグループを持つ研究を特定して除外
+        # まず、元データでどの研究が除外されたかを確認
+        excluded_studies <- setdiff(dat$Study, dat_ordered_filtered$Study)
+        if (length(excluded_studies) > 0) {{
+            print(paste("DEBUG: Studies excluded due to n=1 subgroups:", paste(excluded_studies, collapse=", ")))
+        }}
+        
         # フィルタ済みデータのインデックスを取得（Study列で照合）
         if ("Study" %in% names({res_for_plot_model_name}$data)) {{
+            # 修正: dat_ordered_filteredに存在する研究のみを選択
             filtered_indices <- which({res_for_plot_model_name}$data$Study %in% dat_ordered_filtered$Study)
+            print(paste("DEBUG: Matching studies found:", length(filtered_indices)))
         }} else {{
-            # Study列がない場合は、dat_ordered_filteredと同じ順序でインデックスを取得
-            original_order <- match(rownames(dat_ordered_filtered), rownames(dat))
-            filtered_indices <- original_order[!is.na(original_order)]
+            # Study列がない場合は、サブグループ列で直接フィルタリング
+            # n=1のサブグループを除外
+            valid_subgroups <- names(table(dat[['{subgroup_col_name}']])[table(dat[['{subgroup_col_name}']]) > 1])
+            filtered_indices <- which({res_for_plot_model_name}$data[['{subgroup_col_name}']] %in% valid_subgroups)
+            print(paste("DEBUG: Valid subgroups:", paste(valid_subgroups, collapse=", ")))
         }}
         
         print(paste("DEBUG: Filtered indices length:", length(filtered_indices)))
@@ -648,31 +659,26 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
         # データフレームもフィルタリング
         res_for_plot_filtered$data <- {res_for_plot_model_name}$data[filtered_indices, ]
         
-        # 修正: ilab_data_main サイズ整合性チェック（重要：論理的矛盾の修正）
+        # 修正: ilab_data_main と res_for_plot_filtered のサイズ整合性を確保
+        # 注: ilab_data_main は dat_ordered_filtered (n=1除外後) から作成
+        #     res_for_plot_filtered も同じ dat_ordered_filtered に基づいてフィルタリング
         if (!is.null(ilab_data_main)) {{
-            print(paste("DEBUG: Original ilab_data_main rows:", nrow(ilab_data_main)))
+            print(paste("DEBUG: ilab_data_main rows:", nrow(ilab_data_main)))
             print(paste("DEBUG: res_for_plot_filtered k:", res_for_plot_filtered$k))
+            print(paste("DEBUG: dat_ordered_filtered rows:", nrow(dat_ordered_filtered)))
             
-            # ilab_data_main は dat_ordered_filtered から作成されているため、
-            # res_for_plot_filtered と直接サイズを比較する
+            # 両方とも dat_ordered_filtered に基づいているため、サイズは一致するはず
             if (nrow(ilab_data_main) == res_for_plot_filtered$k) {{
-                print("DEBUG: ilab_data_main size matches res_for_plot_filtered, keeping as-is")
-                # サイズが一致している場合はそのまま使用
-            }} else if (nrow(ilab_data_main) > res_for_plot_filtered$k) {{
-                # ilab_data_main の方が大きい場合、最初のk行のみ使用
-                print(paste("DEBUG: Truncating ilab_data_main from", nrow(ilab_data_main), "to", res_for_plot_filtered$k, "rows"))
-                ilab_data_main <- ilab_data_main[1:res_for_plot_filtered$k, , drop=FALSE]
+                print("DEBUG: ilab size matches filtered data - OK")
             }} else {{
-                # ilab_data_main の方が小さい場合、無効化
-                print(paste("WARNING: ilab_data_main size (", nrow(ilab_data_main), ") < res_for_plot_filtered k (", res_for_plot_filtered$k, "), disabling ilab"))
-                ilab_data_main <- NULL
-                ilab_xpos_main <- NULL  
-                ilab_lab_main <- NULL
-            }}
-            
-            # 最終サイズ検証
-            if (!is.null(ilab_data_main) && nrow(ilab_data_main) != res_for_plot_filtered$k) {{
-                print("ERROR: Final ilab size mismatch, disabling ilab completely")
+                # サイズ不一致の場合、デバッグ情報を出力して無効化
+                print("ERROR: Size mismatch detected:")
+                print(paste("  - ilab_data_main rows:", nrow(ilab_data_main)))
+                print(paste("  - res_for_plot_filtered k:", res_for_plot_filtered$k))
+                print(paste("  - dat_ordered_filtered rows:", nrow(dat_ordered_filtered)))
+                print("  - This indicates a filtering inconsistency")
+                print("  - Disabling ilab to prevent forest plot error")
+                
                 ilab_data_main <- NULL
                 ilab_xpos_main <- NULL  
                 ilab_lab_main <- NULL

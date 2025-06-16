@@ -156,6 +156,84 @@ escalc_call = self._safe_format(
 
 この修正により `"length of the slab argument does not correspond to the size of the original dataset"` エラーが解消されます。
 
+## 新規追加テストファイル (2025-06-16)
+
+### ilab引数長さ不整合エラー修正関連
+
+#### `test_ilab_mismatch_fix.py`
+**概要**: `"length of the ilab argument (19) does not correspond to the size of the original dataset (20)"` エラーの再現・修正テスト
+**機能**:
+- 20研究のデータセット作成（19研究がGroupA、1研究がGroupB）
+- GroupB（n=1）が除外される状況を再現
+- Rスクリプト実行によるエラー確認
+- 実際の修正効果検証
+
+**注意**: このテストはR環境が必要（`Rscript`コマンド実行）
+
+#### `test_ilab_mismatch_analysis.py`
+**概要**: R環境なしでilab修正内容を分析するテスト
+**機能**:
+- R環境不要でのテスト実行
+- 生成されたRスクリプトの静的解析
+- ilab関連の修正パターン検出
+- サブグループ除外ロジックの確認
+
+**実行方法**:
+```bash
+cd /home/youkiti/meta-analysis-bot-release
+python3 test/test_ilab_mismatch_analysis.py
+```
+
+#### 検出された修正内容
+
+テスト結果により以下の修正が確認されました:
+
+**1. サブグループ除外ロジック**:
+```r
+# n=1のサブグループを除外
+excluded_studies <- setdiff(dat$Study, dat_ordered_filtered$Study)
+if (length(excluded_studies) > 0) {
+    print(paste("DEBUG: Studies excluded due to n=1 subgroups:", paste(excluded_studies, collapse=", ")))
+}
+```
+
+**2. データ整合性チェック**:
+```r
+# ilab_data_main と res_for_plot_filtered のサイズ整合性を確保
+if (nrow(ilab_data_main) == res_for_plot_filtered$k) {
+    print("DEBUG: ilab size matches filtered data - OK")
+} else {
+    print("ERROR: Size mismatch detected:")
+    ilab_data_main <- NULL  # ilab無効化でエラー防止
+}
+```
+
+**3. フィルタリング処理の一貫性**:
+```r
+# dat_ordered_filtered（n=1除外後）に基づいて一貫したフィルタリング
+filtered_indices <- which(res_for_plot$data$Study %in% dat_ordered_filtered$Study)
+res_for_plot_filtered$yi <- res_for_plot$yi[filtered_indices]
+res_for_plot_filtered$slab <- res_for_plot$slab[filtered_indices]
+```
+
+**4. Forest plot前の最終チェック**:
+```r
+# forest()呼び出し前の最終ilab安全性チェック
+if (nrow(ilab_data_main) == res_for_plot_filtered$k) {
+    forest_sg_args$ilab <- ilab_data_main
+} else {
+    print("ERROR: Last-minute ilab size mismatch detected")
+    # ilab を無効化して forest plot を保護
+}
+```
+
+### 修正効果の確認
+- ✅ サブグループn=1の自動除外
+- ✅ データサイズ不整合の事前検出
+- ✅ ilab引数の安全な無効化
+- ✅ Forest plot実行時のエラー防止
+- ✅ デバッグ情報の充実
+
 ## Adding New Tests
 
 When adding new test files:
