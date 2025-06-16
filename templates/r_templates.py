@@ -659,29 +659,97 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
         # データフレームもフィルタリング
         res_for_plot_filtered$data <- {res_for_plot_model_name}$data[filtered_indices, ]
         
-        # 修正: ilab_data_main と res_for_plot_filtered のサイズ整合性を確保
-        # 注: ilab_data_main は dat_ordered_filtered (n=1除外後) から作成
-        #     res_for_plot_filtered も同じ dat_ordered_filtered に基づいてフィルタリング
+        # 修正: ilab_data_main を res_for_plot_filtered の順序に完全に合わせて再構築
         if (!is.null(ilab_data_main)) {{
-            print(paste("DEBUG: ilab_data_main rows:", nrow(ilab_data_main)))
+            print(paste("DEBUG: Original ilab_data_main rows:", nrow(ilab_data_main)))
             print(paste("DEBUG: res_for_plot_filtered k:", res_for_plot_filtered$k))
             print(paste("DEBUG: dat_ordered_filtered rows:", nrow(dat_ordered_filtered)))
             
-            # 両方とも dat_ordered_filtered に基づいているため、サイズは一致するはず
-            if (nrow(ilab_data_main) == res_for_plot_filtered$k) {{
-                print("DEBUG: ilab size matches filtered data - OK")
-            }} else {{
-                # サイズ不一致の場合、デバッグ情報を出力して無効化
-                print("ERROR: Size mismatch detected:")
-                print(paste("  - ilab_data_main rows:", nrow(ilab_data_main)))
-                print(paste("  - res_for_plot_filtered k:", res_for_plot_filtered$k))
-                print(paste("  - dat_ordered_filtered rows:", nrow(dat_ordered_filtered)))
-                print("  - This indicates a filtering inconsistency")
-                print("  - Disabling ilab to prevent forest plot error")
+            # サイズまたは順序の不一致を確実に解決するため、ilab_data_mainを完全に再構築
+            if (nrow(ilab_data_main) != res_for_plot_filtered$k || 
+                !identical(rownames(ilab_data_main), rownames(res_for_plot_filtered$data))) {{
                 
-                ilab_data_main <- NULL
-                ilab_xpos_main <- NULL  
-                ilab_lab_main <- NULL
+                print("NOTICE: Rebuilding ilab_data_main to match res_for_plot_filtered exactly")
+                
+                # res_for_plot_filtered$data から直接 Study 順序を取得
+                if ("Study" %in% names(res_for_plot_filtered$data)) {{
+                    target_studies <- res_for_plot_filtered$data$Study
+                    print(paste("DEBUG: Target study order (first 3):", paste(head(target_studies, 3), collapse=", ")))
+                    
+                    # dat で target_studies の順序に合わせてデータを抽出
+                    # 注意: dat_ordered_filtered ではなく dat を使用（完全なデータセット）
+                    reordered_data <- dat[match(target_studies, dat$Study), ]
+                    
+                    # NA行をチェック（該当する研究が見つからない場合）
+                    if (any(is.na(reordered_data$Study))) {{
+                        print("ERROR: Some target studies not found in original data")
+                        print(paste("Missing studies:", paste(target_studies[is.na(match(target_studies, dat$Study))], collapse=", ")))
+                        ilab_data_main <- NULL
+                        ilab_xpos_main <- NULL
+                        ilab_lab_main <- NULL
+                    }} else {{
+                        # 正常ケース: ilab_data_main を再構築
+                        if (current_measure %in% c("OR", "RR", "RD", "PETO")) {{
+                            ai_col_rebuild <- "{ai_col}"
+                            ci_col_rebuild <- "{ci_col}"
+                            n1i_col_rebuild <- "{n1i_col}"
+                            n2i_col_rebuild <- "{n2i_col}"
+                            
+                            if (ai_col_rebuild != "" && ci_col_rebuild != "" && n1i_col_rebuild != "" && n2i_col_rebuild != "" &&
+                                all(c(ai_col_rebuild, ci_col_rebuild, n1i_col_rebuild, n2i_col_rebuild) %in% names(reordered_data))) {{
+                                treatment_display_rebuild <- paste(reordered_data[[ai_col_rebuild]], "/", reordered_data[[n1i_col_rebuild]], sep="")
+                                control_display_rebuild <- paste(reordered_data[[ci_col_rebuild]], "/", reordered_data[[n2i_col_rebuild]], sep="")
+                                ilab_data_main <- cbind(treatment_display_rebuild, control_display_rebuild)
+                                print("SUCCESS: Rebuilt ilab_data_main with Events/Total format")
+                            }} else if (ai_col_rebuild != "" && ci_col_rebuild != "" && all(c(ai_col_rebuild, ci_col_rebuild) %in% names(reordered_data))) {{
+                                ilab_data_main <- cbind(reordered_data[[ai_col_rebuild]], reordered_data[[ci_col_rebuild]])
+                                print("SUCCESS: Rebuilt ilab_data_main with Events format")
+                            }} else {{
+                                print("ERROR: Required columns for ilab rebuild not found")
+                                ilab_data_main <- NULL
+                                ilab_xpos_main <- NULL
+                                ilab_lab_main <- NULL
+                            }}
+                        }} else if (current_measure %in% c("SMD", "MD", "ROM")) {{
+                            n1i_col_rebuild <- "{n1i_col}"
+                            n2i_col_rebuild <- "{n2i_col}"
+                            
+                            if (n1i_col_rebuild != "" && n2i_col_rebuild != "" && all(c(n1i_col_rebuild, n2i_col_rebuild) %in% names(reordered_data))) {{
+                                ilab_data_main <- cbind(reordered_data[[n1i_col_rebuild]], reordered_data[[n2i_col_rebuild]])
+                                print("SUCCESS: Rebuilt ilab_data_main for continuous outcomes")
+                            }} else {{
+                                print("ERROR: Required columns for continuous ilab rebuild not found")
+                                ilab_data_main <- NULL
+                                ilab_xpos_main <- NULL
+                                ilab_lab_main <- NULL
+                            }}
+                        }}
+                        
+                        if (!is.null(ilab_data_main)) {{
+                            print(paste("SUCCESS: ilab_data_main rebuilt with", nrow(ilab_data_main), "rows matching res_for_plot_filtered"))
+                        }}
+                    }}
+                }} else {{
+                    print("ERROR: Study column not found in res_for_plot_filtered$data")
+                    ilab_data_main <- NULL
+                    ilab_xpos_main <- NULL
+                    ilab_lab_main <- NULL
+                }}
+            }} else {{
+                print("DEBUG: ilab_data_main size and order already match res_for_plot_filtered")
+            }}
+            
+            # 最終検証: サイズが完全に一致することを確認
+            if (!is.null(ilab_data_main)) {{
+                if (nrow(ilab_data_main) == res_for_plot_filtered$k) {{
+                    print("FINAL CHECK PASSED: ilab_data_main size matches res_for_plot_filtered")
+                }} else {{
+                    print(paste("FINAL CHECK FAILED: Size mismatch persists -", nrow(ilab_data_main), "vs", res_for_plot_filtered$k))
+                    print("Disabling ilab to prevent forest plot error")
+                    ilab_data_main <- NULL
+                    ilab_xpos_main <- NULL  
+                    ilab_lab_main <- NULL
+                }}
             }}
         }}
         
