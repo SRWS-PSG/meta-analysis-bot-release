@@ -76,21 +76,25 @@ library(jsonlite)
 """,
             "escalc_binary": """
 # 二値アウトカムの効果量計算 (例: オッズ比)
-dat <- escalc(measure="{measure}", ai=dat${ai}, bi=dat${bi}, ci=dat${ci}, di=dat${di}, data=dat{slab_param_string})
+# 修正: slabを列名参照に変更してベクトル長さ不整合を回避
+dat <- escalc(measure="{measure}", ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, slab={slab_column})
 """,
             "escalc_binary_no_correction": """
 # 二値アウトカムの効果量計算（連続性補正なし）
-dat <- escalc(measure="{measure}", ai=dat${ai}, bi=dat${bi}, ci=dat${ci}, di=dat${di}, data=dat, add=0, to="none"{slab_param_string})
+# 修正: slabを列名参照に変更してベクトル長さ不整合を回避
+dat <- escalc(measure="{measure}", ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, add=0, to="none", slab={slab_column})
 """,
             "rma_mh": """
 # Mantel-Haenszel法による解析（補正なし）
-res <- rma.mh(ai=dat${ai}, bi=dat${bi}, ci=dat${ci}, di=dat${di}, data=dat, measure="{measure}", 
-              add=0, to="none", drop00=TRUE, correct=TRUE)
+# 修正: slabを列名参照に変更してベクトル長さ不整合を回避
+res <- rma.mh(ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, measure="{measure}", 
+              add=0, to="none", drop00=TRUE, correct=TRUE, slab={slab_column})
 """,
             "rma_mh_with_correction": """
 # Mantel-Haenszel法による解析（個別効果量のみ補正、集計は補正なし）
-res <- rma.mh(ai=dat${ai}, bi=dat${bi}, ci=dat${ci}, di=dat${di}, data=dat, measure="{measure}", 
-              add=c(0.5, 0), to=c("only0", "none"), drop00=TRUE, correct=TRUE)
+# 修正: slabを列名参照に変更してベクトル長さ不整合を回避
+res <- rma.mh(ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, measure="{measure}", 
+              add=c(0.5, 0), to=c("only0", "none"), drop00=TRUE, correct=TRUE, slab={slab_column})
 """,
             "main_analysis_selection": """
 # 主解析手法の選択（ゼロセルがある場合はMH法、ない場合は逆分散法）
@@ -100,8 +104,9 @@ if (exists("zero_cells_summary") && !is.null(zero_cells_summary$studies_with_zer
     main_analysis_method <- "MH"
     
     # 主解析：Mantel-Haenszel法（補正なし）
-    res <- rma.mh(ai=dat${ai}, bi=dat${bi}, ci=dat${ci}, di=dat${di}, data=dat, measure="{measure}",
-                  add=0, to="none", drop00=TRUE, correct=TRUE)
+    # 修正: slabを列名参照に変更してベクトル長さ不整合を回避
+    res <- rma.mh(ai={ai}, bi={bi}, ci={ci}, di={di}, data=dat, measure="{measure}",
+                  add=0, to="none", drop00=TRUE, correct=TRUE, slab={slab_column})
     res_for_plot <- res  # プロット用にも同じ結果を使用
     
     print("主解析完了: Mantel-Haenszel法（補正なし）")
@@ -278,9 +283,9 @@ tryCatch({{
     }}
 
     # フォレストプロット描画 (res_for_plot を使用)
+    # 修正: slabはres_for_plotに既に含まれているため明示的指定不要
     forest_args <- list(
         x = res_for_plot,
-        slab = dat$slab,
         atransf = if(apply_exp_transform) exp else I, 
         at = forest_at,
         xlim = c(-16, 6),
@@ -596,19 +601,11 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
         print(paste("DEBUG: dat_ordered_filtered rows:", nrow(dat_ordered_filtered)))
         print(paste("DEBUG: slab length:", length(dat_ordered_filtered$slab)))
         
-        # データサイズの整合性を確認して修正
-        if (length(filtered_indices) != nrow(dat_ordered_filtered)) {{
-            print("WARNING: Size mismatch between filtered res_for_plot and dat_ordered_filtered")
-            print(paste("DEBUG: filtered_indices length:", length(filtered_indices)))
-            print(paste("DEBUG: dat_ordered_filtered rows:", nrow(dat_ordered_filtered)))
-            
-            # res_for_plot_filteredに対応するslabを取得
-            filtered_slab <- {res_for_plot_model_name}$data$slab[filtered_indices]
-        }} else {{
-            filtered_slab <- dat_ordered_filtered$slab
-        }}
+        # 修正: slabの手動操作を削除し、列名参照に依存
+        # metaforが自動的にデータとslabの整合性を保つため、手動操作は不要
+        print("DEBUG: Using column name reference for slab - no manual vector handling needed")
         
-        print(paste("DEBUG: Using slab length:", length(filtered_slab)))
+        print("DEBUG: Slab will be handled automatically by metafor column reference")
         
         # 行位置をフィルタ済みデータのサイズに調整
         if (length(all_study_rows) != length(filtered_indices)) {{
@@ -622,10 +619,11 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
             ylim_top <- max(all_study_rows) + 3
         }}
         
-        # メインのforest plotを描画（フィルタ済みのres_for_plotを使用）
+        # メインのforest plotを描画（修正版：slabは列名参照）
+        # 注意: res_for_plot_filteredは使わず、元のres_for_plotでサブセット指定
         forest_sg_args <- list(
-            x = res_for_plot_filtered, # フィルタ済みのオブジェクトを使用
-            slab = filtered_slab,  # サイズが一致するslabを使用
+            x = {res_for_plot_model_name}, # 元の解析結果を使用
+            subset = filtered_indices,     # サブセット指定でフィルタ
             rows = all_study_rows,
             ylim = c(ylim_bottom, ylim_top),
             atransf = if(apply_exp_transform) exp else I,
@@ -1142,14 +1140,15 @@ if (exists("zero_cells_summary") && !is.null(zero_cells_summary$studies_with_zer
             escalc_call = self._safe_format(
                 self.templates["escalc_binary"],
                 measure=measure, ai=ai_col, bi=actual_bi_col,
-                ci=ci_col, di=actual_di_col, slab_param_string=slab_param_string
+                ci=ci_col, di=actual_di_col, slab_column="slab"
             )
             
             # 主解析手法の選択（ゼロセルがある場合はMH法を優先）
             main_analysis_code = self._safe_format(
                 self.templates["main_analysis_selection"],
                 ai=ai_col, bi=actual_bi_col, ci=ci_col, di=actual_di_col,
-                measure=measure, method=analysis_params.get("model", "REML")
+                measure=measure, method=analysis_params.get("model", "REML"),
+                slab_column="slab"
             )
             
             # ゼロセル対応の感度解析を追加
