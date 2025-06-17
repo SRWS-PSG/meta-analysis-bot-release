@@ -378,11 +378,17 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
     
     print(paste("DEBUG: sg_level_names in res_by_subgroup:", paste(sg_level_names, collapse=", ")))
     
+    # 元の列名に対応するサニタイズ後の列名を取得
+    sanitized_sg_col_name <- names(column_mapping)[column_mapping == "{subgroup_col_name}"]
+    if (length(sanitized_sg_col_name) == 0) {{
+        sanitized_sg_col_name <- make.names("{subgroup_col_name}")
+    }}
+    
     # データをサブグループでソート
-    dat_ordered <- dat[order(dat[['{subgroup_col_name}']]), ]
+    dat_ordered <- dat[order(dat[[sanitized_sg_col_name]]), ]
     
     # 全データのサブグループ別研究数
-    all_studies_per_sg <- table(dat[['{subgroup_col_name}']])
+    all_studies_per_sg <- table(dat[[sanitized_sg_col_name]])
     print(paste("DEBUG: All subgroups in data:", paste(names(all_studies_per_sg), collapse=", ")))
     print(paste("DEBUG: Studies per subgroup:", paste(all_studies_per_sg, collapse=", ")))
     
@@ -391,7 +397,7 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
     
     # 元データのすべてのサブグループと res_by_subgroup に含まれるサブグループを比較
     # res_by_subgroup に含まれていないサブグループが除外されたサブグループ
-    all_subgroups_in_data <- unique(dat[['{subgroup_col_name}']])
+    all_subgroups_in_data <- unique(dat[[sanitized_sg_col_name]])
     subgroups_in_res <- sg_level_names
     
     excluded_subgroups <- setdiff(all_subgroups_in_data, subgroups_in_res)
@@ -428,7 +434,7 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
     studies_per_sg <- studies_per_sg[sg_level_names]
     
     # 除外後のデータでdat_orderedを再作成（重要な修正）
-    dat_ordered_filtered <- dat_ordered[dat_ordered[['{subgroup_col_name}']] %in% valid_sg_names, ]
+    dat_ordered_filtered <- dat_ordered[dat_ordered[[sanitized_sg_col_name]] %in% valid_sg_names, ]
     
     print(paste("DEBUG: Original data rows:", nrow(dat_ordered)))
     print(paste("DEBUG: Filtered data rows:", nrow(dat_ordered_filtered)))
@@ -471,7 +477,7 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
     subtotal_rows <- c()
     
     # 除外後のデータでのサブグループ別研究数を再計算
-    studies_per_sg_filtered <- table(dat_ordered_filtered[['{subgroup_col_name}']])[sg_level_names]
+    studies_per_sg_filtered <- table(dat_ordered_filtered[[sanitized_sg_col_name]])[sg_level_names]
     
     # 修正: 安全なforループ（subscript out of bounds エラー防止）
     if (length(sg_level_names) > 0 && n_sg_levels > 0) {{
@@ -978,7 +984,7 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
                         all(c(ai_col_sg, ci_col_sg, n1i_col_sg, n2i_col_sg) %in% names(dat))) {{
                         
                         # このサブグループのデータのみを抽出（除外後のデータから）
-                        sg_data <- dat_ordered_filtered[dat_ordered_filtered[['{subgroup_col_name}']] == sg_name, ]
+                        sg_data <- dat_ordered_filtered[dat_ordered_filtered[[sanitized_sg_col_name]] == sg_name, ]
                         
                         if (nrow(sg_data) > 0) {{
                             sg_total_ai <- sum(sg_data[[ai_col_sg]], na.rm = TRUE)
@@ -1003,7 +1009,7 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
                     n2i_col_sg <- "{n2i_col}"
                     
                     if (n1i_col_sg != "" && n2i_col_sg != "" && all(c(n1i_col_sg, n2i_col_sg) %in% names(dat))) {{
-                        sg_data <- dat_ordered_filtered[dat_ordered_filtered[['{subgroup_col_name}']] == sg_name, ]
+                        sg_data <- dat_ordered_filtered[dat_ordered_filtered[[sanitized_sg_col_name]] == sg_name, ]
                         
                         if (nrow(sg_data) > 0) {{
                             sg_total_n1i <- sum(sg_data[[n1i_col_sg]], na.rm = TRUE)
@@ -1613,11 +1619,17 @@ if (exists("zero_cells_summary") && !is.null(zero_cells_summary$studies_with_zer
             # サブグループテスト用のモデル (res_subgroup_test_{safe_var_name} に結果を格納)
             subgroup_test_model_code = f"""
 # Subgroup moderation test for '{subgroup_col}'
+# 元の列名に対応するサニタイズ後の列名を取得
+sanitized_subgroup_col <- names(column_mapping)[column_mapping == "{subgroup_col}"]
+if (length(sanitized_subgroup_col) == 0) {{
+    sanitized_subgroup_col <- make.names("{subgroup_col}")
+}}
+
 valid_data_for_subgroup_test <- dat[is.finite(dat$yi) & is.finite(dat$vi) & dat$vi > 0, ]
 
-if (nrow(valid_data_for_subgroup_test) >= 2 && "{subgroup_col}" %in% names(valid_data_for_subgroup_test)) {{
+if (nrow(valid_data_for_subgroup_test) >= 2 && sanitized_subgroup_col %in% names(valid_data_for_subgroup_test)) {{
     tryCatch({{
-        res_subgroup_test_{safe_var_name} <- rma(yi, vi, mods = ~ factor({subgroup_col}), data=valid_data_for_subgroup_test, method="{method}")
+        res_subgroup_test_{safe_var_name} <- rma(yi, vi, mods = ~ factor(valid_data_for_subgroup_test[[sanitized_subgroup_col]]), data=valid_data_for_subgroup_test, method="{method}")
         print("Subgroup test for '{subgroup_col}' completed")
     }}, error = function(e) {{
         print(sprintf("Subgroup test for '{subgroup_col}' failed: %s", e$message))
@@ -1632,8 +1644,8 @@ if (nrow(valid_data_for_subgroup_test) >= 2 && "{subgroup_col}" %in% names(valid
             # splitとlapplyを使って、各サブグループレベルでrmaを実行し、結果をリストにまとめる
             subgroup_by_level_code = f"""
 # Subgroup analysis for '{subgroup_col}' by levels
-if ("{subgroup_col}" %in% names(dat)) {{
-    dat_split_{safe_var_name} <- split(dat, dat[['{subgroup_col}']])
+if (sanitized_subgroup_col %in% names(dat)) {{
+    dat_split_{safe_var_name} <- split(dat, dat[[sanitized_subgroup_col]])
     res_by_subgroup_{safe_var_name} <- lapply(names(dat_split_{safe_var_name}), function(level_name) {{
         current_data_sg <- dat_split_{safe_var_name}[[level_name]]
         if (nrow(current_data_sg) > 0) {{
@@ -1688,9 +1700,15 @@ if ("{subgroup_col}" %in% names(dat)) {{
             
             exclusion_code = f'''
 # Detect exclusions for subgroup '{subgroup_col}'
+# 元の列名に対応するサニタイズ後の列名を取得
+sanitized_subgroup_col_{safe_var_name} <- names(column_mapping)[column_mapping == "{subgroup_col}"]
+if (length(sanitized_subgroup_col_{safe_var_name}) == 0) {{
+    sanitized_subgroup_col_{safe_var_name} <- make.names("{subgroup_col}")
+}}
+
 if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_var_name})) {{
     # Get all subgroups in original data
-    all_subgroups_in_data <- unique(dat[['{subgroup_col}']])
+    all_subgroups_in_data <- unique(dat[[sanitized_subgroup_col_{safe_var_name}]])
     
     # Get subgroups that have valid analysis results 
     subgroups_in_res <- names(res_by_subgroup_{safe_var_name})
@@ -1952,6 +1970,24 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
         csv_path_cleaned = csv_file_path_in_script.replace('\\\\', '/')
         script_parts.append(f"dat <- read.csv('{csv_path_cleaned}', na.strings = c('NA', 'na', 'N/A', 'n/a', ''))")
         
+        # 列名のサニタイズ処理を追加
+        script_parts.append("""
+# 列名のサニタイズ（特殊文字を含む列名への対応）
+original_colnames <- colnames(dat)
+sanitized_colnames <- make.names(original_colnames, unique = TRUE)
+if (!identical(original_colnames, sanitized_colnames)) {
+    cat("列名のサニタイズを実行\\n")
+    cat("変更前:", paste(original_colnames, collapse = ", "), "\\n")
+    cat("変更後:", paste(sanitized_colnames, collapse = ", "), "\\n")
+    
+    # 元の列名とサニタイズ後の列名のマッピングを作成
+    column_mapping <- setNames(original_colnames, sanitized_colnames)
+    colnames(dat) <- sanitized_colnames
+} else {
+    column_mapping <- setNames(original_colnames, original_colnames)
+}
+""")
+        
         # データ品質チェック（NA値の確認）
         script_parts.append("""
 # データ品質チェック
@@ -2045,9 +2081,26 @@ if ("{col_name}" %in% names(dat)) {{
             # 有効なモデレーターのみを対象とする
             valid_moderators_in_code = [m for m in moderators if m in data_summary.get("columns", [])]
             if valid_moderators_in_code:
+                # モデレーター列名のサニタイズ処理
+                sanitized_moderator_formula_parts = []
+                for mod in valid_moderators_in_code:
+                    sanitized_moderator_formula_parts.append(f'dat[[names(column_mapping)[column_mapping == "{mod}"]]]')
+                
+                mods_formula_sanitized = " + ".join(sanitized_moderator_formula_parts)
+                
                 # モデレーター解析の追加（主解析とは別に実行）
-                moderator_analysis_code = """
+                moderator_analysis_code = f"""
 # モデレーター解析（主解析とは別途実行）
+# モデレーター列のサニタイズ処理
+moderator_cols_original <- c({', '.join([f'"{m}"' for m in valid_moderators_in_code])})
+moderator_cols_sanitized <- sapply(moderator_cols_original, function(col) {{
+    sanitized <- names(column_mapping)[column_mapping == col]
+    if (length(sanitized) == 0) {{ 
+        sanitized <- make.names(col)
+    }}
+    return(sanitized)
+}})
+
 if (exists("main_analysis_method") && main_analysis_method == "MH") {{
     # MH法の場合は逆分散法でモデレーター解析（MH法はモデレーター未対応のため）
     print("モデレーター解析: MH法では直接モデレーター分析ができないため、逆分散法で実行")
@@ -2056,7 +2109,11 @@ if (exists("main_analysis_method") && main_analysis_method == "MH") {{
     valid_data_for_regression <- dat[is.finite(dat$yi) & is.finite(dat$vi) & dat$vi > 0, ]
     
     if (nrow(valid_data_for_regression) >= 2) {{
-        res_moderator <- rma(`yi`, `vi`, mods = ~ {mods_formula}, data=valid_data_for_regression, method="REML")
+        # サニタイズされた列名でフォーミュラを作成
+        mods_formula_str <- paste(moderator_cols_sanitized, collapse = " + ")
+        mods_formula <- as.formula(paste("~ ", mods_formula_str))
+        
+        res_moderator <- rma(yi, vi, mods = mods_formula, data=valid_data_for_regression, method="REML")
         print(paste("モデレーター解析完了: 有効データ", nrow(valid_data_for_regression), "件で実行"))
     }} else {{
         print("モデレーター解析: 有効データが不足のため実行できません")
@@ -2067,16 +2124,17 @@ if (exists("main_analysis_method") && main_analysis_method == "MH") {{
     valid_data_for_regression <- dat[is.finite(dat$yi) & is.finite(dat$vi) & dat$vi > 0, ]
     
     if (nrow(valid_data_for_regression) >= 2) {{
-        res_moderator <- rma(`yi`, `vi`, mods = ~ {mods_formula}, data=valid_data_for_regression, method="{method}")
+        # サニタイズされた列名でフォーミュラを作成
+        mods_formula_str <- paste(moderator_cols_sanitized, collapse = " + ")
+        mods_formula <- as.formula(paste("~ ", mods_formula_str))
+        
+        res_moderator <- rma(yi, vi, mods = mods_formula, data=valid_data_for_regression, method="{analysis_params.get("model", "REML")}")
     }} else {{
         print("モデレーター解析: 有効データが不足のため実行できません")
         res_moderator <- NULL
     }}
 }}
-""".format(
-                    mods_formula=" + ".join(valid_moderators_in_code),
-                    method=analysis_params.get("model", "REML")
-                )
+"""
                 script_parts.append(moderator_analysis_code)
 
         # サブグループ解析 (res_subgroup_test_{col} と res_by_subgroup_{col} に結果格納)
