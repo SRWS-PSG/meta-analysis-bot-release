@@ -1,0 +1,11 @@
+Study_ID,Intervention_(Events),Intervention_(No_Events),Control_(Events),Control_(No_Events),Intervention_Total,Control_Total,Setting_(ICU_/_non-ICU),Region_(Asia/Europe/Americas),Year_(2020-2024),Quality_Score_(0-10)
+Study 1,15,33,10,42,48,52,ICU,Asia,2020,8
+Study 2,22,33,18,40,55,58,non-ICU,Europe,2021,7
+Study 3,8,37,5,45,45,50,ICU,Americas,2020,9
+Study 4,12,36,8,40,48,48,non-ICU,Asia,2022,6
+Study 5,25,30,20,35,55,55,ICU,Europe,2021,8
+Study 6,18,42,15,45,60,60,non-ICU,Americas,2023,7
+Study 7,30,35,25,40,65,65,ICU,Asia,2022,9
+Study 8,14,46,12,48,60,60,non-ICU,Europe,2024,8
+Study 9,20,40,16,44,60,60,ICU,Americas,2021,7
+Study 10,28,32,24,36,60,60,non-ICU,Asia,2023,8

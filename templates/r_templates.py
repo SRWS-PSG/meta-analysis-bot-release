@@ -1646,7 +1646,7 @@ if (nrow(valid_data_for_subgroup_test) >= 2 && sanitized_subgroup_col %in% names
 # Subgroup analysis for '{subgroup_col}' by levels
 if (sanitized_subgroup_col %in% names(dat)) {{
     dat_split_{safe_var_name} <- split(dat, dat[[sanitized_subgroup_col]])
-    res_by_subgroup_{safe_var_name} <- lapply(names(dat_split_{safe_var_name}), function(level_name) {{
+    res_by_subgroup_{safe_var_name} <- lapply(names(dat_split_{safe_var_name}), function(level_name) {
         current_data_sg <- dat_split_{safe_var_name}[[level_name]]
         if (nrow(current_data_sg) > 0) {{
             # 無限大値をチェックして除外
@@ -1658,7 +1658,7 @@ if (sanitized_subgroup_col %in% names(dat)) {{
                     # 結果にレベル名を追加して返す (後でアクセスしやすくするため)
                     rma_result_sg$subgroup_level <- level_name 
                     return(rma_result_sg)
-                }}, error = function(e) {{
+                }}, error = function(e) {
                     print(sprintf("RMA failed for subgroup '{subgroup_col}' level '%s': %s", level_name, e$message))
                     return(NULL) # エラー時はNULLを返す
                 }})
@@ -2093,13 +2093,13 @@ if ("{col_name}" %in% names(dat)) {{
 # モデレーター解析（主解析とは別途実行）
 # モデレーター列のサニタイズ処理
 moderator_cols_original <- c({', '.join([f'"{m}"' for m in valid_moderators_in_code])})
-moderator_cols_sanitized <- sapply(moderator_cols_original, function(col) {{
+moderator_cols_sanitized <- sapply(moderator_cols_original, function(col) {
     sanitized <- names(column_mapping)[column_mapping == col]
-    if (length(sanitized) == 0) {{ 
+    if (length(sanitized) == 0) { 
         sanitized <- make.names(col)
-    }}
+    }
     return(sanitized)
-}})
+})
 
 if (exists("main_analysis_method") && main_analysis_method == "MH") {{
     # MH法の場合は逆分散法でモデレーター解析（MH法はモデレーター未対応のため）
