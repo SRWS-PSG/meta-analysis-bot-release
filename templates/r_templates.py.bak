@@ -1643,36 +1643,36 @@ if (nrow(valid_data_for_subgroup_test) >= 2 && sanitized_subgroup_col %in% names
             # 各サブグループごとの解析結果を格納するリストを作成 (res_by_subgroup_{safe_var_name} に結果を格納)
             # splitとlapplyを使って、各サブグループレベルでrmaを実行し、結果をリストにまとめる
             subgroup_by_level_code = f"""
-# Subgroup analysis for '{subgroup_col}' by levels
+{'# Subgroup analysis for '}{subgroup_col}{' by levels'}
 if (sanitized_subgroup_col %in% names(dat)) {{
     dat_split_{safe_var_name} <- split(dat, dat[[sanitized_subgroup_col]])
-    res_by_subgroup_{safe_var_name} <- lapply(names(dat_split_{safe_var_name}), function(level_name) {{
+    res_by_subgroup_{safe_var_name} <- lapply(names(dat_split_{safe_var_name}), function(level_name) {
         current_data_sg <- dat_split_{safe_var_name}[[level_name]]
         if (nrow(current_data_sg) > 0) {{
-            # Valid data check and filtering
+            {'# 無限大値をチェックして除外'}
             valid_sg_data <- current_data_sg[is.finite(current_data_sg$yi) & is.finite(current_data_sg$vi) & current_data_sg$vi > 0, ]
             
             if (nrow(valid_sg_data) >= 2) {{
                 tryCatch({{
                     rma_result_sg <- rma(yi, vi, data=valid_sg_data, method="{method}")
-                    # Add level name to result for easier access later
+                    {'# 結果にレベル名を追加して返す (後でアクセスしやすくするため)'}
                     rma_result_sg$subgroup_level <- level_name 
                     return(rma_result_sg)
-                }}, error = function(e) {{
+                }}, error = function(e) {
                     print(sprintf("RMA failed for subgroup '{subgroup_col}' level '%s': %s", level_name, e$message))
-                    return(NULL) # Return NULL on error
+                    return(NULL) {'# エラー時はNULLを返す'}
                 }})
             }} else {{
                 print(sprintf("Subgroup '{subgroup_col}' level '%s': 有効データが不足 (n=%d)", level_name, nrow(valid_sg_data)))
-                return(NULL) # Return NULL when insufficient data
+                return(NULL) {'# 有効データが不足の場合はNULL'}
             }}
         }} else {{
-            return(NULL) # Return NULL when no data
+            return(NULL) {'# データがない場合はNULL'}
         }}
     }})
-    # Remove NULL elements from list
+    {'# NULL要素をリストから除去'}
     res_by_subgroup_{safe_var_name} <- res_by_subgroup_{safe_var_name}[!sapply(res_by_subgroup_{safe_var_name}, is.null)]
-    # Name list elements with subgroup level names
+    {'# リストの要素に名前を付ける (サブグループのレベル名)'}
     if (length(res_by_subgroup_{safe_var_name}) > 0) {{
         names(res_by_subgroup_{safe_var_name}) <- sapply(res_by_subgroup_{safe_var_name}, function(x) x$subgroup_level)
     }}
@@ -2094,13 +2094,13 @@ if ("{col_name}" %in% names(dat)) {{
 # モデレーター解析（主解析とは別途実行）
 # モデレーター列のサニタイズ処理
 moderator_cols_original <- c({', '.join([f'"{m}"' for m in valid_moderators_in_code])})
-moderator_cols_sanitized <- sapply(moderator_cols_original, function(col) {{
+moderator_cols_sanitized <- sapply(moderator_cols_original, function(col) {
     sanitized <- names(column_mapping)[column_mapping == col]
-    if (length(sanitized) == 0) {{ 
+    if (length(sanitized) == 0) { 
         sanitized <- make.names(col)
-    }}
+    }
     return(sanitized)
-}})
+})
 
 if (exists("main_analysis_method") && main_analysis_method == "MH") {{
     # MH法の場合は逆分散法でモデレーター解析（MH法はモデレーター未対応のため）
