@@ -1682,7 +1682,8 @@ if (sanitized_subgroup_col %in% names(dat)) {{
     print("Subgroup column '{subgroup_col}' not found in data for subgroup analysis.")
 }}
 """
-            subgroup_codes.append(f"\n# --- Subgroup analysis for '{subgroup_col}' ---\n{subgroup_test_model_code}\n{subgroup_by_level_code}")
+            comment_line = f"# --- Subgroup analysis for '{subgroup_col}' ---"
+            subgroup_codes.append(f"\n{comment_line}\n{subgroup_test_model_code}\n{subgroup_by_level_code}")
         return "\n".join(subgroup_codes)
     
     def _generate_subgroup_exclusion_detection(self, subgroup_columns: List[str]) -> str:
