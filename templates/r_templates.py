@@ -1100,14 +1100,14 @@ tryCatch({{
 dev.off()
 """,
             "bubble_plot": """
-# バブルプロット作成 (メタ回帰用) - res_moderated を使用
-# generate_full_r_script で res (メインモデル) が res_moderated という名前で生成されることを想定
-if ("{moderator_column_for_bubble}" %in% names(dat) && exists("res") && !is.null(res$beta) && length(res$beta) > 1) {{
+# バブルプロット作成 (メタ回帰用) - res_moderator を使用
+# generate_full_r_script で res_moderator という名前でメタ回帰結果が生成される
+if ("{moderator_column_for_bubble}" %in% names(dat) && exists("res_moderator") && !is.null(res_moderator$beta) && length(res_moderator$beta) > 1) {{
    actual_moderator_name_in_model <- "{moderator_column_for_bubble}" 
    is_moderator_in_model <- FALSE
-   if (!is.null(rownames(res$beta))) {{
-       if (any(grepl(paste0("^", actual_moderator_name_in_model), rownames(res$beta)[-1], fixed = FALSE)) ||
-           any(grepl(paste0("^factor\\\\(", actual_moderator_name_in_model, "\\\\)"), rownames(res$beta)[-1], fixed = FALSE)) ){{
+   if (!is.null(rownames(res_moderator$beta))) {{
+       if (any(grepl(paste0("^", actual_moderator_name_in_model), rownames(res_moderator$beta)[-1], fixed = FALSE)) ||
+           any(grepl(paste0("^factor\\\\(", actual_moderator_name_in_model, "\\\\)"), rownames(res_moderator$beta)[-1], fixed = FALSE)) ){{
            is_moderator_in_model <- TRUE
        }}
    }}
@@ -1115,7 +1115,7 @@ if ("{moderator_column_for_bubble}" %in% names(dat) && exists("res") && !is.null
    if (is_moderator_in_model) {{
        png('{bubble_plot_path}', width=2400, height=2400, res=300, pointsize=9)
        tryCatch({{
-           regplot(res, mod="{moderator_column_for_bubble}", pred=TRUE, ci=TRUE, pi=TRUE,
+           regplot(res_moderator, mod="{moderator_column_for_bubble}", pred=TRUE, ci=TRUE, pi=TRUE,
                    xlab="{moderator_column_for_bubble}", ylab="Effect Size",
                    cex.axis=0.8,
                    cex.lab=0.9,
