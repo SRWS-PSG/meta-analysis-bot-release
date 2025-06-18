@@ -2089,7 +2089,7 @@ numeric_cols <- sapply(dat, function(x) {
         # カンマを含み、カンマを除去すれば数値になる列
         test_values <- gsub(",", "", x[!is.na(x)])
         if (length(test_values) > 0) {
-            return(all(grepl("^[0-9]+\\.?[0-9]*$", test_values)))
+            return(all(grepl("^[0-9]+\\\\.?[0-9]*$", test_values)))
         }
     }
     return(FALSE)
