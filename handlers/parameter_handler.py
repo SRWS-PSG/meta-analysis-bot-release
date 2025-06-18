@@ -30,6 +30,12 @@ def clean_column_name(name):
     name = re.sub(r'\s+', ' ', name)
     # 残った半角スペースをアンダースコアに置換
     name = name.replace(' ', '_')
+    # GeminiのJSON処理で問題になる文字を安全化（file_utils.pyと同様）
+    name = re.sub(r'[^\w\d_]', '_', name)
+    # 連続するアンダースコアを1つに
+    name = re.sub(r'_+', '_', name)
+    # 先頭・末尾のアンダースコアを削除
+    name = name.strip('_')
     return name
 
 # 自然言語パラメータ収集用のメッセージハンドラー（register_parameter_handlers外に移動）
