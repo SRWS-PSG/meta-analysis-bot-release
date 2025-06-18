@@ -951,7 +951,7 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
                 sg_name <- sg_level_names[i]
                 
                 # 修正: 配列アクセス前の存在確認
-                if (!(sg_name %in% names(res_by_subgroup_{subgroup_col_name}))) {{
+                if (!(sg_name %in% names(res_by_subgroup_{safe_var_name}))) {{
                     print(paste("WARNING: Subgroup", sg_name, "not found in results, skipping"))
                     next
                 }}
@@ -964,7 +964,7 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
                     next
                 }}
                 
-                res_sg_obj <- res_by_subgroup_{subgroup_col_name}[[sg_name]]
+                res_sg_obj <- res_by_subgroup_{safe_var_name}[[sg_name]]
                 subtotal_row <- subtotal_rows[sg_name]
                 
                 if (!is.null(res_sg_obj) && length(rows_list[[sg_name]]) > 0) {{
@@ -2060,7 +2060,7 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
         # データ読み込み (パスはバックスラッシュをスラッシュに置換)
         # na.stringsで"NA"文字列を欠損値として処理
         csv_path_cleaned = csv_file_path_in_script.replace('\\\\', '/')
-        script_parts.append(f"dat <- read.csv('{csv_path_cleaned}', na.strings = c('NA', 'na', 'N/A', 'n/a', ''))")
+        script_parts.append(f"dat <- read.csv('{csv_path_cleaned}', na.strings = c('NA', 'na', 'N/A', 'n/a', ''), stringsAsFactors = FALSE)")
         
         # 列名のサニタイズ処理を追加
         script_parts.append("""
@@ -2077,6 +2077,30 @@ if (!identical(original_colnames, sanitized_colnames)) {
     colnames(dat) <- sanitized_colnames
 } else {
     column_mapping <- setNames(original_colnames, original_colnames)
+}
+""")
+        
+        # カンマ区切り数値の処理を追加
+        script_parts.append("""
+# カンマ区切り数値の処理（例: "14,210" → 14210）
+numeric_cols <- sapply(dat, function(x) {
+    # 文字列かつ数値っぽい列を検出（カンマ区切りを含む）
+    if (is.character(x)) {
+        # カンマを含み、カンマを除去すれば数値になる列
+        test_values <- gsub(",", "", x[!is.na(x)])
+        if (length(test_values) > 0) {
+            return(all(grepl("^[0-9]+\\.?[0-9]*$", test_values)))
+        }
+    }
+    return(FALSE)
+})
+
+if (any(numeric_cols)) {
+    cat("カンマ区切り数値列を検出しました:\\n")
+    for (col_name in names(numeric_cols)[numeric_cols]) {
+        cat("  ", col_name, "\\n")
+        dat[[col_name]] <- as.numeric(gsub(",", "", dat[[col_name]]))
+    }
 }
 """)
         
