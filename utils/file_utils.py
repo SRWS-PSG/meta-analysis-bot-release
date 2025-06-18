@@ -11,11 +11,39 @@ from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
+def make_gemini_safe_name(column_name: str) -> str:
+    """
+    GeminiのJSON出力で問題が起きにくい列名に変換
+    
+    保守的アプローチ: 英数字とアンダースコアのみ残す
+    """
+    import re
+    
+    # Step 1: 英数字、アンダースコア以外をアンダースコアに置換
+    safe = re.sub(r'[^\w\d_]', '_', column_name)
+    
+    # Step 2: 連続するアンダースコアを整理
+    safe = re.sub(r'_+', '_', safe)
+    
+    # Step 3: 前後のアンダースコアを削除
+    safe = safe.strip('_')
+    
+    # Step 4: 数字で始まる場合は接頭辞を追加
+    if safe and safe[0].isdigit():
+        safe = 'col_' + safe
+        
+    # Step 5: 空になった場合のフォールバック
+    if not safe:
+        safe = 'col_unknown'
+    
+    return safe
+
 def clean_column_names(df):
     """
     データフレームの列名をクリーンアップする
     - 前後の半角・全角スペースを削除
     - 途中の半角スペースをアンダースコアに置換
+    - Gemini JSONエスケープエラーを防ぐ特殊文字処理
     """
     def clean_name(name):
         # 全角スペースを半角スペースに統一
@@ -26,10 +54,21 @@ def clean_column_names(df):
         name = re.sub(r'\s+', ' ', name)
         # 残った半角スペースをアンダースコアに置換
         name = name.replace(' ', '_')
+        # GeminiのJSON処理で問題になる文字を安全化
+        name = make_gemini_safe_name(name)
         return name
+    
+    # 元の列名を記録（デバッグ用）
+    original_columns = list(df.columns)
     
     # 列名をクリーンアップ
     df.columns = [clean_name(str(col)) for col in df.columns]
+    
+    # 変更があった場合はログ出力
+    if original_columns != list(df.columns):
+        logger.info(f"Original column names: {original_columns}")
+        logger.info(f"Cleaned column names: {list(df.columns)}")
+    
     return df
 
 async def download_slack_file_content_async(file_url: str, bot_token: str) -> bytes:
