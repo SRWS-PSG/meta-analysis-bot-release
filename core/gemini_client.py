@@ -20,7 +20,7 @@ class GeminiClient:
         logger.info("GEMINI_API_KEY found, configuring...")
         genai.configure(api_key=api_key)
         
-        self.model_name = os.environ.get("GEMINI_MODEL_NAME", "gemini-1.5-flash") # モデル名を修正
+        self.model_name = os.environ.get("GEMINI_MODEL_NAME", "gemini-2.5-flash") # モデル名を修正
         logger.info(f"Using model: {self.model_name}")
         self.model = genai.GenerativeModel(self.model_name)
         logger.info("GeminiClient initialized successfully")

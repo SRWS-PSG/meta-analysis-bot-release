@@ -66,7 +66,7 @@ def initialize_gemini_client():
         logger.error(traceback.format_exc())
         return None
 
-def interpret_meta_analysis_results(results_summary, model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-1.5-flash-latest")): # BOM除去
+def interpret_meta_analysis_results(results_summary, model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-2.5-flash")): # BOM除去
     """メタアナリシス結果を解釈する"""
     client = initialize_gemini_client()
     if not client:
@@ -102,13 +102,13 @@ def interpret_meta_analysis_results(results_summary, model_name=clean_env_var("G
         logger.error(traceback.format_exc())
         return None
 
-def interpret_meta_regression_results(results_summary, model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-1.5-flash-latest")): # BOM除去
+def interpret_meta_regression_results(results_summary, model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-2.5-flash")): # BOM除去
     """メタ回帰分析結果を解釈する"""
     client = initialize_gemini_client()
     if not client:
         return None
     
-    model_to_use = model_name if model_name else "gemini-1.5-flash-latest" # フォールバック
+    model_to_use = model_name if model_name else "gemini-2.5-flash" # フォールバック
     try:
         prompt = f"""
         あなたは医学研究と統計学の専門家です。以下のメタ回帰分析結果を解釈し、英語で学術論文のResults/Discussionセクションに適した形式で説明してください。
@@ -140,13 +140,13 @@ def interpret_meta_regression_results(results_summary, model_name=clean_env_var(
         logger.error(traceback.format_exc())
         return None
 
-def suggest_further_analyses(data_summary, current_analysis, model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-1.5-flash-latest")): # BOM除去
+def suggest_further_analyses(data_summary, current_analysis, model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-2.5-flash")): # BOM除去
     """さらなる分析を提案する"""
     client = initialize_gemini_client()
     if not client:
         return None
     
-    model_to_use = model_name if model_name else "gemini-1.5-flash-latest" # フォールバック
+    model_to_use = model_name if model_name else "gemini-2.5-flash" # フォールバック
     try:
         prompt = f"""
         あなたは医学研究と統計学の専門家です。以下のデータと現在の分析に基づいて、さらに実施すべき分析を提案してください。
@@ -180,9 +180,9 @@ def suggest_further_analyses(data_summary, current_analysis, model_name=clean_en
         logger.error(traceback.format_exc())
         return None
 
-def analyze_csv_compatibility_with_mcp_prompts(data_summary, available_prompts, model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-1.5-flash-latest")): # BOM除去
+def analyze_csv_compatibility_with_mcp_prompts(data_summary, available_prompts, model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-2.5-flash")): # BOM除去
     """CSV構造とMCPプロンプトを照合して実行可能な解析を判定・提案する"""
-    model_to_use = model_name if model_name else "gemini-1.5-flash-latest" # フォールバック
+    model_to_use = model_name if model_name else "gemini-2.5-flash" # フォールバック
     logger.info(f"Starting CSV compatibility analysis with model: {model_to_use}")
     client = initialize_gemini_client()
     if not client:
@@ -303,13 +303,13 @@ def analyze_csv_compatibility_with_mcp_prompts(data_summary, available_prompts, 
         logger.error(traceback.format_exc())
         return None
 
-def generate_academic_writing_suggestion(results_summary, analysis_type="meta-analysis", model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-1.5-flash-latest")): # BOM除去
+def generate_academic_writing_suggestion(results_summary, analysis_type="meta-analysis", model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-2.5-flash")): # BOM除去
     """メタアナリシス結果に基づいて学術論文の書き方を提案する"""
     client = initialize_gemini_client()
     if not client:
         return None
     
-    model_to_use = model_name if model_name else "gemini-1.5-flash-latest" # フォールバック
+    model_to_use = model_name if model_name else "gemini-2.5-flash" # フォールバック
     try:
         prompt = f"""
         あなたは医学研究と統計学の専門家です。以下のメタアナリシス結果に基づいて、学術論文の「Statistical Analysis」と「Results」セクションの統計解析部分のみを作成してください。
@@ -521,7 +521,7 @@ def extract_parameters_from_user_input(
     data_summary: dict, 
     conversation_history: List[Dict] = None,
     collection_context: Dict = None,
-    model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-1.5-flash-latest") # BOM除去
+    model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-2.5-flash") # BOM除去
 ):
     """ユーザーの入力からメタアナリシスのパラメータを抽出する (Function Calling版)"""
     client = initialize_gemini_client()
@@ -529,7 +529,7 @@ def extract_parameters_from_user_input(
         logger.error("Gemini client not initialized in extract_parameters_from_user_input")
         return None
 
-    model_to_use = model_name if model_name else "gemini-1.5-flash-latest" # フォールバック
+    model_to_use = model_name if model_name else "gemini-2.5-flash" # フォールバック
     try:
         logger.info(f"Sending request to Gemini API for parameter extraction (Function Calling). User input: '{user_input}'")
         
@@ -616,7 +616,7 @@ def extract_parameters_from_user_input(
         logger.error(traceback.format_exc())
         return None
 
-def map_csv_columns_to_meta_analysis_roles(csv_columns: List[str], csv_sample_data: List[Dict[str, Any]], target_roles: List[str], model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-1.5-flash-latest")): # BOM除去
+def map_csv_columns_to_meta_analysis_roles(csv_columns: List[str], csv_sample_data: List[Dict[str, Any]], target_roles: List[str], model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-2.5-flash")): # BOM除去
     """
     CSVの列名とサンプルデータに基づいて、メタアナリシスで必要とされる役割をGeminiにマッピングさせる。
     """
@@ -625,7 +625,7 @@ def map_csv_columns_to_meta_analysis_roles(csv_columns: List[str], csv_sample_da
         logger.error("Gemini client not initialized in map_csv_columns_to_meta_analysis_roles")
         return None
 
-    model_to_use = model_name if model_name else "gemini-1.5-flash-latest" # フォールバック
+    model_to_use = model_name if model_name else "gemini-2.5-flash" # フォールバック
     try:
         logger.info(f"Sending request to Gemini API for column mapping (Function Calling). Target roles: {target_roles}")
         
@@ -738,13 +738,13 @@ def map_csv_columns_to_meta_analysis_roles(csv_columns: List[str], csv_sample_da
         logger.error(traceback.format_exc())
         return None
 
-def analyze_user_response_for_analysis_selection(user_response, gemini_questions, recommended_analyses, data_summary, is_initial_response=True, model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-1.5-flash-latest")): # model to model_name, BOM除去
+def analyze_user_response_for_analysis_selection(user_response, gemini_questions, recommended_analyses, data_summary, is_initial_response=True, model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-2.5-flash")): # model to model_name, BOM除去
     """ユーザーの回答を解析して適切な分析手法を選択する (簡略化または新しいロジックに置き換えられることを想定)"""
     client = initialize_gemini_client()
     if not client:
         return None
     
-    model_to_use = model_name if model_name else "gemini-1.5-flash-latest" # フォールバック
+    model_to_use = model_name if model_name else "gemini-2.5-flash" # フォールバック
     try:
         if is_initial_response:
             prompt = f"""
@@ -857,14 +857,14 @@ def analyze_user_response_for_analysis_selection(user_response, gemini_questions
         logger.error(traceback.format_exc()) # Added traceback
         return None
 
-def generate_r_script_with_gemini(data_summary, analysis_preferences, template_info, model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-1.5-flash-latest")): # model to model_name, BOM除去
+def generate_r_script_with_gemini(data_summary, analysis_preferences, template_info, model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-2.5-flash")): # model to model_name, BOM除去
     """Gemini APIを使用してRスクリプトを生成する"""
     client = initialize_gemini_client()
     if not client:
         logger.warning("Geminiクライアントが初期化されていません。Rスクリプトを生成できません。")
         return None
 
-    model_to_use = model_name if model_name else "gemini-1.5-flash-latest" # フォールバック
+    model_to_use = model_name if model_name else "gemini-2.5-flash" # フォールバック
     try:
         actual_columns = data_summary.get("columns", [])
         data_head_sample = data_summary.get("head", []) 
@@ -1069,13 +1069,13 @@ def generate_r_script_with_gemini(data_summary, analysis_preferences, template_i
         logger.error(traceback.format_exc())
         return None
 
-def detect_reanalysis_intent(user_message: str, previous_analysis: dict, model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-1.5-flash-latest")): # model to model_name, BOM除去
+def detect_reanalysis_intent(user_message: str, previous_analysis: dict, model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-2.5-flash")): # model to model_name, BOM除去
     """ユーザーのメッセージが再分析の要求かどうかを判断する"""
     client = initialize_gemini_client()
     if not client:
         return {"is_reanalysis_request": False, "reason": "Gemini client not initialized."}
 
-    model_to_use = model_name if model_name else "gemini-1.5-flash-latest" # フォールバック
+    model_to_use = model_name if model_name else "gemini-2.5-flash" # フォールバック
     try:
         prompt = f"""
         あなたはメタアナリシスの専門家です。ユーザーのメッセージと前回の分析設定を考慮して、
@@ -1122,7 +1122,7 @@ def detect_reanalysis_intent(user_message: str, previous_analysis: dict, model_n
         logger.error(traceback.format_exc()) # Added traceback
         return {"is_reanalysis_request": False, "reason": f"Error during intent detection: {str(e)}"}
 
-def regenerate_r_script_with_gemini_debugging(data_summary, error_message, failed_r_code, model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-1.5-flash-latest")): # BOM除去
+def regenerate_r_script_with_gemini_debugging(data_summary, error_message, failed_r_code, model_name=clean_env_var("GEMINI_MODEL_NAME", "gemini-2.5-flash")): # BOM除去
     """
     Gemini APIを使用して、エラーが発生したRスクリプトをデバッグ・再生成する。
     """
@@ -1131,7 +1131,7 @@ def regenerate_r_script_with_gemini_debugging(data_summary, error_message, faile
         logger.warning("Geminiクライアントが初期化されていません。Rスクリプトをデバッグできません。")
         return None
 
-    model_to_use = model_name if model_name else "gemini-1.5-flash-latest" # フォールバック
+    model_to_use = model_name if model_name else "gemini-2.5-flash" # フォールバック
     try:
         prompt = f"""
         あなたはRプログラミングとメタ解析の専門家です。
