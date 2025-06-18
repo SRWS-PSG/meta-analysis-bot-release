@@ -1798,7 +1798,7 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
                 if sg_col not in data_summary.get("columns", []):
                     logger.warning(f"サブグループ列 '{sg_col}' がデータに存在しないため、サブグループプロットをスキップします。")
                     continue
-                safe_var_name = "".join(c if c.isalnum() or c == "_" else "_" for c in sg_col)
+                safe_var_name = self._make_safe_var_name(sg_col)
                 sg_forest_plot_path = f"{subgroup_plot_prefix}_{safe_var_name}.png".replace('\\', '/')
                 plot_parts.append(
                     self._safe_format(
@@ -1836,7 +1836,7 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
                 if mod_col not in data_summary.get("columns", []):
                     logger.warning(f"モデレーター列 '{mod_col}' がデータに存在しないため、バブルプロットをスキップします。")
                     continue
-                safe_mod_col_name = "".join(c if c.isalnum() else "_" for c in mod_col)
+                safe_mod_col_name = self._make_safe_var_name(mod_col)
                 bubble_plot_path_specific = f"{bubble_plot_prefix}_{safe_mod_col_name}.png".replace('\\', '/')
                 plot_parts.append(
                     self._safe_format(
@@ -1858,7 +1858,7 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
                 if subgroup_col not in data_summary.get("columns", []):
                     continue # スキップ
                 # R変数名として安全な名前を生成（英数字とアンダースコアのみ）
-                safe_var_name = "".join(c if c.isalnum() or c == "_" else "_" for c in subgroup_col)
+                safe_var_name = self._make_safe_var_name(subgroup_col)
                 additional_objects_to_save.append(f"res_subgroup_test_{safe_var_name}")
                 additional_objects_to_save.append(f"res_by_subgroup_{safe_var_name}")
                 subgroup_json_str_parts.append(f"""
@@ -1942,7 +1942,7 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
             subgroup_plot_prefix = output_paths.get("forest_plot_subgroup_prefix", "forest_plot_subgroup")
             for sg_col in subgroup_columns:
                 if sg_col not in data_summary.get("columns", []): continue
-                safe_var_name = "".join(c if c.isalnum() or c == "_" else "_" for c in sg_col)
+                safe_var_name = self._make_safe_var_name(sg_col)
                 sg_forest_plot_path = f"{subgroup_plot_prefix}_{safe_var_name}.png".replace('\\\\', '/')
                 generated_plots_r_list.append(f'list(label = "forest_plot_subgroup_{safe_var_name}", path = "{sg_forest_plot_path}")')
         
@@ -1954,7 +1954,7 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
             bubble_plot_prefix = output_paths.get("bubble_plot_path_prefix", "bubble_plot")
             for mod_col in moderators:
                 if mod_col not in data_summary.get("columns", []): continue
-                safe_mod_col_name = "".join(c if c.isalnum() else "_" for c in mod_col)
+                safe_mod_col_name = self._make_safe_var_name(mod_col)
                 bubble_plot_path_specific = f"{bubble_plot_prefix}_{safe_mod_col_name}.png".replace('\\\\','/')
                 generated_plots_r_list.append(f'list(label = "bubble_plot_{safe_mod_col_name}", path = "{bubble_plot_path_specific}")')
         
