@@ -79,7 +79,7 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
         if original_file_url:
             from utils.file_utils import download_slack_file_content_async # ここでインポート
             csv_bytes = await download_slack_file_content_async(original_file_url, client.token)
-            temp_csv_path_str, temp_csv_path_obj = await save_content_to_temp_file(
+            temp_csv_path_str, temp_csv_path_obj, column_mapping = await save_content_to_temp_file(
                 csv_bytes, payload["job_id"], original_filename=original_file_name
             )
             temp_csv_path = temp_csv_path_obj # Pathオブジェクトを後で使う
@@ -129,6 +129,7 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
             "csv_analysis": csv_analysis,
             "detected_columns": csv_analysis.get("detected_columns", {}),
             "columns": csv_columns,  # 列情報を追加
+            "column_mapping": column_mapping,  # 列名マッピングを追加
             "file_info": {
                 "filename": original_file_name,
                 "job_id": payload["job_id"]

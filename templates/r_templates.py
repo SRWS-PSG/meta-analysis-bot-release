@@ -1616,6 +1616,73 @@ if (exists("zero_cells_summary") && !is.null(zero_cells_summary$studies_with_zer
             safe_name = 'col_unknown'
         return safe_name
 
+    def _apply_column_mapping(self, analysis_params: Dict[str, Any], column_mapping: Dict[str, str]) -> Dict[str, Any]:
+        """
+        analysis_paramsの列名参照を、column_mappingを使ってクリーンアップ済み列名に変換する
+        
+        Args:
+            analysis_params: 解析パラメータ（元の列名を含む可能性）
+            column_mapping: {original_name: cleaned_name}の辞書
+            
+        Returns:
+            列名が変換されたanalysis_params
+        """
+        # analysis_paramsのコピーを作成（元データを変更しない）
+        mapped_params = analysis_params.copy()
+        
+        # subgroup_columns / subgroupsのマッピング
+        for key in ["subgroup_columns", "subgroups"]:
+            if key in mapped_params and mapped_params[key]:
+                original_cols = mapped_params[key]
+                mapped_cols = []
+                for col in original_cols:
+                    if col in column_mapping:
+                        mapped_col = column_mapping[col]
+                        logger.info(f"Mapping subgroup column: '{col}' -> '{mapped_col}'")
+                        mapped_cols.append(mapped_col)
+                    else:
+                        logger.warning(f"Subgroup column '{col}' not found in mapping, using as-is")
+                        mapped_cols.append(col)
+                mapped_params[key] = mapped_cols
+        
+        # moderator_columns / moderatorsのマッピング
+        for key in ["moderator_columns", "moderators"]:
+            if key in mapped_params and mapped_params[key]:
+                original_cols = mapped_params[key]
+                mapped_cols = []
+                for col in original_cols:
+                    if col in column_mapping:
+                        mapped_col = column_mapping[col]
+                        logger.info(f"Mapping moderator column: '{col}' -> '{mapped_col}'")
+                        mapped_cols.append(mapped_col)
+                    else:
+                        logger.warning(f"Moderator column '{col}' not found in mapping, using as-is")
+                        mapped_cols.append(col)
+                mapped_params[key] = mapped_cols
+        
+        # data_columnsがあれば、その中の列名もマッピング
+        if "data_columns" in mapped_params and mapped_params["data_columns"]:
+            data_cols = mapped_params["data_columns"].copy()
+            for col_type, col_name in data_cols.items():
+                if isinstance(col_name, str) and col_name in column_mapping:
+                    mapped_col = column_mapping[col_name]
+                    logger.info(f"Mapping data column [{col_type}]: '{col_name}' -> '{mapped_col}'")
+                    data_cols[col_type] = mapped_col
+                elif isinstance(col_name, list):
+                    # 列名のリストの場合（複数列指定）
+                    mapped_list = []
+                    for item in col_name:
+                        if item in column_mapping:
+                            mapped_item = column_mapping[item]
+                            logger.info(f"Mapping data column [{col_type}] list item: '{item}' -> '{mapped_item}'")
+                            mapped_list.append(mapped_item)
+                        else:
+                            mapped_list.append(item)
+                    data_cols[col_type] = mapped_list
+            mapped_params["data_columns"] = data_cols
+        
+        return mapped_params
+
     def _generate_subgroup_code(self, analysis_params: Dict[str, Any]) -> str:
         subgroup_columns = analysis_params.get("subgroups", analysis_params.get("subgroup_columns", []))
         method = analysis_params.get("model", "REML") # "method" から "model" に変更
@@ -1980,6 +2047,13 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
         logger.info(f"データサマリー (列名など): {data_summary.get('columns', 'N/A')}") # data_summary全体は大きい可能性があるので一部のみログ
         logger.info(f"出力パス: {output_paths}")
         logger.info(f"スクリプト内CSVパス: {csv_file_path_in_script}")
+
+        # 列名マッピングをanalysis_paramsに適用
+        column_mapping = data_summary.get('column_mapping', {})
+        if column_mapping:
+            logger.info(f"Column mapping detected: {column_mapping}")
+            analysis_params = self._apply_column_mapping(analysis_params, column_mapping)
+            logger.info(f"Column mapping applied. Updated analysis_params: {analysis_params}")
 
         script_parts = [self.templates["library_load"]]
         

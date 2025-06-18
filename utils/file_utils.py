@@ -7,7 +7,7 @@ import pandas as pd
 import io
 import re
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -38,12 +38,43 @@ def make_gemini_safe_name(column_name: str) -> str:
     
     return safe
 
+def map_column_names(column_names, column_mapping: Dict[str, str]) -> list:
+    """
+    パラメータで指定された列名を、クリーンアップ済み列名にマッピング
+    
+    Args:
+        column_names: 列名のリスト（元の列名を想定）
+        column_mapping: {original_name: cleaned_name}の辞書
+        
+    Returns:
+        クリーンアップ済み列名のリスト
+    """
+    if not column_mapping:
+        return column_names
+    
+    mapped_names = []
+    for col_name in column_names:
+        if col_name in column_mapping:
+            mapped_name = column_mapping[col_name]
+            logger.info(f"Mapped column: '{col_name}' -> '{mapped_name}'")
+            mapped_names.append(mapped_name)
+        else:
+            logger.warning(f"Column '{col_name}' not found in mapping, using as-is")
+            mapped_names.append(col_name)
+    
+    return mapped_names
+
 def clean_column_names(df):
     """
     データフレームの列名をクリーンアップする
     - 前後の半角・全角スペースを削除
     - 途中の半角スペースをアンダースコアに置換
     - Gemini JSONエスケープエラーを防ぐ特殊文字処理
+    
+    Returns:
+        tuple: (cleaned_df, column_mapping) - 
+               cleaned_df: 列名がクリーンアップされたDataFrame
+               column_mapping: {original_name: cleaned_name}の辞書
     """
     def clean_name(name):
         # 全角スペースを半角スペースに統一
@@ -58,18 +89,25 @@ def clean_column_names(df):
         name = make_gemini_safe_name(name)
         return name
     
-    # 元の列名を記録（デバッグ用）
+    # 元の列名を記録
     original_columns = list(df.columns)
     
     # 列名をクリーンアップ
-    df.columns = [clean_name(str(col)) for col in df.columns]
+    cleaned_columns = [clean_name(str(col)) for col in df.columns]
+    
+    # 列名マッピングを作成
+    column_mapping = dict(zip(original_columns, cleaned_columns))
+    
+    # DataFrameの列名を更新
+    df.columns = cleaned_columns
     
     # 変更があった場合はログ出力
-    if original_columns != list(df.columns):
+    if original_columns != cleaned_columns:
         logger.info(f"Original column names: {original_columns}")
-        logger.info(f"Cleaned column names: {list(df.columns)}")
+        logger.info(f"Cleaned column names: {cleaned_columns}")
+        logger.info(f"Column mapping: {column_mapping}")
     
-    return df
+    return df, column_mapping
 
 async def download_slack_file_content_async(file_url: str, bot_token: str) -> bytes:
     """
@@ -88,11 +126,15 @@ async def save_content_to_temp_file(
     content: bytes, 
     job_id: str, 
     original_filename: str = "uploaded_file.csv"
-) -> Tuple[str, Path]:
+) -> Tuple[str, Path, Optional[Dict[str, str]]]:
     """
     バイトコンテンツを一時ファイルに保存し、そのパスとPathオブジェクトを返す。
     ファイル名は job_id と元のファイル名から生成する。
     CSVファイルの場合は列名をクリーンアップする。
+    
+    Returns:
+        tuple: (file_path_str, file_path_obj, column_mapping)
+               column_mapping: CSVの場合は{original_name: cleaned_name}、その他はNone
     """
     temp_dir_base = Path(tempfile.gettempdir()) / "meta_analysis_bot_files"
     temp_dir_job = temp_dir_base / job_id
@@ -107,6 +149,9 @@ async def save_content_to_temp_file(
     safe_original_filename_base = "".join(c if c.isalnum() or c in ['.', '_'] else '_' for c in Path(original_filename).stem)
     temp_file_name = f"{safe_original_filename_base}_{job_id}{ext}"
     temp_file_path = temp_dir_job / temp_file_name
+    
+    # 列名マッピングの初期化
+    column_mapping = None
     
     # CSVファイルの場合は列名をクリーンアップ
     if ext.lower() == ".csv":
@@ -123,8 +168,9 @@ async def save_content_to_temp_file(
             logger.info(f"Original column names: {list(df.columns)}")
             
             # 列名をクリーンアップ
-            df = clean_column_names(df)
+            df, column_mapping = clean_column_names(df)
             logger.info(f"Cleaned column names: {list(df.columns)}")
+            logger.info(f"Column mapping: {column_mapping}")
             
             # クリーンアップしたCSVを文字列に変換
             csv_buffer = io.StringIO()
@@ -137,11 +183,12 @@ async def save_content_to_temp_file(
         except Exception as e:
             logger.error(f"Error cleaning CSV column names: {e}")
             # エラーが発生した場合は元のコンテンツをそのまま使用
+            column_mapping = None
     
     with open(temp_file_path, 'wb') as f:
         f.write(content)
     logger.info(f"Content saved to temporary file: {temp_file_path}")
-    return str(temp_file_path), temp_file_path
+    return str(temp_file_path), temp_file_path, column_mapping
 
 def get_r_output_dir(job_id: str) -> Path:
     """
