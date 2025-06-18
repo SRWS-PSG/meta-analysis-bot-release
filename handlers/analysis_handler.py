@@ -114,6 +114,12 @@ async def run_analysis_async(payload, user_parameters, channel_id, thread_ts, us
             name = re.sub(r'\s+', ' ', name)
             # 残った半角スペースをアンダースコアに置換
             name = name.replace(' ', '_')
+            # GeminiのJSON処理で問題になる文字を安全化（file_utils.pyと同様）
+            name = re.sub(r'[^\w\d_]', '_', name)
+            # 連続するアンダースコアを1つに
+            name = re.sub(r'_+', '_', name)
+            # 先頭・末尾のアンダースコアを削除
+            name = name.strip('_')
             return name
         
         # クリーンアップされた列名を使用（Rスクリプトが実際に読み込むCSVと一致させる）
