@@ -312,7 +312,7 @@ All prompts stored in `mcp/cache/prompts.json`:
 
 #### デプロイ手順
 ```bash
-# Herokuにデプロイ（変更を反映するには必須）
+# Herokuにデプロイ（変更を反映するには必須）pushには2分以上かかるので、timeoutコマンドはここでは使わない
 git add .
 git commit -m "Your commit message"
 git push heroku main

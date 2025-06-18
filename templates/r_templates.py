@@ -1599,6 +1599,23 @@ if (exists("zero_cells_summary") && !is.null(zero_cells_summary$studies_with_zer
                 yi_col=yi_col, vi_col=vi_col
             )
 
+    def _make_safe_var_name(self, column_name: str) -> str:
+        """Generate a safe R variable name from a column name"""
+        import re
+        # Step 1: Remove or replace problematic characters
+        safe_name = re.sub(r'[^\w\d_]', '_', column_name)
+        # Step 2: Remove consecutive underscores
+        safe_name = re.sub(r'_+', '_', safe_name)
+        # Step 3: Remove leading/trailing underscores
+        safe_name = safe_name.strip('_')
+        # Step 4: Ensure it doesn't start with a number
+        if safe_name and safe_name[0].isdigit():
+            safe_name = 'col_' + safe_name
+        # Step 5: Ensure it's not empty
+        if not safe_name:
+            safe_name = 'col_unknown'
+        return safe_name
+
     def _generate_subgroup_code(self, analysis_params: Dict[str, Any]) -> str:
         subgroup_columns = analysis_params.get("subgroups", analysis_params.get("subgroup_columns", []))
         method = analysis_params.get("model", "REML") # "method" から "model" に変更
@@ -1613,8 +1630,8 @@ if (exists("zero_cells_summary") && !is.null(zero_cells_summary$studies_with_zer
         
         subgroup_codes = []
         for subgroup_col in subgroup_columns:
-            # R変数名として安全な名前を生成（英数字とアンダースコアのみ）
-            safe_var_name = "".join(c if c.isalnum() or c == "_" else "_" for c in subgroup_col)
+            # R変数名として安全な名前を生成（改善版）
+            safe_var_name = self._make_safe_var_name(subgroup_col)
             
             # サブグループテスト用のモデル (res_subgroup_test_{safe_var_name} に結果を格納)
             subgroup_test_model_code = f"""
@@ -1697,7 +1714,7 @@ if (sanitized_subgroup_col %in% names(dat)) {{
         exclusion_codes.append("")
         
         for subgroup_col in subgroup_columns:
-            safe_var_name = "".join(c if c.isalnum() or c == "_" else "_" for c in subgroup_col)
+            safe_var_name = self._make_safe_var_name(subgroup_col)
             
             exclusion_code = f'''
 # Detect exclusions for subgroup '{subgroup_col}'
