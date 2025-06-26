@@ -13,7 +13,7 @@ class RTemplateGenerator:
     # プロットサイズのデフォルト値
     PLOT_ROW_H_IN = 0.3  # 1行あたりの高さ (インチ)
     PLOT_BASE_H_IN = 6   # ベースの高さ (インチ)
-    PLOT_WIDTH_IN = 10   # プロットの幅 (インチ)
+    PLOT_WIDTH_IN = 10   # プロットの幅 (インチ) - デフォルト
     PLOT_DPI = 300       # 解像度 (dpi)
     PLOT_EXTRA_ROWS_MAIN = 5 # メインプロット用の追加行数 (タイトル、全体サマリーなど)
     PLOT_EXTRA_ROWS_SUBGROUP = 7 # サブグループプロット用の追加行数 (全体タイトル、サブグループタイトル、全体サマリーなど)
@@ -24,6 +24,67 @@ class RTemplateGenerator:
         RTemplateGeneratorを初期化し、テンプレートをロードします。
         """
         self.templates = self._load_templates()
+
+    def _calculate_dynamic_plot_width(self, data_summary: Dict[str, Any]) -> float:
+        """
+        データに基づいてプロット幅を動的に計算します。
+        長い列名がある場合はプロット幅を拡張します。
+        
+        Args:
+            data_summary: データサマリー情報
+            
+        Returns:
+            プロット幅（インチ）
+        """
+        base_width = self.PLOT_WIDTH_IN
+        columns = data_summary.get("columns", [])
+        
+        if not columns:
+            return base_width
+            
+        # 最長の列名の長さを取得
+        max_column_length = max(len(str(col)) for col in columns)
+        
+        # 15文字を超える列名がある場合、プロット幅を拡張
+        if max_column_length > 15:
+            # 1文字あたり0.3インチ追加（最大20インチまで）
+            additional_width = min((max_column_length - 15) * 0.3, 10)
+            adjusted_width = base_width + additional_width
+            logger.info(f"長い列名を検出（最大長: {max_column_length}文字）。プロット幅を {base_width} → {adjusted_width} インチに調整")
+            return adjusted_width
+            
+        return base_width
+
+    def _calculate_dynamic_xlim(self, data_summary: Dict[str, Any]) -> str:
+        """
+        データに基づいてxlimを動的に計算します。
+        長い列名がある場合、左端のマージンを拡張します。
+        
+        Args:
+            data_summary: データサマリー情報
+            
+        Returns:
+            xlim設定文字列（例: "c(-20, 6)"）
+        """
+        base_left = -16
+        base_right = 6
+        columns = data_summary.get("columns", [])
+        
+        if not columns:
+            return f"c({base_left}, {base_right})"
+            
+        # 最長の列名の長さを取得
+        max_column_length = max(len(str(col)) for col in columns)
+        
+        # 15文字を超える列名がある場合、左マージンを拡張
+        if max_column_length > 15:
+            # 1文字あたり0.5ポイント左に拡張（最大-30まで）
+            additional_left = min((max_column_length - 15) * 0.5, 14)
+            adjusted_left = base_left - additional_left
+            logger.info(f"長い列名を検出。xlimの左端を {base_left} → {adjusted_left} に調整")
+            return f"c({adjusted_left}, {base_right})"
+            
+        return f"c({base_left}, {base_right})"
 
     def _safe_format(self, template: str, **kwargs) -> str:
         """Safely format a template containing many curly braces.
@@ -288,7 +349,7 @@ tryCatch({{
         x = res_for_plot,
         atransf = if(apply_exp_transform) exp else I, 
         at = forest_at,
-        xlim = c(-16, 6),
+        xlim = {dynamic_xlim_placeholder},
         digits = 2, 
         mlab = "",
         header = "Author(s) and Year",
@@ -861,7 +922,7 @@ if (exists("res_by_subgroup_{safe_var_name}") && length(res_by_subgroup_{safe_va
             ylim = c(ylim_bottom, ylim_top),
             atransf = if(apply_exp_transform) exp else I,
             at = if(apply_exp_transform) log(c(0.25, 1, 4)) else NULL,
-            xlim = c(-16, 6),
+            xlim = {dynamic_xlim_placeholder},
             digits = 2,
             header = "Author(s) and Year",
             refline = if(apply_exp_transform) 0 else 0,
@@ -1838,6 +1899,10 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
         n1i_col = data_cols.get("n1i", "")
         n2i_col = data_cols.get("n2i", "")
 
+        # 動的プロット幅とxlimを計算
+        dynamic_plot_width = self._calculate_dynamic_plot_width(data_summary)
+        dynamic_xlim = self._calculate_dynamic_xlim(data_summary)
+
         # 1. メインフォレストプロット
         main_forest_plot_path = output_paths.get("forest_plot_path", "forest_plot_overall.png")
         plot_parts.append(
@@ -1849,9 +1914,10 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
                 n1i_col=n1i_col, n2i_col=n2i_col,
                 row_h_in_placeholder=self.PLOT_ROW_H_IN,
                 base_h_in_placeholder=self.PLOT_BASE_H_IN,
-                plot_width_in_placeholder=self.PLOT_WIDTH_IN,
+                plot_width_in_placeholder=dynamic_plot_width,
                 plot_dpi_placeholder=self.PLOT_DPI,
-                extra_rows_main_placeholder=self.PLOT_EXTRA_ROWS_MAIN
+                extra_rows_main_placeholder=self.PLOT_EXTRA_ROWS_MAIN,
+                dynamic_xlim_placeholder=dynamic_xlim
             )
         )
         
@@ -1879,9 +1945,10 @@ if (exists("res_by_subgroup_{safe_var_name}") && !is.null(res_by_subgroup_{safe_
                         res_for_plot_model_name="res_for_plot", # メインモデルのプロット用オブジェクト名
                         row_h_in_placeholder=self.PLOT_ROW_H_IN,
                         base_h_in_placeholder=self.PLOT_BASE_H_IN,
-                        plot_width_in_placeholder=self.PLOT_WIDTH_IN,
+                        plot_width_in_placeholder=dynamic_plot_width,
                         plot_dpi_placeholder=self.PLOT_DPI,
-                        extra_rows_subgroup_placeholder=self.PLOT_EXTRA_ROWS_SUBGROUP
+                        extra_rows_subgroup_placeholder=self.PLOT_EXTRA_ROWS_SUBGROUP,
+                        dynamic_xlim_placeholder=dynamic_xlim
                     )
                 )
 
